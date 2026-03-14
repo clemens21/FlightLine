@@ -11,8 +11,9 @@ What exists today:
 - product strategy and system design docs in `strategy/`
 - screen wireframes in `wireframes/`
 - a local airport reference database in `data/airports/`
-- aircraft data modeling docs and a placeholder future dataset home in `data/aircraft/`
+- a local aircraft reference database in `data/aircraft/`
 - Python scripts that build and enrich the airport database in `scripts/airports/`
+- Python scripts that build the aircraft database in `scripts/aircraft/`
 
 What does not exist yet:
 
@@ -20,7 +21,6 @@ What does not exist yet:
 - simulation engine implementation
 - UI implementation
 - save-game model
-- populated aircraft reference dataset
 - test suite
 
 This means the project is still in pre-production. The product shape is being defined before code architecture hardens.
@@ -58,6 +58,7 @@ FlightLine/
     aircraft/
   scripts/
     airports/
+    aircraft/
 ```
 
 Key folders:
@@ -65,8 +66,9 @@ Key folders:
 - `strategy/`: product, systems, economy, staffing, airport, and generation design docs
 - `wireframes/`: markdown wireframes for the first MVP management screens
 - `data/airports/`: local SQLite airport snapshot, schema, and data notes
-- `data/aircraft/`: placeholder home for the future normalized aircraft reference dataset
+- `data/aircraft/`: local SQLite aircraft snapshot, schema, and data notes
 - `scripts/airports/`: airport database build, enrichment, and derived-field scripts
+- `scripts/aircraft/`: aircraft database build scripts and curated starter seed data
 
 ## Start Here
 
@@ -138,18 +140,43 @@ Important note:
 - the committed SQLite snapshot is self-contained for project use
 - a full rebuild from the original bootstrap path still depends on a local legacy JSON source outside this repository
 
-## Aircraft Data Modeling
+## Aircraft Database
 
-The aircraft modeling layer is now defined at the strategy level.
+The repository includes a tracked SQLite aircraft reference snapshot at:
 
-Current design references:
+- `data/aircraft/flightline-aircraft.sqlite`
 
-- `strategy/aircraft-data-model.md`
-- `strategy/aircraft-roster-and-balance.md`
-- `strategy/msfs-aircraft-alignment.md`
-- `data/aircraft/README.md`
+Current aircraft database characteristics:
 
-That means the next aircraft step is no longer deciding the shape of the data model. The next step is turning that model into a real MSFS-backed starter reference dataset.
+- `15` curated aircraft families and `19` aircraft models
+- clear user-facing MSFS 2024 status for every aircraft model
+- current MSFS status split of `16` confirmed available, `1` confirmed unavailable, and `2` not yet verified
+- normalized family, model, and tag tables with views for user catalog and family summaries
+- a deliberately curated roster rather than a store-shaped mirror of every addon SKU
+
+The current aircraft database is intended to support:
+
+- aircraft market generation
+- staffing qualification checks
+- aircraft-to-airport compatibility rules
+- contract fit logic
+- later fleet acquisition, maintenance, and progression systems
+
+See `data/aircraft/README.md` for details.
+
+## Aircraft Data Pipeline
+
+The current aircraft tooling lives in `scripts/aircraft/`.
+
+Main scripts:
+
+- `build_aircraft_db.py`: creates the SQLite aircraft database from the curated starter seed
+- `starter_seed.py`: defines the current starter family and model roster with MSFS availability metadata
+
+Important note:
+
+- the committed SQLite snapshot is self-contained for project use
+- MSFS metadata is tracked at the aircraft-model level so the player can see whether a plane is actually available to them in the current sim ecosystem
 
 ## Recommended Technical Direction
 
@@ -171,13 +198,13 @@ See `strategy/technical-foundation.md` for the full rationale.
 
 ## Immediate Next Step
 
-The next implementation milestone should be the first real game code slice:
+The next implementation milestone should use the airport and aircraft reference layers to prove the first real game code slice:
 
 - scaffold the TypeScript project
 - define core domain types
-- load airport reference data
-- introduce a minimal aircraft market
-- introduce a minimal staffing model
+- load airport and aircraft reference data
+- generate a minimal aircraft market
+- generate a minimal staffing model
 - generate contracts
 - assign one contract to one aircraft
 - advance time to resolution
@@ -196,7 +223,7 @@ New design work in this repository should answer four questions clearly:
 
 ## Working Notes
 
-- The airport SQLite file is intentionally tracked in git as a versioned reference snapshot.
+- The airport and aircraft SQLite files are intentionally tracked in git as versioned reference snapshots.
 - SQLite sidecar files such as `*.sqlite-wal` and `*.sqlite-shm` are ignored.
 - Raw source snapshots are treated as local workspace assets unless explicitly committed.
 - The repo is currently optimized for strategic design and data preparation, not yet active game development.
@@ -206,12 +233,7 @@ New design work in this repository should answer four questions clearly:
 The current best next sequence is:
 
 1. turn airport-derived tags into concrete contract generation rules
-2. turn the aircraft modeling docs into a real MSFS-backed starter reference dataset
+2. use the aircraft and airport reference data to prototype aircraft market and contract generation behavior
 3. define staffing capability packages and qualification rules
 4. scaffold the application and domain layers
 5. implement the first playable vertical slice
-
-
-
-
-

@@ -6,3 +6,6 @@ data/airports/incoming/*
 !data/airports/incoming/README.md
 data/airports/snapshots/*
 !data/airports/snapshots/README.md
+data/aircraft/flightline-aircraft.sqlite-shm
+data/aircraft/flightline-aircraft.sqlite-wal
+scripts/aircraft/__pycache__/

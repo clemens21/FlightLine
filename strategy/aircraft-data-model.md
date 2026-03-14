@@ -197,14 +197,20 @@ Because FlightLine now wants roster alignment with the latest Microsoft Flight S
 
 Recommended metadata fields:
 
-- `msfs2024_availability_class`
+- `msfs2024_available_for_user`
+- `msfs2024_status`
 - `msfs2024_included_tier`
 - `msfs2024_distribution_channels`
 - `msfs2024_example_products`
-- `msfs2024_pc_supported`
-- `msfs2024_xbox_supported`
-- `msfs2024_notes`
+- `msfs2024_source_refs`
+- `msfs2024_user_note`
 - `msfs2024_last_verified_on`
+
+Recommended status values:
+
+- `confirmed_available`
+- `confirmed_unavailable`
+- `not_verified`
 
 Purpose:
 
