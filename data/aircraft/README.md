@@ -24,6 +24,7 @@ The initial aircraft dataset should be:
 - normalized to one unit system
 - tuned for gameplay readability
 - separated into authored facts and derived gameplay tags
+- crosswalked to MSFS 2024 availability without becoming store-shaped
 
 ## Current Design References
 
@@ -31,6 +32,7 @@ The current design source for this folder is:
 
 - `strategy/aircraft-data-model.md`
 - `strategy/aircraft-roster-and-balance.md`
+- `strategy/msfs-aircraft-alignment.md`
 - `strategy/aircraft-acquisition.md`
 - `strategy/aircraft-market-model.md`
 
@@ -44,3 +46,4 @@ Populate the first starter dataset with:
 - market role pools
 - acquisition price bands
 - operating-cost and maintenance bands
+- MSFS 2024 availability metadata and source crosswalk fields

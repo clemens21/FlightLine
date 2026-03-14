@@ -80,7 +80,7 @@ If you are new to the repo, read these first:
 Useful design clusters:
 
 - product and progression: `strategy/product-pillars.md`, `strategy/gameplay-loop-and-progression.md`
-- staffing and aircraft acquisition: `strategy/labor-and-staffing.md`, `strategy/aircraft-acquisition.md`, `strategy/aircraft-data-model.md`, `strategy/aircraft-roster-and-balance.md`
+- staffing and aircraft acquisition: `strategy/labor-and-staffing.md`, `strategy/aircraft-acquisition.md`, `strategy/aircraft-data-model.md`, `strategy/aircraft-roster-and-balance.md`, `strategy/msfs-aircraft-alignment.md`
 - world data and generation: `strategy/airport-data-strategy.md`, `strategy/content-generation-systems.md`, `strategy/contract-generation-model.md`, `strategy/aircraft-market-model.md`, `strategy/staffing-market-model.md`
 - pre-wireframe UX: `strategy/user-flows.md`, `strategy/state-and-alert-model.md`, `strategy/screen-blueprints.md`
 
@@ -146,9 +146,10 @@ Current design references:
 
 - `strategy/aircraft-data-model.md`
 - `strategy/aircraft-roster-and-balance.md`
+- `strategy/msfs-aircraft-alignment.md`
 - `data/aircraft/README.md`
 
-That means the next aircraft step is no longer deciding the shape of the data model. The next step is turning that model into a real starter reference dataset.
+That means the next aircraft step is no longer deciding the shape of the data model. The next step is turning that model into a real MSFS-backed starter reference dataset.
 
 ## Recommended Technical Direction
 
@@ -205,9 +206,12 @@ New design work in this repository should answer four questions clearly:
 The current best next sequence is:
 
 1. turn airport-derived tags into concrete contract generation rules
-2. turn the aircraft modeling docs into a real starter reference dataset
+2. turn the aircraft modeling docs into a real MSFS-backed starter reference dataset
 3. define staffing capability packages and qualification rules
 4. scaffold the application and domain layers
 5. implement the first playable vertical slice
+
+
+
 
 

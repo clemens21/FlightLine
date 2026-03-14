@@ -36,9 +36,9 @@ Examples:
 - Caravan family
 - PC-12 family
 - Twin Otter family
-- Beech 1900 family
+- ATR family
 - Saab 340 family
-- light business jet family
+- Citation family
 
 Family-level data should answer questions like:
 
@@ -190,6 +190,33 @@ This is the core reference object for MVP.
 - `reputation_gate`
 - `best_fit_contract_tags`
 - `airport_access_profile`
+
+## MSFS 2024 Availability Metadata
+
+Because FlightLine now wants roster alignment with the latest Microsoft Flight Simulator ecosystem, aircraft reference data should also carry a simulator-availability crosswalk.
+
+Recommended metadata fields:
+
+- `msfs2024_availability_class`
+- `msfs2024_included_tier`
+- `msfs2024_distribution_channels`
+- `msfs2024_example_products`
+- `msfs2024_pc_supported`
+- `msfs2024_xbox_supported`
+- `msfs2024_notes`
+- `msfs2024_last_verified_on`
+
+Purpose:
+
+- lets FlightLine prefer families players can also fly in MSFS 2024
+- keeps the core aircraft identity separate from storefront packaging
+- makes it possible to filter the roster by first-party, paid, freeware, or mixed availability
+- supports future MSFS integration planning without coupling the game to one storefront
+
+Important rule:
+
+- one FlightLine aircraft model should not be created for every store listing
+- multiple store listings should usually crosswalk to one FlightLine family or variant unless the gameplay-relevant configuration is genuinely different
 
 ## AircraftModel Design Rules
 
@@ -395,6 +422,7 @@ Before app code starts, FlightLine should at least define:
 3. qualification groups for staffing
 4. market role pools for acquisition
 5. the per-airframe fields required for save-state and maintenance
+6. MSFS 2024 availability metadata for every preferred MVP family and variant
 
 ## Success Test
 
@@ -406,3 +434,7 @@ The aircraft data model is ready when the team can take one aircraft record and 
 - what it costs to keep busy
 - how it should appear in the market
 - how its live wear and ownership state should be saved
+
+
+
+

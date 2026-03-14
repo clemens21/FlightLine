@@ -16,6 +16,21 @@ The MVP roster should satisfy these rules:
 - the roster should support both standardization and diversification strategies
 - the market should contain safe options, niche options, and stretch options
 
+## MSFS 2024 Alignment Constraint
+
+As of March 14, 2026, the latest target simulator is `Microsoft Flight Simulator 2024`.
+
+That means the preferred FlightLine MVP roster should be drawn from aircraft families that have a confirmed MSFS 2024 availability path through at least one of:
+
+- first-party included aircraft
+- official paid Marketplace aircraft
+- third-party paid direct download
+- third-party freeware
+
+We should not try to mirror every store SKU. We should normalize those products into FlightLine families and variants.
+
+See `strategy/msfs-aircraft-alignment.md` for the source-backed alignment rule.
+
 ## Recommended Roster Size
 
 Two different roster sizes matter.
@@ -44,8 +59,8 @@ That is enough variety for real strategic choice without turning data entry into
 
 Reference candidates:
 
-- Cessna Caravan family
-- PAC utility single family later if needed
+- Cessna 208 Caravan family
+- Pilatus PC-6 Porter family
 
 Primary role:
 
@@ -75,6 +90,7 @@ Expected weaknesses:
 Reference candidates:
 
 - Pilatus PC-12 family
+- Daher TBM family
 
 Primary role:
 
@@ -104,7 +120,7 @@ Expected weaknesses:
 Reference candidates:
 
 - DHC-6 Twin Otter family
-- Dornier 228 family later if needed
+- later third-party rugged twins only if MSFS 2024 availability is confirmed in the dataset
 
 Primary role:
 
@@ -133,8 +149,8 @@ Expected weaknesses:
 
 Reference candidates:
 
-- Beech 1900 family
-- Jetstream 32 family later if needed
+- Saab 340B family
+- later commuter twins only if MSFS 2024 availability is confirmed in the dataset
 
 Primary role:
 
@@ -147,10 +163,10 @@ Why the lane matters:
 
 Recommended gameplay band:
 
-- `15` to `20` passengers
+- `28` to `36` passengers
 - light belly cargo only in MVP
 - `220` to `300` ktas cruise
-- `3,000` to `4,500` ft runway need
+- `3,500` to `5,000` ft runway need
 
 Expected weaknesses:
 
@@ -162,8 +178,8 @@ Expected weaknesses:
 
 Reference candidates:
 
-- Saab 340 family
-- ATR 42 family
+- ATR 42 / 72 family
+- BAe 146 family later if the lane shifts toward regional jet expansion
 
 Primary role:
 
@@ -177,10 +193,10 @@ Why the lane matters:
 
 Recommended gameplay band:
 
-- `30` to `50` passengers
-- `6,000` to `12,000` lbs cargo in cargo or combi variants
+- `42` to `72` passengers
+- `7,000` to `14,000` lbs cargo in cargo or combi variants
 - `250` to `320` ktas cruise
-- `3,500` to `5,500` ft runway need
+- `4,000` to `6,000` ft runway need
 
 Expected weaknesses:
 
@@ -192,8 +208,8 @@ Expected weaknesses:
 
 Reference candidates:
 
-- Saab 340 cargo variant
 - ATR 42 freighter or combi style variant
+- BAe 146 QC/QT or other paid-addon cargo variants later
 
 Primary role:
 
@@ -219,8 +235,9 @@ Expected weaknesses:
 
 Reference candidates:
 
-- Citation CJ lane
-- Learjet 45 lane
+- Citation CJ family
+- Citation Longitude family
+- Pilatus PC-24 family
 
 Primary role:
 
@@ -245,20 +262,41 @@ Expected weaknesses:
 - margin can collapse if premium demand is weak
 - poor fit for remote or bulk cargo work
 
+## Confirmed MSFS 2024 Overlap Families
+
+The current best source-backed FlightLine overlap families are:
+
+- `Cessna 208 Caravan EX`
+- `Pilatus PC-6 Porter`
+- `Pilatus PC-12 NGX`
+- `DHC-6 Twin Otter`
+- `Saab 340B`
+- `ATR 42 / 72`
+- `Citation CJ4 / Longitude`
+- `Pilatus PC-24`
+- `BAe 146`
+- `F28`
+- `A320neo / A32NX`
+- `737 MAX 8 / 737 NG`
+- `A330 family / A339X`
+- `A350`
+
+For MVP, the preferred starter lineup should come from this set rather than from families with only assumed or unverified MSFS 2024 availability.
+
 ## Vertical Slice Lineup Recommendation
 
-If FlightLine only implements `6` initial variants, the best starting mix is:
+If FlightLine only implements `6` initial variants, the best source-backed starting mix is:
 
-1. light utility single turboprop passenger or mixed variant
-2. light utility single turboprop cargo variant
-3. premium single turboprop
-4. rugged STOL twin
-5. entry commuter twin
-6. regional turboprop passenger
+1. `Cessna 208 Caravan` passenger or mixed variant
+2. `Cessna 208 Caravan` cargo variant
+3. `Pilatus PC-12 NGX`
+4. `DHC-6 Twin Otter`
+5. `Saab 340B`
+6. `ATR 42` passenger or combi variant
 
-The light business jet should be the first expansion variant after the slice if premium-charter gameplay is important early.
+The `Citation CJ4` or `Pilatus PC-24` premium-speed lane should be the first expansion variant after the slice if premium-charter gameplay is important early.
 
-The regional cargo variant should be the next addition after that if cargo depth becomes the stronger priority.
+The `BAe 146` or `F28` regional jet lane should be the next addition after that if airline progression depth and paid-addon overlap become the stronger priority.
 
 ## Family And Variant Strategy
 
@@ -352,13 +390,14 @@ Expected business outcomes:
 
 When the team turns this document into actual reference data, capture aircraft in this order:
 
-1. light utility single family
-2. premium single family
-3. rugged STOL twin family
-4. entry commuter twin family
-5. regional turboprop family
-6. light business jet family
+1. Caravan family
+2. PC-12 family
+3. Twin Otter family
+4. Saab 340B family
+5. ATR family
+6. Citation or PC-24 family
 7. cargo and combi variants for existing families
+8. 146 or F28 family
 
 That sequence supports the earliest gameplay decisions first.
 
@@ -384,3 +423,7 @@ The roster is healthy when the player can look at the visible market and reasona
 - a cargo-specialized option
 
 without any one of them feeling universally correct.
+
+
+
+

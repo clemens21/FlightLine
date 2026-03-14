@@ -15,21 +15,22 @@ Read order:
 7. `aircraft-acquisition.md`
 8. `aircraft-data-model.md`
 9. `aircraft-roster-and-balance.md`
-10. `fleet-and-maintenance.md`
-11. `ui-information-architecture.md`
-12. `user-flows.md`
-13. `state-and-alert-model.md`
-14. `screen-blueprints.md`
-15. `sample-company-dataset.md`
-16. `visual-direction-brief.md`
-17. `wireframe-review.md`
-18. `content-generation-systems.md`
-19. `airport-data-strategy.md`
-20. `airport-bootstrap-findings.md`
-21. `contract-generation-model.md`
-22. `aircraft-market-model.md`
-23. `staffing-market-model.md`
-24. `airport-derived-tags-plan.md`
+10. `msfs-aircraft-alignment.md`
+11. `fleet-and-maintenance.md`
+12. `ui-information-architecture.md`
+13. `user-flows.md`
+14. `state-and-alert-model.md`
+15. `screen-blueprints.md`
+16. `sample-company-dataset.md`
+17. `visual-direction-brief.md`
+18. `wireframe-review.md`
+19. `content-generation-systems.md`
+20. `airport-data-strategy.md`
+21. `airport-bootstrap-findings.md`
+22. `contract-generation-model.md`
+23. `aircraft-market-model.md`
+24. `staffing-market-model.md`
+25. `airport-derived-tags-plan.md`
 
 Wireframes:
 
@@ -66,6 +67,7 @@ FlightLine should begin as an OnAir-style airline management sim, then different
 - Define the generation systems and airport-data pipeline that will keep the simulation full of plausible choices.
 - Keep the airport strategy aligned with the actual multi-source local database, not just the original design assumptions.
 - Lock the aircraft reference model before turning the starter roster into real game data.
+- Keep the preferred aircraft roster aligned with MSFS 2024 families players can actually fly.
 
 ## Open Design Questions
 
