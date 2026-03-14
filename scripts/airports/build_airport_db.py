@@ -14,10 +14,10 @@ DEFAULT_DB_PATH = ROOT / "data" / "airports" / "flightline-airports.sqlite"
 DEFAULT_SCHEMA_PATH = ROOT / "data" / "airports" / "schema" / "001_initial.sql"
 SOURCE_KEY = "legacy_airports_and_runways_mdb"
 
-HARD_SURFACE_TOKENS = ("asphalt", "concrete", "pem", "treated")
-SOFT_SURFACE_TOKENS = ("turf", "grass", "dirt", "sand")
-LOOSE_SURFACE_TOKENS = ("gravel",)
-WATER_SURFACE_TOKENS = ("water",)
+HARD_SURFACE_TOKENS = ("asphalt", "asph", "asp", "concrete", "conc", "con", "pem", "treated", "bit", "paved", "sealed")
+SOFT_SURFACE_TOKENS = ("turf", "grass", "grs", "dirt", "earth", "sand")
+LOOSE_SURFACE_TOKENS = ("gravel", "grvl", "grv", "gvl", "gre")
+WATER_SURFACE_TOKENS = ("water", "wat")
 RUNWAY_IDENT_PATTERN = re.compile(r"([0-9]{1,2}[LCR]?|[NEWS])/([0-9]{1,2}[LCR]?|[NEWS])")
 ICAO_PATTERN = re.compile(r"[A-Z]{4}")
 
@@ -530,3 +530,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

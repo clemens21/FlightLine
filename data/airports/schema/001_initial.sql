@@ -28,6 +28,29 @@ CREATE TABLE IF NOT EXISTS source_snapshot (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_source_snapshot_key_version
   ON source_snapshot (source_key, version_label);
 
+CREATE TABLE IF NOT EXISTS country_reference (
+  code TEXT PRIMARY KEY,
+  source_country_id TEXT,
+  name TEXT NOT NULL,
+  continent TEXT,
+  wikipedia_link TEXT,
+  keywords TEXT
+);
+
+CREATE TABLE IF NOT EXISTS region_reference (
+  code TEXT PRIMARY KEY,
+  source_region_id TEXT,
+  local_code TEXT,
+  name TEXT NOT NULL,
+  continent TEXT,
+  iso_country TEXT,
+  wikipedia_link TEXT,
+  keywords TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_region_reference_country
+  ON region_reference (iso_country);
+
 CREATE TABLE IF NOT EXISTS airport (
   id INTEGER PRIMARY KEY,
   airport_key TEXT NOT NULL UNIQUE,
@@ -47,6 +70,9 @@ CREATE TABLE IF NOT EXISTS airport (
   municipality TEXT,
   timezone TEXT,
   scheduled_service INTEGER NOT NULL DEFAULT 0 CHECK (scheduled_service IN (0, 1)),
+  home_link TEXT,
+  wikipedia_link TEXT,
+  keywords TEXT,
   data_confidence TEXT NOT NULL DEFAULT 'unreviewed',
   created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -58,7 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_airport_iata_code ON airport (iata_code);
 CREATE INDEX IF NOT EXISTS idx_airport_gps_code ON airport (gps_code);
 CREATE INDEX IF NOT EXISTS idx_airport_local_code ON airport (local_code);
 CREATE INDEX IF NOT EXISTS idx_airport_country_region ON airport (iso_country, iso_region);
-CREATE INDEX IF NOT EXISTS idx_airport_type ON airport (airport_type);
+CREATE INDEX IF NOT EXISTS idx_airport_type ON airport (airport_type);`r`nCREATE INDEX IF NOT EXISTS idx_airport_size ON airport (airport_size);
 
 CREATE TABLE IF NOT EXISTS airport_profile (
   airport_id INTEGER PRIMARY KEY REFERENCES airport (id) ON DELETE CASCADE,
@@ -92,6 +118,8 @@ CREATE TABLE IF NOT EXISTS airport_profile (
 CREATE TABLE IF NOT EXISTS airport_runway (
   id INTEGER PRIMARY KEY,
   airport_id INTEGER NOT NULL REFERENCES airport (id) ON DELETE CASCADE,
+  source_runway_id TEXT,
+  source_airport_ident TEXT,
   runway_name TEXT NOT NULL,
   runway_ident_a TEXT,
   runway_ident_b TEXT,
@@ -106,7 +134,17 @@ CREATE TABLE IF NOT EXISTS airport_runway (
   longitude_deg REAL,
   elevation_ft INTEGER,
   heading_deg REAL,
-  landing_system TEXT
+  landing_system TEXT,
+  le_latitude_deg REAL,
+  le_longitude_deg REAL,
+  le_elevation_ft INTEGER,
+  le_heading_degT REAL,
+  le_displaced_threshold_ft INTEGER,
+  he_latitude_deg REAL,
+  he_longitude_deg REAL,
+  he_elevation_ft INTEGER,
+  he_heading_degT REAL,
+  he_displaced_threshold_ft INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_airport_runway_airport_id
@@ -115,6 +153,8 @@ CREATE INDEX IF NOT EXISTS idx_airport_runway_airport_id
 CREATE TABLE IF NOT EXISTS airport_frequency (
   id INTEGER PRIMARY KEY,
   airport_id INTEGER NOT NULL REFERENCES airport (id) ON DELETE CASCADE,
+  source_frequency_id TEXT,
+  airport_ident TEXT,
   frequency_type TEXT NOT NULL,
   description TEXT,
   frequency_mhz REAL,
@@ -160,3 +200,4 @@ CREATE TABLE IF NOT EXISTS legacy_airport_payload (
   notes TEXT,
   created_at_utc TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+

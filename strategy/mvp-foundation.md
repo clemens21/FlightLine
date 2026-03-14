@@ -208,3 +208,16 @@ Priority 3:
 - Requiring constant babysitting for routine operations.
 - Making labor invisible enough that scaling feels free.
 - Coupling the MVP to MSFS before the management layer is independently fun.
+
+## Airport Data Reality
+
+The airport world model is now a local multi-source reference database, not a single seed file.
+
+Current direction:
+
+- use the current OurAirports-based world snapshot as the main operational layer
+- preserve legacy-only airports as fallback data, not as the authoritative base
+- limit MVP airline gameplay to airports that pass the current fixed-wing access heuristic
+- keep heliports, seaplane bases, balloonports, and closed airports in the database but out of the normal airline loop until they are supported explicitly
+
+This means MVP can ship with a broad real airport database while still exposing only the subset that produces coherent airline decisions.

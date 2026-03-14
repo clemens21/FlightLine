@@ -1,4 +1,4 @@
-# Content Generation Systems
+﻿# Content Generation Systems
 
 ## Purpose
 
@@ -291,3 +291,18 @@ The generation layer is working if the player can consistently answer:
 - why did this opportunity appear now?
 - why is this offer better or worse for my company?
 - what new capability would this purchase or hire actually unlock?
+
+## Current Airport Data Constraints
+
+The current airport database now supports broad global generation, but MVP content generation should still use a curated eligibility layer.
+
+Rules for early contract generation:
+
+- only generate standard airline passenger or cargo work between airports where `airport_profile.accessible_now = 1`
+- exclude `heliport`, `seaplane_base`, `balloonport`, and `closed` airports from normal airline contract pools until those operating models are explicitly supported
+- use `scheduled_service`, raw `airport_type`, derived `airport_size`, hard-runway length, total runway length, timezone, and region metadata as first-pass demand inputs
+- use timezone for day-boundary, local-departure-window, and deadline presentation logic
+- treat frequencies, links, and keywords as support metadata, not primary economic inputs
+
+This keeps the generation layer grounded in the current data reality instead of pretending the world model is more complete than it is.
+

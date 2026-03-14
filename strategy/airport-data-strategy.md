@@ -1,4 +1,4 @@
-# Airport Data Strategy
+﻿# Airport Data Strategy
 
 ## Purpose
 
@@ -28,7 +28,7 @@ We should split airport data into three categories:
 - stable airport identifier
 - ICAO, IATA, GPS, and local codes where available
 - airport name
-- airport type
+- raw airport type
 - latitude and longitude
 - elevation
 - country and region
@@ -230,8 +230,8 @@ Reject or flag airports that have:
 - no usable coordinates
 - obviously invalid runway dimensions
 - duplicate identifiers without clear disambiguation
-- missing airport type
-- incompatible runway data versus airport type
+- missing raw airport type
+- incompatible runway data versus raw airport type
 
 ## Update Cadence
 
@@ -267,3 +267,58 @@ The next practical design choice is whether the game ships with:
 - or a global database with region packs exposed progressively
 
 Either works, but the normalization pipeline should support both.
+
+## Implemented Bootstrap State
+
+The current local FlightLine airport database is now a multi-source reference snapshot, not a single-source prototype.
+
+Current state from the local database build on March 13, 2026:
+
+- `87,921` airports
+- `48,321` runway rows
+- `30,216` frequency rows
+- `249` country records
+- `3,942` region records
+- `27,765` airports marked `accessible_now` under the current fixed-wing heuristic
+- `3,114` legacy-only airports preserved as fallback because they do not appear in the current OurAirports snapshot
+
+What the current build now contains that the legacy bootstrap did not:
+
+- runway width for most structured runway rows
+- explicit runway lighted and closed flags
+- runway-end identifiers and end geometry
+- airport frequency rows
+- country and region lookup tables
+- scheduled-service flags
+- home links, Wikipedia links, and keyword metadata
+- corrected current naming for many airports that had legacy encoding issues
+
+What still remains incomplete:
+
+- timezone is now derived locally from latitude/longitude for all airports in the current database build
+- source merge is still keyed mostly by `ident`, so later multi-source deduping will need a stronger identity strategy
+- FAA enrichment is still needed for stronger U.S. authority
+- game-authored demand and maintenance tags are still not populated
+
+## Strategy Change
+
+FlightLine should now treat:
+
+- the current OurAirports snapshot as the primary global base layer
+- the legacy AirportsAndRunways JSON as a fallback layer for airports missing from the current base
+- later FAA import as an authority and override layer, not as the first source we depend on
+
+## New Derived Gameplay Field: Airport Size
+
+In addition to the raw source airport classification, FlightLine now carries a simplified gameplay-facing irport_size field on a 1 to 5 scale.
+
+Recommended meaning:
+
+- 1: specialty, closed, or highly restricted facility
+- 2: local utility airport
+- 3: regional airport
+- 4: commercial airport
+- 5: major commercial hub
+
+This field should be used for UI grouping, early demand heuristics, and broad progression logic. The raw irport_type should still be preserved for source fidelity and special-case rules.
+

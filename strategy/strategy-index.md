@@ -1,4 +1,4 @@
-# FlightLine Strategy Index
+﻿# FlightLine Strategy Index
 
 ## Purpose
 
@@ -23,6 +23,7 @@ Read order:
 15. `wireframe-review.md`
 16. `content-generation-systems.md`
 17. `airport-data-strategy.md`
+18. `airport-bootstrap-findings.md`
 
 Wireframes:
 
@@ -57,6 +58,7 @@ FlightLine should begin as an OnAir-style airline management sim, then different
 - Define the pre-wireframe UX layer so flows, statuses, and screen purpose are stable before visual design work starts.
 - Use the first-pass wireframes to identify where the current strategy docs are still too vague.
 - Define the generation systems and airport-data pipeline that will keep the simulation full of plausible choices.
+- Keep the airport strategy aligned with the actual multi-source local database, not just the original design assumptions.
 
 ## Open Design Questions
 

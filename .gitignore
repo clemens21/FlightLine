@@ -1,4 +1,6 @@
-﻿data/airports/flightline-airports.sqlite-shm
+﻿.vendor/
+scripts/airports/__pycache__/
+data/airports/flightline-airports.sqlite-shm
 data/airports/flightline-airports.sqlite-wal
 data/airports/incoming/*
 !data/airports/incoming/README.md
