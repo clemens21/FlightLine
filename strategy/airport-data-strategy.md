@@ -272,7 +272,7 @@ Either works, but the normalization pipeline should support both.
 
 The current local FlightLine airport database is now a multi-source reference snapshot, not a single-source prototype.
 
-Current state from the local database build on March 13, 2026:
+Current state from the local database build on March 14, 2026:
 
 - `87,921` airports
 - `48,321` runway rows
@@ -298,7 +298,8 @@ What still remains incomplete:
 - timezone is now derived locally from latitude/longitude for all airports in the current database build
 - source merge is still keyed mostly by `ident`, so later multi-source deduping will need a stronger identity strategy
 - FAA enrichment is still needed for stronger U.S. authority
-- game-authored demand and maintenance tags are still not populated
+- manual balance overrides do not exist yet for iconic or progression-critical airports
+- airport-pair cache and route-level derived data are still not populated
 
 ## Strategy Change
 
@@ -310,7 +311,7 @@ FlightLine should now treat:
 
 ## New Derived Gameplay Field: Airport Size
 
-In addition to the raw source airport classification, FlightLine now carries a simplified gameplay-facing irport_size field on a 1 to 5 scale.
+In addition to the raw source airport classification, FlightLine now carries a simplified gameplay-facing `airport_size` field on a 1 to 5 scale.
 
 Recommended meaning:
 
@@ -320,5 +321,45 @@ Recommended meaning:
 - 4: commercial airport
 - 5: major commercial hub
 
-This field should be used for UI grouping, early demand heuristics, and broad progression logic. The raw irport_type should still be preserved for source fidelity and special-case rules.
+This field should be used for UI grouping, early demand heuristics, and broad progression logic. The raw `airport_type` should still be preserved for source fidelity and special-case rules.
 
+## New Implemented Derived Gameplay Layer
+
+The local airport database now also carries a first-pass generation layer in `airport_profile` and `airport_tag`.
+
+Currently populated fields:
+
+- `passenger_score`
+- `cargo_score`
+- `remote_score`
+- `tourism_score`
+- `business_score`
+- `demand_archetype`
+- `maintenance_capability_band`
+- `contract_generation_weight`
+- `market_region`
+
+Current results from the March 14, 2026 build:
+
+- `87,921` populated `airport_profile` rows
+- `154,401` derived `airport_tag` rows
+- `787` distinct `market_region` values
+
+Current `demand_archetype` distribution:
+
+- `57,471` `mixed_secondary`
+- `19,608` `remote_utility`
+- `4,965` `cargo_feeder`
+- `2,376` `regional_connector`
+- `1,868` `business_gateway`
+- `1,633` `major_hub`
+
+Current `maintenance_capability_band` distribution:
+
+- `60,156` `none`
+- `17,237` `basic`
+- `6,447` `line`
+- `2,427` `regional`
+- `1,654` `major`
+
+This first pass is intentionally heuristic. It is strong enough to drive contract, aircraft-market, and staffing-market generation, but it should still be treated as a designer-tunable layer rather than real-world truth.

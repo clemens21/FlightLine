@@ -300,9 +300,11 @@ Rules for early contract generation:
 
 - only generate standard airline passenger or cargo work between airports where `airport_profile.accessible_now = 1`
 - exclude `heliport`, `seaplane_base`, `balloonport`, and `closed` airports from normal airline contract pools until those operating models are explicitly supported
-- use `scheduled_service`, raw `airport_type`, derived `airport_size`, hard-runway length, total runway length, timezone, and region metadata as first-pass demand inputs
+- use `passenger_score`, `cargo_score`, `remote_score`, `tourism_score`, `business_score`, `demand_archetype`, `maintenance_capability_band`, `contract_generation_weight`, `market_region`, `timezone`, and `airport_size` as primary generation inputs
+- fall back to raw `scheduled_service`, `airport_type`, hard-runway length, total runway length, and region metadata when a lower-level rule needs them
 - use timezone for day-boundary, local-departure-window, and deadline presentation logic
 - treat frequencies, links, and keywords as support metadata, not primary economic inputs
 
 This keeps the generation layer grounded in the current data reality instead of pretending the world model is more complete than it is.
+
 

@@ -24,6 +24,10 @@ Read order:
 16. `content-generation-systems.md`
 17. `airport-data-strategy.md`
 18. `airport-bootstrap-findings.md`
+19. `contract-generation-model.md`
+20. `aircraft-market-model.md`
+21. `staffing-market-model.md`
+22. `airport-derived-tags-plan.md`
 
 Wireframes:
 

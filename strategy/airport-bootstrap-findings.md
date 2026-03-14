@@ -8,7 +8,7 @@ The point is to anchor strategy in the implemented data model instead of treatin
 
 ## Current Database State
 
-As of March 13, 2026, the local airport database contains:
+As of March 14, 2026, the local airport database contains:
 
 - `87,921` airports
 - `48,321` runway rows
@@ -51,7 +51,8 @@ Known gaps:
 - the source merge is still mostly `ident`-based, so later identity resolution should get stronger
 - FAA enrichment is still needed for stronger U.S. authority and validation
 - some legacy airports still have only fallback data quality
-- game-authored demand, market, and maintenance tags are still unpopulated
+- manual balance overrides are not in place yet
+- airport-pair cache and route-level derived data are still unpopulated
 
 ## Strategy Consequences
 
@@ -71,16 +72,16 @@ The next airport-data work should focus on:
 - FAA U.S. enrichment and override rules
 - stronger source-identity matching across codes and regions
 - derived airport-pair data for contract generation
-- game-authored airport demand and maintenance tags
+- manual override support for obvious edge cases and curated starter regions
 
 ## New Derived Fields
 
-The local airport database now also carries two gameplay-facing derived fields:
+The local airport database now also carries gameplay-facing derived fields:
 
-- 	imezone: calculated from latitude/longitude for every airport
-- irport_size: a simplified 1 to 5 scale used for gameplay and UI grouping while preserving the raw irport_type`r
+- `timezone`: calculated from latitude/longitude for every airport
+- `airport_size`: a simplified 1 to 5 scale used for gameplay and UI grouping while preserving the raw `airport_type`
 
-Current irport_size scale:
+Current `airport_size` scale:
 
 - 1: specialty, closed, or too limited for standard airline play
 - 2: local utility airport
@@ -88,3 +89,45 @@ Current irport_size scale:
 - 4: commercial airport
 - 5: major commercial hub
 
+## First-Pass Generation Tags
+
+The database now also includes a first-pass generated content layer in `airport_profile`.
+
+Populated fields:
+
+- `passenger_score`
+- `cargo_score`
+- `remote_score`
+- `tourism_score`
+- `business_score`
+- `demand_archetype`
+- `maintenance_capability_band`
+- `contract_generation_weight`
+- `market_region`
+
+The current build also writes `154,401` derived rows into `airport_tag` so generation and filtering logic can query simplified labels such as:
+
+- `archetype:major_hub`
+- `passenger`
+- `cargo`
+- `remote`
+- `business`
+- `tourism`
+- `maintenance_capable`
+
+Current `demand_archetype` distribution:
+
+- `57,471` `mixed_secondary`
+- `19,608` `remote_utility`
+- `4,965` `cargo_feeder`
+- `2,376` `regional_connector`
+- `1,868` `business_gateway`
+- `1,633` `major_hub`
+
+Current `maintenance_capability_band` distribution:
+
+- `60,156` `none`
+- `17,237` `basic`
+- `6,447` `line`
+- `2,427` `regional`
+- `1,654` `major`
