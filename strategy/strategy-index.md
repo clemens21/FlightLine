@@ -21,6 +21,8 @@ Read order:
 13. `sample-company-dataset.md`
 14. `visual-direction-brief.md`
 15. `wireframe-review.md`
+16. `content-generation-systems.md`
+17. `airport-data-strategy.md`
 
 Wireframes:
 
@@ -54,6 +56,7 @@ FlightLine should begin as an OnAir-style airline management sim, then different
 - Design a modern UI that handles dense operational data in both light and dark mode.
 - Define the pre-wireframe UX layer so flows, statuses, and screen purpose are stable before visual design work starts.
 - Use the first-pass wireframes to identify where the current strategy docs are still too vague.
+- Define the generation systems and airport-data pipeline that will keep the simulation full of plausible choices.
 
 ## Open Design Questions
 
