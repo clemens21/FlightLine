@@ -1,5 +1,4 @@
-﻿data/airports/flightline-airports.sqlite
-data/airports/flightline-airports.sqlite-shm
+﻿data/airports/flightline-airports.sqlite-shm
 data/airports/flightline-airports.sqlite-wal
 data/airports/incoming/*
 !data/airports/incoming/README.md
