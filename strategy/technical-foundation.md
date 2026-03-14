@@ -196,7 +196,8 @@ If that works cleanly, the rest of the MVP can be layered on with less rework.
 
 ```text
 FlightLine/
-  md/
+  strategy/
+  wireframes/
   src/
     domain/
     application/
@@ -223,3 +224,5 @@ Start by scaffolding the TypeScript project and implementing the domain model fo
 - game clock
 
 That gives us the backbone needed for every later system.
+
+

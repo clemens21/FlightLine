@@ -15,6 +15,20 @@ Read order:
 7. `aircraft-acquisition.md`
 8. `fleet-and-maintenance.md`
 9. `ui-information-architecture.md`
+10. `user-flows.md`
+11. `state-and-alert-model.md`
+12. `screen-blueprints.md`
+13. `sample-company-dataset.md`
+14. `visual-direction-brief.md`
+
+Wireframes:
+
+- `../wireframes/index.md`
+- `../wireframes/01-dashboard.md`
+- `../wireframes/02-contracts.md`
+- `../wireframes/03-dispatch.md`
+- `../wireframes/04-fleet.md`
+- `../wireframes/05-staffing.md`
 
 ## Current Product Thesis
 
@@ -35,6 +49,8 @@ FlightLine should begin as an OnAir-style airline management sim, then different
 - Build an economy that produces understandable tradeoffs instead of random grind.
 - Make labor, aircraft condition, utilization, and maintenance matter.
 - Design a modern UI that handles dense operational data in both light and dark mode.
+- Define the pre-wireframe UX layer so flows, statuses, and screen purpose are stable before visual design work starts.
+- Use the first-pass wireframes to identify where the current strategy docs are still too vague.
 
 ## Open Design Questions
 
@@ -54,3 +70,4 @@ Any later design proposal should answer four questions clearly:
 - What information does the player need before committing?
 - How does the system scale from one aircraft to many?
 - What repetitive work can be reduced without flattening the strategy?
+
