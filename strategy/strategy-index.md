@@ -13,21 +13,23 @@ Read order:
 5. `economy-and-contracts.md`
 6. `labor-and-staffing.md`
 7. `aircraft-acquisition.md`
-8. `fleet-and-maintenance.md`
-9. `ui-information-architecture.md`
-10. `user-flows.md`
-11. `state-and-alert-model.md`
-12. `screen-blueprints.md`
-13. `sample-company-dataset.md`
-14. `visual-direction-brief.md`
-15. `wireframe-review.md`
-16. `content-generation-systems.md`
-17. `airport-data-strategy.md`
-18. `airport-bootstrap-findings.md`
-19. `contract-generation-model.md`
-20. `aircraft-market-model.md`
-21. `staffing-market-model.md`
-22. `airport-derived-tags-plan.md`
+8. `aircraft-data-model.md`
+9. `aircraft-roster-and-balance.md`
+10. `fleet-and-maintenance.md`
+11. `ui-information-architecture.md`
+12. `user-flows.md`
+13. `state-and-alert-model.md`
+14. `screen-blueprints.md`
+15. `sample-company-dataset.md`
+16. `visual-direction-brief.md`
+17. `wireframe-review.md`
+18. `content-generation-systems.md`
+19. `airport-data-strategy.md`
+20. `airport-bootstrap-findings.md`
+21. `contract-generation-model.md`
+22. `aircraft-market-model.md`
+23. `staffing-market-model.md`
+24. `airport-derived-tags-plan.md`
 
 Wireframes:
 
@@ -63,6 +65,7 @@ FlightLine should begin as an OnAir-style airline management sim, then different
 - Use the first-pass wireframes to identify where the current strategy docs are still too vague.
 - Define the generation systems and airport-data pipeline that will keep the simulation full of plausible choices.
 - Keep the airport strategy aligned with the actual multi-source local database, not just the original design assumptions.
+- Lock the aircraft reference model before turning the starter roster into real game data.
 
 ## Open Design Questions
 
