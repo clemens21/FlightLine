@@ -2,7 +2,6 @@
 
 FlightLine is an airline and aircraft management simulation project.
 
-The product direction starts from the core management fantasy of OnAir Airline Manager and pushes it toward better decision support, cleaner operations tooling, less repetitive scheduling work, and clearer company progression.
 
 ## Current Status
 
