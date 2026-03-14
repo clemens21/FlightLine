@@ -20,6 +20,7 @@ Read order:
 12. `screen-blueprints.md`
 13. `sample-company-dataset.md`
 14. `visual-direction-brief.md`
+15. `wireframe-review.md`
 
 Wireframes:
 
@@ -29,6 +30,8 @@ Wireframes:
 - `../wireframes/03-dispatch.md`
 - `../wireframes/04-fleet.md`
 - `../wireframes/05-staffing.md`
+- `../wireframes/06-aircraft-acquisition.md`
+- `../wireframes/07-staffing-acquisition.md`
 
 ## Current Product Thesis
 
@@ -70,4 +73,3 @@ Any later design proposal should answer four questions clearly:
 - What information does the player need before committing?
 - How does the system scale from one aircraft to many?
 - What repetitive work can be reduced without flattening the strategy?
-

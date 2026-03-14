@@ -15,6 +15,8 @@ Wireframe order:
 3. `03-dispatch.md`
 4. `04-fleet.md`
 5. `05-staffing.md`
+6. `06-aircraft-acquisition.md`
+7. `07-staffing-acquisition.md`
 
 ## Shared Assumptions
 
@@ -33,6 +35,8 @@ These wireframes are based on:
 - `../strategy/state-and-alert-model.md`
 - `../strategy/screen-blueprints.md`
 - `../strategy/visual-direction-brief.md`
+- `../strategy/aircraft-acquisition.md`
+- `../strategy/labor-and-staffing.md`
 
 ## What To Evaluate
 

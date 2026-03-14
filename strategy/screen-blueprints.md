@@ -19,6 +19,16 @@ Every major screen should answer three questions fast:
 - what decision can I make here
 - what action should I take next
 
+## Wireframe-Driven Rules
+
+The first-pass wireframes clarified a few product-wide rules:
+
+- Dashboard is a routing surface, not a mini-app.
+- Contracts must separate `available`, `accepted`, and `assigned` states clearly.
+- Dispatch is single-aircraft-first in MVP.
+- Overview screens and acquisition screens are different jobs and should stay separate.
+- A transaction flow should always preview both cost and newly unlocked capability.
+
 ## 1. Dashboard
 
 Primary decision:
@@ -28,10 +38,10 @@ Primary decision:
 Top information hierarchy:
 
 1. critical alerts and immediate blockers
-2. cash position and short-term trend
-3. aircraft availability summary
-4. staffing and maintenance pressure summary
-5. best next opportunities
+2. one recommended next step
+3. cash position and short-term pressure
+4. today's key timeline events
+5. supporting fleet, staffing, and market summaries
 
 Primary actions:
 
@@ -48,19 +58,23 @@ Required states:
 - low-cash company
 - no immediate work available
 
+Design rule:
+
+- do not place full contract or dispatch interfaces here; the dashboard should route decisively
+
 ## 2. Contracts Board
 
 Primary decision:
 
-- which work to accept or ignore
+- which work to accept, ignore, or plan next
 
 Top information hierarchy:
 
-1. contract list with sort and filters
-2. estimated net profit
-3. aircraft fit and staffing readiness
-4. deadline pressure
-5. map or route context
+1. clear state grouping or tabs for `available`, `accepted`, and `assigned`
+2. contract table with fast filtering and sorting
+3. estimated net profit and fit visibility in-row
+4. selected contract explanation panel
+5. compare tray for shortlist decisions
 
 Primary actions:
 
@@ -84,7 +98,7 @@ Primary decision:
 
 Top information hierarchy:
 
-1. aircraft status table or card list
+1. fleet table or comparison view
 2. operational state and location
 3. condition and maintenance state
 4. utilization and financial performance
@@ -95,7 +109,7 @@ Primary actions:
 - open aircraft detail
 - dispatch aircraft
 - schedule maintenance
-- open acquisition flow
+- open aircraft acquisition flow
 
 Required states:
 
@@ -103,6 +117,10 @@ Required states:
 - idle fleet
 - overworked fleet
 - under-capacity fleet
+
+Design rule:
+
+- Fleet is for cross-aircraft comparison; Aircraft Detail is for one-airframe understanding
 
 ## 4. Aircraft Detail
 
@@ -132,26 +150,25 @@ Required states:
 - aircraft in service
 - aircraft blocked by staffing or qualification
 
-## 5. Staffing View
+## 5. Staffing Overview
 
 Primary decision:
 
-- whether to hire, contract, outsource, or hold current labor structure
+- where labor is constraining growth or resilience
 
 Top information hierarchy:
 
-1. staffing coverage by category
-2. qualification gaps by aircraft family or service type
+1. coverage by category and qualification pool
+2. blocked or fragile operations
 3. fixed versus variable labor cost mix
-4. schedules or assets blocked by labor
-5. available staffing options and cost impact
+4. qualification gaps by aircraft family or service type
+5. recommended staffing actions
 
 Primary actions:
 
-- add direct hire package
-- add contract pool
-- add service agreement
-- remove or reduce excess staffing later
+- open staffing acquisition flow
+- review blocked contract or aircraft context
+- compare categories by risk or cost mix
 
 Required states:
 
@@ -160,17 +177,21 @@ Required states:
 - blocked operations from labor shortage
 - overstaffed cost drag
 
+Design rule:
+
+- this screen diagnoses problems; it does not carry the full transaction flow itself
+
 ## 6. Dispatch Board
 
 Primary decision:
 
-- what schedule to commit for an aircraft or set of aircraft
+- what schedule to commit for one selected aircraft
 
 Top information hierarchy:
 
 1. aircraft timeline and future commitments
 2. selected legs and sequence
-3. validation errors and blockers
+3. always-visible validation and blockers
 4. projected schedule profitability
 5. maintenance and staffing impact
 
@@ -188,6 +209,10 @@ Required states:
 - schedule with soft warnings
 - schedule with hard blockers
 - no work assigned
+
+Design rule:
+
+- MVP dispatch remains single-aircraft-first; do not optimize for network-wide planning yet
 
 ## 7. Maintenance View
 
@@ -273,7 +298,7 @@ Required states:
 - idle aircraft in poor locations
 - attractive underserved area
 
-## 10. Acquisition Surface
+## 10. Aircraft Acquisition Surface
 
 Primary decision:
 
@@ -283,9 +308,9 @@ Top information hierarchy:
 
 1. aircraft offers table or compare set
 2. role and mission fit
-3. buy versus finance versus lease cost comparison
+3. buy versus finance versus lease comparison
 4. staffing and qualification impact
-5. airport access and utilization outlook
+5. utilization and payment justification
 
 Primary actions:
 
@@ -300,6 +325,34 @@ Required states:
 - good growth offer
 - risky but high-upside offer
 - blocked by financing or staffing
+
+## 11. Staffing Acquisition Surface
+
+Primary decision:
+
+- which staffing package resolves the current labor gap most effectively
+
+Top information hierarchy:
+
+1. current staffing need and what it blocks
+2. direct hire versus contract versus service options
+3. cost preview
+4. unlocked opportunity preview
+5. activation timing and qualification fit
+
+Primary actions:
+
+- add direct hire package
+- add contract pool
+- add service agreement
+- compare packages side by side
+
+Required states:
+
+- clear best option
+- tradeoff-heavy choice
+- invalid staffing model for current need
+- too-expensive but informative option
 
 ## Global Shell Requirements
 
@@ -318,6 +371,7 @@ The top-level shell must always expose:
 - Detail drawers should preserve list context where possible.
 - Alerts should deep-link into the appropriate recovery workflow.
 - Time controls should remain visible from most screens.
+- Overview screens should open transaction screens with context preserved.
 
 ## Wireframe Readiness Checklist
 

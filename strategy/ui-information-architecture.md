@@ -65,16 +65,26 @@ Both themes need:
 - warning and success colors that preserve meaning
 - surfaces that feel native to the same design system
 
+## Wireframe Takeaways
+
+The first-pass wireframes added a few constraints that should now be treated as architectural decisions:
+
+- Dashboard is a routing screen, not a mini version of the app.
+- Contracts need stronger visual separation between `available`, `accepted`, and `assigned` work.
+- Dispatch is single-aircraft-first in MVP.
+- Fleet and Aircraft Detail are separate jobs and should not be merged casually.
+- Staffing Overview and Staffing Acquisition are different screens with different UX goals.
+- Aircraft Acquisition must keep mission fit, payment structure, and staffing impact visible together.
+
 ## Recommended Navigation Model
 
 Primary navigation for MVP:
 
 - Dashboard
 - Contracts
+- Dispatch
 - Fleet
 - Staffing
-- Dispatch
-- Maintenance
 - Finance
 - World
 
@@ -86,6 +96,18 @@ Persistent top-level shell should also include:
 - quick time controls
 - global search or quick-jump later
 
+## Transactional Surface Rule
+
+Not every important action deserves a top-level nav item.
+
+These should exist as dedicated transactional surfaces reached from overview screens:
+
+- Aircraft Acquisition
+- Staffing Acquisition
+- later, Maintenance Transaction Flow
+
+That keeps navigation stable while still allowing serious task depth.
+
 ## Screen Architecture
 
 ### Dashboard
@@ -96,58 +118,66 @@ Purpose:
 
 Should show:
 
-- cash and trend
-- today or current-period profit summary
-- aircraft status summary
-- staffing shortfalls or qualification gaps
-- urgent contracts or deadlines
-- maintenance due soon
-- dispatch bottlenecks
-- recommended next actions
+- one strong recommended next action
+- cash and short-term pressure
+- top alerts and blockers
+- today or current-period timeline highlights
+- compact fleet, staffing, and market summaries
+
+Should not try to show:
+
+- full contract comparison
+- full dispatch planning
+- full finance reporting
 
 ### Contracts Board
 
 Purpose:
 
-- browse and filter work opportunities
+- browse and compare work opportunities with strong state clarity
 
 Should show:
 
+- visible separation between available, accepted, and assigned work
 - contract list with sorting and filters
-- map preview
+- selected contract detail panel
 - estimated margin
 - fit score for selected aircraft or fleet
 - deadline pressure
-- staffing blockers if any
-- accept and plan actions
+- compare tray for shortlist decisions
+
+### Dispatch Board
+
+Purpose:
+
+- plan and validate one aircraft schedule at a time
+
+Should show:
+
+- aircraft timeline
+- current and future legs
+- conflicts and validation errors
+- reposition legs clearly separated from revenue legs
+- estimated profit and risk for the schedule
+- staffing and qualification checks inline
+
+Design rule:
+
+- network-scale scheduling is a later screen problem, not an MVP dispatch problem
 
 ### Fleet View
 
 Purpose:
 
-- understand fleet composition and health
+- compare aircraft across the fleet and decide where attention goes next
 
 Should show:
 
-- aircraft cards or rows with role, status, condition, and location
+- aircraft table or rows with state, condition, and location
 - utilization metrics
 - financial burden by aircraft
 - maintenance outlook
 - quick links to dispatch, service, or acquisition actions
-
-### Staffing View
-
-Purpose:
-
-- understand operating capacity and labor cost structure
-
-Should show:
-
-- pilot, cabin, mechanic, and support coverage
-- qualification gaps by fleet role or aircraft family
-- fixed versus variable labor cost mix
-- direct hire, contract, and service agreement options
-- which schedules or aircraft are blocked by staffing
 
 ### Aircraft Detail
 
@@ -165,20 +195,47 @@ Should show:
 - staffing requirements for operation
 - recommended next actions
 
-### Dispatch Board
+### Staffing Overview
 
 Purpose:
 
-- plan and validate schedules
+- understand operating capacity and labor bottlenecks
 
 Should show:
 
-- aircraft timeline
-- current and future legs
-- conflicts and validation errors
-- reposition legs clearly separated from revenue legs
-- estimated profit and risk for the schedule
-- staffing and qualification checks inline
+- pilot, cabin, mechanic, and support coverage
+- qualification gaps by fleet role or aircraft family
+- fixed versus variable labor cost mix
+- which schedules or aircraft are blocked by staffing
+- recommended next staffing actions
+
+### Staffing Acquisition
+
+Purpose:
+
+- solve one staffing gap through a concrete hire, contract, or outsource decision
+
+Should show:
+
+- current gap and what it blocks
+- direct hire, contract, and service options
+- cost preview
+- unlocked capability preview
+- activation timing and limitations
+
+### Aircraft Acquisition
+
+Purpose:
+
+- compare aircraft offers and commit a payment structure
+
+Should show:
+
+- filtered aircraft offers table
+- selected offer explanation panel
+- buy versus finance versus lease comparison
+- staffing and qualification impact
+- utilization and obligation preview
 
 ### Maintenance View
 
