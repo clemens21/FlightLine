@@ -2,217 +2,112 @@
 
 ## Purpose
 
-This document defines how FlightLine should align its aircraft roster to the current Microsoft Flight Simulator ecosystem.
+This document defines how FlightLine should use Microsoft Flight Simulator aircraft availability as product metadata.
 
-The goal is not to duplicate every storefront SKU. The goal is to ensure that the aircraft families and variants FlightLine models are also meaningfully flyable in the latest Microsoft Flight Simulator title and its live addon ecosystem.
+The goal is not to force the entire FlightLine roster to mirror the latest simulator ecosystem. The goal is to tell the player which aircraft they can also fly in the latest MSFS title while still allowing FlightLine to model a broader real-world airline catalog.
 
 ## Current Verified Platform State
 
 As of March 14, 2026, the latest Microsoft Flight Simulator title is `Microsoft Flight Simulator 2024`.
 
-Verified current first-party product state:
+Current source-backed MSFS paths relevant to FlightLine include:
 
-- the official Microsoft Flight Simulator store lists `70` aircraft in Standard, `80` in Deluxe, `95` in Premium Deluxe, and `125` in Aviator
-- the official store states that Aviator includes the Premium Deluxe fleet plus `30` Microsoft-published Marketplace aircraft developed between `2021` and `2024`
-- the current official MSFS 2024 ecosystem includes built-in aircraft, official paid Marketplace aircraft, third-party paid direct-download aircraft, and third-party freeware aircraft
+- first-party aircraft listed on the official MSFS aircraft manuals page
+- first-party aircraft confirmed in current official release notes
+- official add-on packages such as the ATR Expert Series bundle
+- third-party paid aircraft sold for MSFS 2024
+- third-party freeware aircraft with official compatibility statements
 
-## Verified Source Signals
+## Design Rule
 
-### 1. First-Party Included Aircraft
+FlightLine should treat `MSFS overlap` as a user-facing crosswalk layer, not as the master rule for what aircraft may exist in the game.
 
-Official current examples relevant to FlightLine's airline-management scope include:
+That means two things can be true at the same time:
 
-- `Cessna 208 Grand Caravan EX`
-- `De Havilland Canada DHC-6 Twin Otter`
-- `Pilatus PC-12 NGX`
-- `Cessna Citation CJ4`
-- `Cessna 408 SkyCourier`
-- `Pilatus PC-24`
-- `Saab 340B`
-- `ATR 42-600 / 72-600`
+- FlightLine should maintain a strong source-backed MSFS overlap subset because many players will value it
+- FlightLine should also include real-world aircraft that are strategically valuable to the management sim even when they are not currently confirmed in MSFS
 
-These matter because they give us a source-backed overlap between FlightLine starter families and aircraft already flyable in MSFS 2024.
+## What MSFS Metadata Is For
 
-### 2. Official Paid Marketplace Aircraft
+The MSFS layer should help the game answer these questions clearly:
 
-The official Marketplace updates from January and February 2026 show current paid aircraft listings for MSFS 2024 such as:
+- can the player fly this aircraft in the current MSFS ecosystem?
+- is the path first-party, official add-on, third-party paid, freeware, or currently not verified?
+- which examples or products should the UI mention?
+- when was that status last checked?
 
-- `Just Flight 146 Professional`
-- `F28 Professional`
-- `PMDG 737-900`
-- `iniBuilds A350 Airliner`
-- `lvfr Airbus A330-800 NEO`
-- `A2A Aerostar 600`
+It should not decide whether the aircraft belongs in the broader FlightLine world roster.
 
-This confirms that the official paid channel is active and broad enough to support FlightLine alignment beyond the built-in fleet.
+## Current Status Model
 
-### 3. Third-Party Paid Direct Downloads
+Recommended current status values per aircraft model:
 
-Verified current third-party direct paid example:
+- `confirmed_available`
+- `confirmed_unavailable`
+- `not_verified`
 
-- `Just Flight 146 Professional` is sold as a direct MSFS 2020/2024 download and includes passenger and cargo-capable variants
+Recommended current metadata fields:
 
-This matters because some commercially important airline families may be better represented through third-party direct channels than through built-in MSFS stock aircraft alone.
-
-### 4. Third-Party Freeware
-
-Verified current freeware examples:
-
-- `FlyByWire A32NX` is officially compatible with MSFS 2024
-- `Headwind Simulations A339X` is listed as a freeware add-on for Microsoft Flight Simulator
-
-This matters because the MSFS freeware ecosystem covers serious transport aircraft that FlightLine should be able to represent even when they are not part of the default sim purchase.
-
-## Design Conclusion
-
-FlightLine should align to `MSFS 2024 flyable aircraft families`, not to `individual storefront SKUs`.
-
-That is an inference from the current source set, not a statement made by any one source.
-
-Why this is the correct level:
-
-- storefront products change too often to serve as the canonical game roster
-- many MSFS products are just different commercial packages around the same aircraft family
-- FlightLine is a management sim, so family-level behavior matters more than vendor-level packaging
-- this keeps the roster stable even as Marketplace and third-party stores rotate products
-
-## Explicit Product Rule
-
-Every MVP aircraft family FlightLine uses should have at least one confirmed MSFS 2024 availability path in one of these classes:
-
-- `included_first_party`
-- `marketplace_paid`
-- `third_party_paid`
-- `third_party_freeware`
-- `mixed`
-
-If a family does not currently have a confirmed MSFS 2024 path, it should not be part of the preferred MVP roster.
-
-## Airline-Focused Scope Filter
-
-Even though MSFS 2024 includes many aircraft types, FlightLine should filter aggressively for management relevance.
-
-Preferred scope for now:
-
-- fixed-wing passenger aircraft
-- fixed-wing cargo aircraft
-- combi aircraft
-- business aviation aircraft that can support premium charter gameplay
-
-Out of scope for the main FlightLine roster unless a later expansion says otherwise:
-
-- helicopters
-- gliders
-- balloons and airships
-- eVTOL aircraft
-- military-only aircraft
-- novelty or fictional aircraft
-- warbirds and historic museum aircraft that do not support the airline-management fantasy
-
-## Confirmed First-Pass Family Lanes
-
-These are the strongest current overlap lanes between FlightLine and MSFS 2024.
-
-### Startup Utility
-
-Confirmed overlap examples:
-
-- `Cessna 208 Grand Caravan EX`
-- `Cessna 408 SkyCourier`
-- `Pilatus PC-6 Porter`
-
-### Premium Small Company Operations
-
-Confirmed overlap examples:
-
-- `Pilatus PC-12 NGX`
-- `Cessna Citation CJ4`
-- `Cessna Citation Longitude`
-- `Pilatus PC-24`
-
-### Rugged Remote Ops
-
-Confirmed overlap examples:
-
-- `De Havilland Canada DHC-6 Twin Otter`
-
-### Regional Turboprop Airline Ops
-
-Confirmed overlap examples:
-
-- `Saab 340B`
-- `ATR 42-600 / 72-600`
-
-### Regional Jet And Airline Expansion
-
-Confirmed overlap examples:
-
-- `BAe 146 Professional`
-- `F28 Professional`
-
-### Narrowbody And Mainline Expansion
-
-Confirmed overlap examples:
-
-- `Airbus A320neo`
-- `FlyByWire A32NX`
-- `Boeing 737 MAX 8`
-- `PMDG 737 NG family`
-
-### Widebody Expansion
-
-Confirmed overlap examples:
-
-- `Airbus A330 family`
-- `Headwind A339X`
-- `iniBuilds A350 Airliner`
-
-## Data Modeling Implication
-
-The aircraft dataset should carry explicit MSFS alignment metadata.
-
-Recommended fields per FlightLine aircraft model:
-
-- `msfs2024_availability_class`
+- `msfs2024_available_for_user`
+- `msfs2024_status`
 - `msfs2024_included_tier`
 - `msfs2024_distribution_channels`
 - `msfs2024_example_products`
-- `msfs2024_pc_supported`
-- `msfs2024_xbox_supported`
-- `msfs2024_notes`
+- `msfs2024_source_refs`
+- `msfs2024_user_note`
 - `msfs2024_last_verified_on`
 
-This should be metadata layered onto the FlightLine aircraft model, not the primary identity of the model.
+## Product Implication
+
+FlightLine should maintain two overlapping roster lenses.
+
+### 1. Core World Roster
+
+This is the full game catalog.
+
+It should include:
+
+- aircraft that matter for airline, cargo, commuter, charter, and progression gameplay
+- aircraft that create meaningful mission lanes and operating tradeoffs
+- aircraft that the game economy, airport model, and staffing systems need even if MSFS overlap is weak or absent
+
+### 2. MSFS Overlap Subset
+
+This is a filterable subset inside the world roster.
+
+It should include aircraft with source-backed current MSFS availability paths and should be visible in the UI as:
+
+- a filter
+- a badge or note on aircraft detail
+- a possible future integration affordance
+
+## Data Modeling Implication
+
+MSFS metadata should live on the aircraft model record and be queryable in the user catalog.
+
+The aircraft catalog itself should remain broader than that overlap layer.
 
 ## Non-Goal
 
 FlightLine should not attempt to mirror every single aircraft listing that exists across:
 
 - the in-game Marketplace
-- Microsoft-published legacy aircraft bundles
 - direct third-party stores
 - freeware installers
 - community mod repositories
 
-That list is too unstable and too store-shaped to be a good game design primitive.
+That ecosystem is too unstable and too store-shaped to be the canonical game roster.
 
 ## Recommended Next Step
 
-Turn the current aircraft modeling work into a real starter dataset that:
+Use the broadened aircraft database to support:
 
-- uses only confirmed MSFS 2024-aligned families for the MVP shortlist
-- stores family and variant data at the FlightLine level
-- adds MSFS availability metadata as a crosswalk layer
-- avoids vendor-specific duplication unless a variant materially changes gameplay
+- player-facing MSFS filters and badges
+- aircraft market generation
+- airport compatibility filtering
+- route and contract fit logic
+- future manual or automatic MSFS integration hooks
 
 ## Source Notes
 
-Primary sources used for this strategy pass:
-
-- official Microsoft Flight Simulator store and edition page
-- official PlayStation product page for Microsoft Flight Simulator 2024
-- official Microsoft Flight Simulator Marketplace update posts from January and February 2026
-- official FlyByWire documentation and release notes
-- official Headwind Simulations site
-- official Just Flight product page for the 146 Professional
-
+Primary sources used for the current MSFS-alignment approach include official MSFS release notes, the official aircraft manuals page, official add-on product pages, and official vendor/freeware project pages for the confirmed-overlap aircraft in the current roster.

@@ -133,17 +133,28 @@ This is the core reference object for MVP.
 
 - `max_passengers`
 - `max_cargo_lb`
+- `max_payload_lb`
+- `cargo_volume_cuft`
 - `payload_class`
 - `combi_capable`
-- `cargo_door_class` later
 
-#### Performance Fields
+#### Physical And Performance Fields
 
+- `max_takeoff_weight_lb`
+- `operating_empty_weight_lb`
+- `max_usable_fuel_gal`
+- `wingspan_ft`
+- `aircraft_length_ft`
+- `tail_height_ft`
+- `icao_reference_code`
+- `approach_category`
 - `cruise_speed_ktas`
 - `range_nm`
 - `fuel_burn_gph`
+- `service_ceiling_ft`
+- `takeoff_distance_ft`
+- `landing_distance_ft`
 - `typical_turnaround_min`
-- `max_operating_altitude_ft` later if it affects weather or route logic
 
 #### Airport Access Fields
 
@@ -151,8 +162,12 @@ This is the core reference object for MVP.
 - `preferred_runway_ft`
 - `hard_surface_required`
 - `rough_field_capable`
-- `short_field_bonus`
-- `remote_ops_fit`
+- `minimum_airport_size`
+- `preferred_airport_size`
+- `gate_requirement`
+- `required_ground_service_level`
+- `cargo_loading_type`
+- `airport_access_profile`
 
 #### Operating Economics
 
@@ -190,6 +205,31 @@ This is the core reference object for MVP.
 - `reputation_gate`
 - `best_fit_contract_tags`
 - `airport_access_profile`
+
+### AircraftCabinLayout
+
+Passenger-capable aircraft should also support separate cabin layout records.
+
+Recommended fields:
+
+- `layout_id`
+- `model_id`
+- `display_name`
+- `config_type`
+- `is_default`
+- `total_seats`
+- `first_class_seats`
+- `business_class_seats`
+- `premium_economy_seats`
+- `economy_seats`
+- `cargo_capacity_lb`
+- `notes`
+
+Purpose:
+
+- supports multiple passenger yield strategies on the same airframe
+- supports combi tradeoffs without duplicating the entire aircraft model
+- lets the UI show cabin options directly in acquisition and fleet detail
 
 ## MSFS 2024 Availability Metadata
 
@@ -347,9 +387,11 @@ These should be defined directly in the reference data:
 
 - passenger capacity
 - cargo capacity
-- cruise speed
-- range
-- runway needs
+- cabin layouts
+- weights and dimensions
+- cruise speed and range
+- runway needs and airport-size needs
+- gate and service requirements
 - staffing requirements
 - maintenance intervals
 - market value
@@ -409,6 +451,7 @@ Recommended future reference tables or files:
 
 - `aircraft_family`
 - `aircraft_model`
+- `aircraft_cabin_layout`
 - `aircraft_model_variant` later if needed
 - `aircraft_offer_template` later
 

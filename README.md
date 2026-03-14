@@ -68,7 +68,7 @@ Key folders:
 - `data/airports/`: local SQLite airport snapshot, schema, and data notes
 - `data/aircraft/`: local SQLite aircraft snapshot, schema, and data notes
 - `scripts/airports/`: airport database build, enrichment, and derived-field scripts
-- `scripts/aircraft/`: aircraft database build scripts and curated starter seed data
+- `scripts/aircraft/`: aircraft database build scripts and curated seed data
 
 ## Start Here
 
@@ -148,19 +148,20 @@ The repository includes a tracked SQLite aircraft reference snapshot at:
 
 Current aircraft database characteristics:
 
-- `15` curated aircraft families and `19` aircraft models
-- clear user-facing MSFS 2024 status for every aircraft model
-- current MSFS status split of `16` confirmed available, `1` confirmed unavailable, and `2` not yet verified
-- normalized family, model, and tag tables with views for user catalog and family summaries
-- a deliberately curated roster rather than a store-shaped mirror of every addon SKU
+- `32` aircraft families and `44` aircraft models
+- `88` cabin layout rows across the passenger-capable fleet
+- world-roster coverage that includes both MSFS-overlap and non-MSFS aircraft
+- weight, dimension, payload, fuel, runway, airport-size, gate, and ground-service fields
+- current MSFS status split of `30` confirmed available, `1` confirmed unavailable, and `13` not yet verified
 
 The current aircraft database is intended to support:
 
 - aircraft market generation
 - staffing qualification checks
-- aircraft-to-airport compatibility rules
+- airport compatibility filtering
 - contract fit logic
-- later fleet acquisition, maintenance, and progression systems
+- fleet acquisition and progression systems
+- future airframe-level maintenance and dispatch systems
 
 See `data/aircraft/README.md` for details.
 
@@ -170,13 +171,13 @@ The current aircraft tooling lives in `scripts/aircraft/`.
 
 Main scripts:
 
-- `build_aircraft_db.py`: creates the SQLite aircraft database from the curated starter seed
-- `starter_seed.py`: defines the current starter family and model roster with MSFS availability metadata
+- `build_aircraft_db.py`: creates the SQLite aircraft database from the curated seed
+- `starter_seed.py`: defines the current family roster, model specs, cabin layouts, and MSFS metadata
 
 Important note:
 
 - the committed SQLite snapshot is self-contained for project use
-- MSFS metadata is tracked at the aircraft-model level so the player can see whether a plane is actually available to them in the current sim ecosystem
+- MSFS metadata is tracked as a user-facing crosswalk on top of a broader aircraft catalog, not as the only gate on what planes can exist in FlightLine
 
 ## Recommended Technical Direction
 

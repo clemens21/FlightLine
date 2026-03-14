@@ -22,10 +22,24 @@ CREATE TABLE aircraft_model (
     in_service_role TEXT NOT NULL,
     aircraft_category TEXT NOT NULL,
     engine_type TEXT NOT NULL,
+    engine_count INTEGER NOT NULL DEFAULT 1,
     fuel_type TEXT NOT NULL,
     pressurized INTEGER NOT NULL DEFAULT 0 CHECK (pressurized IN (0, 1)),
     max_passengers INTEGER NOT NULL DEFAULT 0,
     max_cargo_lb INTEGER NOT NULL DEFAULT 0,
+    max_takeoff_weight_lb INTEGER NOT NULL DEFAULT 0,
+    operating_empty_weight_lb INTEGER NOT NULL DEFAULT 0,
+    max_payload_lb INTEGER NOT NULL DEFAULT 0,
+    cargo_volume_cuft INTEGER NOT NULL DEFAULT 0,
+    max_usable_fuel_gal INTEGER NOT NULL DEFAULT 0,
+    wingspan_ft INTEGER NOT NULL DEFAULT 0,
+    aircraft_length_ft INTEGER NOT NULL DEFAULT 0,
+    tail_height_ft INTEGER NOT NULL DEFAULT 0,
+    icao_reference_code TEXT NOT NULL DEFAULT '',
+    approach_category TEXT NOT NULL DEFAULT '',
+    service_ceiling_ft INTEGER NOT NULL DEFAULT 0,
+    takeoff_distance_ft INTEGER NOT NULL DEFAULT 0,
+    landing_distance_ft INTEGER NOT NULL DEFAULT 0,
     payload_class TEXT NOT NULL DEFAULT '',
     combi_capable INTEGER NOT NULL DEFAULT 0 CHECK (combi_capable IN (0, 1)),
     cruise_speed_ktas INTEGER NOT NULL,
@@ -36,6 +50,11 @@ CREATE TABLE aircraft_model (
     preferred_runway_ft INTEGER NOT NULL,
     hard_surface_required INTEGER NOT NULL DEFAULT 0 CHECK (hard_surface_required IN (0, 1)),
     rough_field_capable INTEGER NOT NULL DEFAULT 0 CHECK (rough_field_capable IN (0, 1)),
+    minimum_airport_size INTEGER NOT NULL DEFAULT 1 CHECK (minimum_airport_size BETWEEN 1 AND 5),
+    preferred_airport_size INTEGER NOT NULL DEFAULT 1 CHECK (preferred_airport_size BETWEEN 1 AND 5),
+    gate_requirement TEXT NOT NULL DEFAULT '',
+    required_ground_service_level TEXT NOT NULL DEFAULT '',
+    cargo_loading_type TEXT NOT NULL DEFAULT '',
     market_value_usd INTEGER NOT NULL,
     target_lease_rate_monthly_usd INTEGER NOT NULL,
     variable_operating_cost_per_hour_usd INTEGER NOT NULL,
@@ -70,6 +89,22 @@ CREATE TABLE aircraft_model (
     notes TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE aircraft_cabin_layout (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    layout_id TEXT NOT NULL UNIQUE,
+    model_id TEXT NOT NULL REFERENCES aircraft_model(model_id) ON DELETE CASCADE,
+    display_name TEXT NOT NULL,
+    config_type TEXT NOT NULL,
+    is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+    total_seats INTEGER NOT NULL DEFAULT 0,
+    first_class_seats INTEGER NOT NULL DEFAULT 0,
+    business_class_seats INTEGER NOT NULL DEFAULT 0,
+    premium_economy_seats INTEGER NOT NULL DEFAULT 0,
+    economy_seats INTEGER NOT NULL DEFAULT 0,
+    cargo_capacity_lb INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE aircraft_tag (
     model_id TEXT NOT NULL REFERENCES aircraft_model(model_id) ON DELETE CASCADE,
     tag TEXT NOT NULL,
@@ -82,30 +117,60 @@ CREATE INDEX idx_aircraft_model_market_role_pool ON aircraft_model(market_role_p
 CREATE INDEX idx_aircraft_model_msfs_available ON aircraft_model(msfs2024_available_for_user);
 CREATE INDEX idx_aircraft_model_msfs_status ON aircraft_model(msfs2024_status);
 CREATE INDEX idx_aircraft_model_progression_tier ON aircraft_model(progression_tier);
+CREATE INDEX idx_aircraft_model_airport_size ON aircraft_model(minimum_airport_size, preferred_airport_size);
+CREATE INDEX idx_aircraft_cabin_layout_model_id ON aircraft_cabin_layout(model_id);
 CREATE INDEX idx_aircraft_tag_tag ON aircraft_tag(tag);
 
 CREATE VIEW aircraft_user_catalog AS
 SELECT
-    model_id,
-    display_name,
-    family_id,
-    in_service_role,
-    aircraft_category,
-    market_role_pool,
-    progression_tier,
-    msfs2024_available_for_user,
+    m.model_id,
+    m.display_name,
+    m.family_id,
+    m.in_service_role,
+    m.aircraft_category,
+    m.market_role_pool,
+    m.progression_tier,
+    m.max_passengers,
+    m.max_cargo_lb,
+    m.max_takeoff_weight_lb,
+    m.operating_empty_weight_lb,
+    m.max_payload_lb,
+    m.minimum_airport_size,
+    m.preferred_airport_size,
+    m.minimum_runway_ft,
+    m.preferred_runway_ft,
+    m.gate_requirement,
+    m.required_ground_service_level,
+    m.msfs2024_available_for_user,
     CASE
-        WHEN msfs2024_status = 'confirmed_available' THEN 'Available in MSFS 2024'
-        WHEN msfs2024_status = 'confirmed_unavailable' THEN 'Not available in MSFS 2024'
+        WHEN m.msfs2024_status = 'confirmed_available' THEN 'Available in MSFS 2024'
+        WHEN m.msfs2024_status = 'confirmed_unavailable' THEN 'Not available in MSFS 2024'
         ELSE 'Not verified for MSFS 2024'
     END AS msfs2024_user_label,
-    msfs2024_status,
-    msfs2024_included_tier,
-    msfs2024_distribution_channels,
-    msfs2024_example_products,
-    msfs2024_user_note,
-    msfs2024_last_verified_on
-FROM aircraft_model;
+    m.msfs2024_status,
+    m.msfs2024_included_tier,
+    m.msfs2024_distribution_channels,
+    m.msfs2024_example_products,
+    m.msfs2024_user_note,
+    m.msfs2024_last_verified_on,
+    COALESCE((SELECT COUNT(*) FROM aircraft_cabin_layout l WHERE l.model_id = m.model_id), 0) AS cabin_layout_count
+FROM aircraft_model m;
+
+CREATE VIEW aircraft_layout_catalog AS
+SELECT
+    layout_id,
+    model_id,
+    display_name,
+    config_type,
+    is_default,
+    total_seats,
+    first_class_seats,
+    business_class_seats,
+    premium_economy_seats,
+    economy_seats,
+    cargo_capacity_lb,
+    notes
+FROM aircraft_cabin_layout;
 
 CREATE VIEW aircraft_family_catalog AS
 SELECT

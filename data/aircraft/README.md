@@ -6,25 +6,46 @@ This folder stores the normalized aircraft reference dataset for FlightLine.
 
 Tracked assets in this folder:
 
-- `flightline-aircraft.sqlite`: starter aircraft reference snapshot
-- `schema/001_initial.sql`: SQLite schema for the aircraft catalog
+- `flightline-aircraft.sqlite`: canonical aircraft reference snapshot for the game
+- `schema/001_initial.sql`: SQLite schema for aircraft families, models, layouts, and tags
 
-Supporting build script:
+Supporting build files:
 
 - `scripts/aircraft/build_aircraft_db.py`
 - `scripts/aircraft/starter_seed.py`
 
-## Current Starter Snapshot
+## Current Snapshot
 
 The current committed aircraft database contains:
 
-- `15` aircraft families
-- `19` aircraft models
-- `16` models marked `confirmed_available` for MSFS 2024 users
+- `32` aircraft families
+- `44` aircraft models
+- `88` cabin layout rows
+- `30` models marked `confirmed_available` for MSFS 2024 users
 - `1` model marked `confirmed_unavailable`
-- `2` models marked `not_verified`
+- `13` models marked `not_verified`
 
-The starter roster is intentionally curated rather than exhaustive. It is meant to cover the early and midgame management lanes before the project grows into a larger catalog.
+This is now a real world-facing starter catalog, not just an MSFS-overlap shortlist.
+
+## What The Database Now Covers
+
+Per aircraft model, the database now carries:
+
+- family and variant identity
+- passenger and cargo capacity
+- weight data such as MTOW, OEW, and max payload
+- cargo volume and fuel capacity
+- range, speed, and runway needs
+- physical dimensions and reference-code style airport fit signals
+- airport-size, gate, and ground-service compatibility
+- staffing, maintenance, and operating-cost bands
+- MSFS 2024 availability metadata
+
+Per passenger-capable model, the database also carries cabin layout options with:
+
+- total seats
+- first/business/premium-economy/economy split
+- cargo capacity under that layout
 
 ## MSFS Availability Semantics
 
@@ -36,7 +57,10 @@ Current status values:
 - `confirmed_unavailable`: we have a current source showing the model is not available to the user in MSFS 2024
 - `not_verified`: FlightLine has not yet confirmed a current MSFS 2024 path
 
-The `aircraft_user_catalog` view turns those into user-facing labels and keeps the explanatory note with the row.
+Important rule:
+
+- MSFS status is metadata on top of the FlightLine catalog
+- it is not the rule that determines whether an aircraft may exist in the game world
 
 ## Schema Shape
 
@@ -44,11 +68,13 @@ Current tables:
 
 - `aircraft_family`
 - `aircraft_model`
+- `aircraft_cabin_layout`
 - `aircraft_tag`
 
 Current views:
 
 - `aircraft_user_catalog`
+- `aircraft_layout_catalog`
 - `aircraft_family_catalog`
 
 ## Rebuild
@@ -64,15 +90,16 @@ The builder rewrites `data/aircraft/flightline-aircraft.sqlite` from the schema 
 
 ## Data Philosophy
 
-FlightLine should not try to ship every real-world sub-variant in MVP.
+FlightLine should not try to mirror every aircraft SKU from every simulator storefront.
 
 The current aircraft dataset is:
 
 - curated
 - family-based
+- broad enough to include non-MSFS aircraft
 - normalized to one unit system
 - tuned for gameplay readability
-- separated into authored facts and derived gameplay tags
+- rich enough to drive airport access, staffing, market, and contract logic
 - crosswalked to MSFS 2024 availability without becoming store-shaped
 
 ## Current Design References
@@ -87,9 +114,10 @@ The main design sources for this folder are:
 
 ## Next Step
 
-The next aircraft-data step is not more catalog authoring by default. It is using this starter dataset to drive:
+The next aircraft-data step is using this reference layer to drive:
 
 - aircraft market generation
+- airport compatibility filtering
 - staffing qualification checks
-- airport access filtering
-- first contract-fit logic
+- contract-fit logic
+- future airframe-level maintenance and acquisition systems
