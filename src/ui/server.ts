@@ -23,6 +23,15 @@ const aircraftDatabasePath = resolve(process.cwd(), "data", "aircraft", "flightl
 const port = Number.parseInt(process.env.PORT ?? "4321", 10);
 const turnaroundMinutes = 45;
 
+const saveTabs = [
+  { id: "dashboard", label: "Overview" },
+  { id: "contracts", label: "Contracts" },
+  { id: "aircraft", label: "Aircraft" },
+  { id: "staffing", label: "Staff" },
+  { id: "dispatch", label: "Dispatch" },
+  { id: "activity", label: "Activity" },
+] as const;
+
 const starterAircraftOptions = [
   { modelId: "cessna_208b_grand_caravan_ex_passenger", label: "Cessna Caravan Passenger", registrationPrefix: "N208" },
   { modelId: "cessna_208b_grand_caravan_ex_cargo", label: "Cessna Caravan Cargo", registrationPrefix: "N20C" },
@@ -68,11 +77,17 @@ const staffingPresets = {
   },
 } as const;
 
+type SavePageTab = (typeof saveTabs)[number]["id"];
 type StaffingPresetKey = keyof typeof staffingPresets;
 
 interface FlashState {
   notice?: string | undefined;
   error?: string | undefined;
+}
+
+interface SaveRouteOptions {
+  flash?: FlashState;
+  tab?: SavePageTab;
 }
 
 interface SavePageModel {
@@ -148,6 +163,14 @@ function renderBadge(label: string): string {
   return `<span class="badge ${badgeClass(label)}">${escapeHtml(label.replaceAll("_", " "))}</span>`;
 }
 
+function renderTabInput(tab: SavePageTab): string {
+  return `<input type="hidden" name="tab" value="${escapeHtml(tab)}" />`;
+}
+
+function normalizeTab(rawValue: string | null | undefined): SavePageTab {
+  return saveTabs.some((tab) => tab.id === rawValue) ? (rawValue as SavePageTab) : "dashboard";
+}
+
 function addMinutesIso(utcIsoString: string, minutes: number): string {
   return new Date(new Date(utcIsoString).getTime() + minutes * 60_000).toISOString();
 }
@@ -201,15 +224,19 @@ function registrationFor(prefix: string): string {
   return `${prefix}${Math.floor(100 + Math.random() * 900)}`;
 }
 
-function saveRoute(saveId: string, flash: FlashState = {}): string {
+function saveRoute(saveId: string, options: SaveRouteOptions = {}): string {
   const search = new URLSearchParams();
 
-  if (flash.notice) {
-    search.set("notice", flash.notice);
+  if (options.tab && options.tab !== "dashboard") {
+    search.set("tab", options.tab);
   }
 
-  if (flash.error) {
-    search.set("error", flash.error);
+  if (options.flash?.notice) {
+    search.set("notice", options.flash.notice);
+  }
+
+  if (options.flash?.error) {
+    search.set("error", options.flash.error);
   }
 
   const query = search.toString();
@@ -270,6 +297,33 @@ function redirect(response: ServerResponse, location: string): void {
   response.end();
 }
 
+function renderPanel(title: string, body: string, options: { className?: string; actionHtml?: string } = {}): string {
+  const className = options.className ? ` ${options.className}` : "";
+  return `<section class="panel${className}"><div class="panel-head"><h3>${escapeHtml(title)}</h3>${options.actionHtml ?? ""}</div><div class="panel-body">${body}</div></section>`;
+}
+
+function renderMetricStrip(model: SavePageModel): string {
+  const company = model.companyContext;
+  const fleet = model.fleetState?.aircraft ?? [];
+  const offers = model.contractBoard?.offers ?? [];
+  const dispatchAvailableCount = model.fleetState?.dispatchAvailableCount ?? 0;
+
+  if (!company) {
+    return "";
+  }
+
+  return `<section class="metrics-strip">
+    <div class="metric-card"><div class="eyebrow">Cash</div><strong>${formatMoney(company.currentCashAmount)}</strong><span class="muted">${escapeHtml(company.financialPressureBand)}</span></div>
+    <div class="metric-card"><div class="eyebrow">Clock</div><strong>${escapeHtml(formatDate(company.currentTimeUtc))}</strong><span class="muted">Home ${escapeHtml(company.homeBaseAirportId)}</span></div>
+    <div class="metric-card"><div class="eyebrow">Fleet</div><strong>${fleet.length}</strong><span class="muted">${dispatchAvailableCount} dispatchable</span></div>
+    <div class="metric-card"><div class="eyebrow">Contracts</div><strong>${company.activeContractCount}</strong><span class="muted">${offers.filter((offer) => offer.offerStatus === "available").length} offers live</span></div>
+  </section>`;
+}
+
+function renderSaveTabs(saveId: string, activeTab: SavePageTab): string {
+  return `<nav class="tabbar">${saveTabs.map((tab) => `<a class="tab-link ${tab.id === activeTab ? "current" : ""}" href="${saveRoute(saveId, { tab: tab.id })}">${escapeHtml(tab.label)}</a>`).join("")}</nav>`;
+}
+
 function renderShell(title: string, saveIds: string[], currentSaveId: string | undefined, flash: FlashState, body: string): string {
   const saveLinks = saveIds.length > 0
     ? saveIds.map((saveId) => `<a class="save-link ${saveId === currentSaveId ? "current" : ""}" href="/save/${encodeURIComponent(saveId)}">${escapeHtml(saveId)}</a>`).join("")
@@ -285,7 +339,7 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
     :root {
       color-scheme: light;
       --bg: #efe9de;
-      --bg-alt: linear-gradient(160deg, rgba(250,244,234,.95), rgba(233,228,216,.88));
+      --bg-alt: linear-gradient(160deg, rgba(250,244,234,.95), rgba(233,228,216,.9));
       --panel: rgba(255,255,255,.78);
       --panel-strong: rgba(255,255,255,.92);
       --text: #182126;
@@ -303,8 +357,8 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
       color-scheme: dark;
       --bg: #0f1720;
       --bg-alt: radial-gradient(circle at top left, rgba(29,74,96,.32), transparent 34%), linear-gradient(180deg, rgba(15,23,32,.98), rgba(14,20,28,.98));
-      --panel: rgba(20,29,40,.82);
-      --panel-strong: rgba(17,25,35,.94);
+      --panel: rgba(20,29,40,.84);
+      --panel-strong: rgba(17,25,35,.96);
       --text: #edf3f7;
       --muted: #8e9daa;
       --line: rgba(237,243,247,.08);
@@ -317,20 +371,24 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
       --shadow: 0 24px 60px rgba(0,0,0,.34);
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
+      overflow: hidden;
       background: var(--bg-alt);
       color: var(--text);
       font: 15px/1.45 Aptos, "Segoe UI Variable Text", "Trebuchet MS", sans-serif;
     }
     .app {
       display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
-      min-height: 100vh;
+      grid-template-columns: 260px minmax(0, 1fr);
+      height: 100vh;
+      overflow: hidden;
     }
     .sidebar {
-      padding: 28px 20px;
+      min-height: 0;
+      overflow: auto;
+      padding: 26px 20px;
       border-right: 1px solid var(--line);
       background: rgba(255,255,255,.28);
       backdrop-filter: blur(18px);
@@ -351,8 +409,22 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
       background: var(--panel);
     }
     .save-link.current { border-color: var(--accent); background: var(--accent-soft); }
-    .main { padding: 28px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    .main {
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      padding: 24px 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex: 0 0 auto;
+    }
     .topbar h2 { margin: 0; font-size: 28px; }
     .topbar p { margin: 6px 0 0; color: var(--muted); }
     .theme-toggle, button, .button-link {
@@ -366,29 +438,107 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
       font: inherit;
       text-decoration: none;
     }
-    body[data-theme="dark"] .theme-toggle, body[data-theme="dark"] button, body[data-theme="dark"] .button-link { color: #091018; background: var(--accent); }
+    body[data-theme="dark"] .theme-toggle,
+    body[data-theme="dark"] button,
+    body[data-theme="dark"] .button-link {
+      color: #091018;
+      background: var(--accent);
+    }
     .button-secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-    .grid { display: grid; gap: 18px; }
-    .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .flash { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); flex: 0 0 auto; }
+    .flash.notice { background: var(--accent-soft); border-color: rgba(13,106,119,.22); }
+    .flash.error { background: var(--danger-soft); border-color: rgba(176,58,46,.24); }
+    .tabbar {
+      display: flex;
+      gap: 10px;
+      overflow: auto;
+      padding-bottom: 4px;
+      flex: 0 0 auto;
+    }
+    .tab-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: inherit;
+      text-decoration: none;
+      background: var(--panel);
+      white-space: nowrap;
+    }
+    .tab-link.current { border-color: var(--accent); background: var(--accent-soft); }
+    .content-shell {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .metrics-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      flex: 0 0 auto;
+    }
+    .metric-card {
+      display: grid;
+      gap: 6px;
+      padding: 16px;
+      border-radius: 18px;
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .metric-card strong { font-size: 24px; }
+    .view-grid {
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      gap: 18px;
+      overflow: hidden;
+    }
+    .view-grid.two-up { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .view-grid.sidebar-wide { grid-template-columns: minmax(320px, .78fr) minmax(0, 1.22fr); }
+    .view-grid.stack-and-side { grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr); }
+    .stack-column {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+      overflow: hidden;
+      grid-auto-rows: minmax(0, 1fr);
+    }
     .panel {
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 20px;
       background: var(--panel);
       box-shadow: var(--shadow);
       backdrop-filter: blur(18px);
-      padding: 18px;
     }
-    .panel h3 { margin: 0 0 12px; font-size: 17px; }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
-    .metric { padding: 16px; border-radius: 18px; background: var(--panel-strong); border: 1px solid var(--line); }
-    .metric strong { display: block; font-size: 25px; margin-top: 6px; }
-    .muted { color: var(--muted); }
-    .flash { margin-bottom: 16px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); }
-    .flash.notice { background: var(--accent-soft); border-color: rgba(13,106,119,.22); }
-    .flash.error { background: var(--danger-soft); border-color: rgba(176,58,46,.24); }
-    .actions { display: grid; gap: 12px; }
+    .panel-head {
+      padding: 16px 18px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+      flex: 0 0 auto;
+    }
+    .panel-head h3 { margin: 0; font-size: 17px; }
+    .panel-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 16px 18px 18px;
+    }
+    .actions { display: grid; gap: 14px; }
     .action-group { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .action-group.tight { gap: 8px; }
     form.inline { display: inline-flex; gap: 8px; align-items: end; flex-wrap: wrap; }
     label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); min-width: 140px; }
     input, select {
@@ -400,9 +550,19 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
       padding: 10px 12px;
       font: inherit;
     }
-    table { width: 100%; border-collapse: collapse; }
+    table { width: 100%; border-collapse: collapse; min-width: 100%; }
+    .table-wrap { min-height: 0; overflow: auto; }
     th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      background: var(--panel-strong);
+    }
     .badge { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
     .badge.neutral { background: rgba(127,127,127,.12); }
     .badge.accent { background: var(--accent-soft); color: var(--accent); }
@@ -410,15 +570,42 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
     .badge.danger { background: var(--danger-soft); color: var(--danger); }
     .route { font-weight: 600; }
     .meta-stack { display: grid; gap: 4px; }
+    .summary-list { display: grid; gap: 12px; }
+    .summary-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
+    .summary-item strong { display: block; font-size: 18px; margin-top: 3px; }
     .event-list { display: grid; gap: 10px; }
-    .event-item { padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel-strong); }
+    .event-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
     .empty-state { padding: 18px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); }
     .compact { padding: 12px; }
-    @media (max-width: 1100px) {
+    .muted { color: var(--muted); }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      display: inline-flex;
+      padding: 7px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    @media (max-width: 1240px) {
       .app { grid-template-columns: 1fr; }
       .sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
-      .metrics, .grid.two, .grid.three { grid-template-columns: 1fr; }
+      .metrics-strip, .view-grid.two-up, .view-grid.sidebar-wide, .view-grid.stack-and-side { grid-template-columns: 1fr; }
       .main { padding: 18px; }
+      body { overflow: auto; }
+      .app { height: auto; min-height: 100vh; }
+      .main, .content-shell, .view-grid, .panel { min-height: unset; height: auto; }
     }
   </style>
 </head>
@@ -428,7 +615,7 @@ function renderShell(title: string, saveIds: string[], currentSaveId: string | u
       <div class="brand">
         <div class="eyebrow">FlightLine Local Ops</div>
         <h1>FlightLine</h1>
-        <p>Management UI on top of the local simulation backend.</p>
+        <p>Desktop-style management UI on top of the local simulation backend.</p>
       </div>
       <div class="save-list">${saveLinks}</div>
       <a class="button-link button-secondary" href="/">Create or open save</a>
@@ -471,55 +658,49 @@ function renderHomePage(saveIds: string[], flash: FlashState): string {
     saveIds,
     undefined,
     flash,
-    `<div class="grid two">
-      <section class="panel">
-        <h3>Create Save</h3>
-        <form method="post" action="/actions/create-save" class="actions">
-          <label>Save Id
-            <input name="saveId" placeholder="flightline_alpha" />
-          </label>
-          <label>World Seed
-            <input name="worldSeed" value="flightline-alpha" />
-          </label>
-          <button type="submit">Create save</button>
-        </form>
-      </section>
-      <section class="panel">
-        <h3>What this UI covers</h3>
-        <div class="meta-stack muted">
-          <div>Create a save and company.</div>
-          <div>Acquire starter aircraft and staffing.</div>
-          <div>Refresh and accept contracts.</div>
-          <div>Auto-plan, commit, and execute schedules.</div>
-          <div>Advance time and inspect the resulting state.</div>
-        </div>
-      </section>
-    </div>`,
+    `<div class="content-shell"><div class="view-grid two-up">
+      ${renderPanel("Create Save", `<form method="post" action="/actions/create-save" class="actions">
+        <label>Save Id
+          <input name="saveId" placeholder="flightline_alpha" />
+        </label>
+        <label>World Seed
+          <input name="worldSeed" value="flightline-alpha" />
+        </label>
+        <button type="submit">Create save</button>
+      </form>`)}
+      ${renderPanel("What this UI covers", `<div class="summary-list muted">
+        <div class="summary-item">Create a save and company.</div>
+        <div class="summary-item">Acquire starter aircraft and staffing.</div>
+        <div class="summary-item">Refresh and accept contracts.</div>
+        <div class="summary-item">Auto-plan, commit, and execute schedules.</div>
+        <div class="summary-item">Advance time and inspect the resulting state.</div>
+      </div>`)}
+    </div></div>`,
   );
 }
-function renderSavePage(model: SavePageModel, saveIds: string[], flash: FlashState): string {
+
+function renderSavePage(model: SavePageModel, saveIds: string[], flash: FlashState, activeTab: SavePageTab): string {
   if (!model.companyContext) {
     return renderShell(
       `Save ${model.saveId}`,
       saveIds,
       model.saveId,
       flash,
-      `<section class="panel">
-        <h3>Create Company</h3>
-        <form method="post" action="/actions/create-company" class="actions">
-          <input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" />
-          <label>Display Name
-            <input name="displayName" value="FlightLine Regional" />
-          </label>
-          <label>Starter Airport
-            <input name="starterAirportId" value="KDEN" />
-          </label>
-          <label>Starting Cash
-            <input name="startingCashAmount" value="3500000" />
-          </label>
-          <button type="submit">Create company</button>
-        </form>
-      </section>`,
+      `<div class="content-shell">${renderPanel("Create Company", `<form method="post" action="/actions/create-company" class="actions">
+        <input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" />
+        ${renderTabInput(activeTab)}
+        <label>Display Name
+          <input name="displayName" value="FlightLine Regional" />
+        </label>
+        <label>Starter Airport
+          <input name="starterAirportId" value="KDEN" />
+        </label>
+        <label>Starting Cash
+          <input name="startingCashAmount" value="3500000" />
+        </label>
+        <button type="submit">Create company</button>
+      </form>`)}
+      </div>`,
     );
   }
 
@@ -528,90 +709,110 @@ function renderSavePage(model: SavePageModel, saveIds: string[], flash: FlashSta
   const contracts = model.companyContracts?.contracts ?? [];
   const offers = model.contractBoard?.offers ?? [];
   const schedules = model.schedules;
+  const staffingPackages = model.staffingState?.staffingPackages ?? [];
+  const activeSchedules = schedules.filter((schedule) => !schedule.isDraft && schedule.scheduleState !== "completed");
+  const draftSchedules = schedules.filter((schedule) => schedule.isDraft);
+  const upcomingContracts = contracts.filter((contract) => ["accepted", "assigned"].includes(contract.contractState));
+  const idleAircraftCount = fleet.filter((aircraft) => aircraft.dispatchAvailable).length;
   const pilotOptions = fleet.map((aircraft) => `<option value="${escapeHtml(aircraft.aircraftId)}">${escapeHtml(aircraft.registration)} - ${escapeHtml(aircraft.modelDisplayName)} - ${escapeHtml(aircraft.currentAirportId)}</option>`).join("");
+  const hiddenContext = `<input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" />${renderTabInput(activeTab)}`;
 
-  const metrics = `<div class="metrics">
-    <div class="metric"><div class="eyebrow">Cash</div><strong>${formatMoney(company.currentCashAmount)}</strong><div class="muted">${escapeHtml(company.financialPressureBand)}</div></div>
-    <div class="metric"><div class="eyebrow">Clock</div><strong>${escapeHtml(formatDate(company.currentTimeUtc))}</strong><div class="muted">Home ${escapeHtml(company.homeBaseAirportId)}</div></div>
-    <div class="metric"><div class="eyebrow">Fleet</div><strong>${fleet.length}</strong><div class="muted">${model.fleetState?.dispatchAvailableCount ?? 0} dispatchable</div></div>
-    <div class="metric"><div class="eyebrow">Contracts</div><strong>${company.activeContractCount}</strong><div class="muted">${offers.filter((offer) => offer.offerStatus === "available").length} offers live</div></div>
-  </div>`;
-
-  const quickActions = `<section class="panel">
-    <h3>Quick Actions</h3>
-    <div class="actions">
-      <div class="action-group">
-        <form method="post" action="/actions/refresh-contract-board" class="inline">
-          <input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" />
-          <button type="submit">Refresh contract board</button>
-        </form>
-        <form method="post" action="/actions/advance-time" class="inline">
-          <input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" />
-          <label>Hours
-            <input name="hours" type="number" min="1" value="24" />
-          </label>
-          <label>Stop Mode
-            <select name="stopMode">
-              <option value="target_time">Target time</option>
-              <option value="leg_completed">Until leg completed</option>
-            </select>
-          </label>
-          <button type="submit">Advance time</button>
-        </form>
-      </div>
-      <div class="action-group">
-        <form method="post" action="/actions/acquire-aircraft" class="inline">
-          <input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" />
-          <label>Starter Aircraft
-            <select name="aircraftModelId">${starterAircraftOptions.map((option) => `<option value="${option.modelId}">${escapeHtml(option.label)}</option>`).join("")}</select>
-          </label>
-          <button type="submit">Acquire aircraft</button>
-        </form>
-      </div>
-      <div class="action-group">
-        ${Object.entries(staffingPresets).map(([presetKey, preset]) => `<form method="post" action="/actions/add-staffing" class="inline"><input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" /><input type="hidden" name="presetKey" value="${escapeHtml(presetKey)}" /><button type="submit">${escapeHtml(preset.label)}</button></form>`).join("")}
-      </div>
+  const refreshForm = `<form method="post" action="/actions/refresh-contract-board" class="inline">${hiddenContext}<button type="submit">Refresh contract board</button></form>`;
+  const advanceTimeForm = `<form method="post" action="/actions/advance-time" class="actions">
+    ${hiddenContext}
+    <div class="action-group">
+      <label>Hours
+        <input name="hours" type="number" min="1" value="24" />
+      </label>
+      <label>Stop Mode
+        <select name="stopMode">
+          <option value="target_time">Target time</option>
+          <option value="leg_completed">Until leg completed</option>
+        </select>
+      </label>
+      <button type="submit">Advance time</button>
     </div>
-  </section>`;
+  </form>`;
+  const acquireAircraftForm = `<form method="post" action="/actions/acquire-aircraft" class="actions">
+    ${hiddenContext}
+    <label>Starter Aircraft
+      <select name="aircraftModelId">${starterAircraftOptions.map((option) => `<option value="${option.modelId}">${escapeHtml(option.label)}</option>`).join("")}</select>
+    </label>
+    <button type="submit">Acquire aircraft</button>
+  </form>`;
+  const staffingActionRow = Object.entries(staffingPresets).map(([presetKey, preset]) => `<form method="post" action="/actions/add-staffing" class="inline">${hiddenContext}<input type="hidden" name="presetKey" value="${escapeHtml(presetKey)}" /><button type="submit">${escapeHtml(preset.label)}</button></form>`).join("");
 
-  const offersSection = `<section class="panel">
-    <h3>Contract Board</h3>
-    ${offers.length === 0 ? `<div class="empty-state">No active contract board yet. Refresh it from Quick Actions.</div>` : `<table><thead><tr><th>Route</th><th>Payload</th><th>Window</th><th>Payout</th><th>Status</th><th></th></tr></thead><tbody>${offers.slice(0, 12).map((offer) => `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(offer.originAirportId)} -> ${escapeHtml(offer.destinationAirportId)}</span><span class="muted">${escapeHtml(offer.archetype)}</span></div></td><td>${offer.volumeType === "cargo" ? `${offer.cargoWeightLb ?? 0} lb cargo` : `${offer.passengerCount ?? 0} pax`}</td><td><div class="meta-stack"><span>${escapeHtml(formatDate(offer.earliestStartUtc))}</span><span class="muted">due ${escapeHtml(formatDate(offer.latestCompletionUtc))}</span></div></td><td>${formatMoney(offer.payoutAmount)}</td><td>${renderBadge(offer.offerStatus)}</td><td>${offer.offerStatus === "available" ? `<form method="post" action="/actions/accept-contract" class="inline"><input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" /><input type="hidden" name="contractOfferId" value="${escapeHtml(offer.contractOfferId)}" /><button type="submit">Accept</button></form>` : ""}</td></tr>`).join("")}</tbody></table>`}
-  </section>`;
+  const contractBoardBody = offers.length === 0
+    ? `<div class="empty-state">No active contract board yet. Refresh it from the action panel.</div>`
+    : `<div class="table-wrap"><table><thead><tr><th>Route</th><th>Payload</th><th>Window</th><th>Payout</th><th>Status</th><th></th></tr></thead><tbody>${offers.map((offer) => `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(offer.originAirportId)} -> ${escapeHtml(offer.destinationAirportId)}</span><span class="muted">${escapeHtml(offer.archetype)}</span></div></td><td>${offer.volumeType === "cargo" ? `${offer.cargoWeightLb ?? 0} lb cargo` : `${offer.passengerCount ?? 0} pax`}</td><td><div class="meta-stack"><span>${escapeHtml(formatDate(offer.earliestStartUtc))}</span><span class="muted">due ${escapeHtml(formatDate(offer.latestCompletionUtc))}</span></div></td><td>${formatMoney(offer.payoutAmount)}</td><td>${renderBadge(offer.offerStatus)}</td><td>${offer.offerStatus === "available" ? `<form method="post" action="/actions/accept-contract" class="inline">${hiddenContext}<input type="hidden" name="contractOfferId" value="${escapeHtml(offer.contractOfferId)}" /><button type="submit">Accept</button></form>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 
-  const contractsSection = `<section class="panel">
-    <h3>Company Contracts</h3>
-    ${contracts.length === 0 ? `<div class="empty-state">No accepted company contracts yet.</div>` : `<table><thead><tr><th>State</th><th>Route</th><th>Payload</th><th>Deadline</th><th>Assigned</th><th></th></tr></thead><tbody>${contracts.map((contract) => `<tr><td>${renderBadge(contract.contractState)}</td><td><div class="meta-stack"><span class="route">${escapeHtml(contract.originAirportId)} -> ${escapeHtml(contract.destinationAirportId)}</span><span class="muted">${formatMoney(contract.acceptedPayoutAmount)}</span></div></td><td>${contract.volumeType === "cargo" ? `${contract.cargoWeightLb ?? 0} lb cargo` : `${contract.passengerCount ?? 0} pax`}</td><td><div class="meta-stack"><span>${escapeHtml(formatDate(contract.deadlineUtc))}</span><span class="muted">earliest ${escapeHtml(formatDate(contract.earliestStartUtc))}</span></div></td><td>${contract.assignedAircraftId ? escapeHtml(contract.assignedAircraftId) : `<span class="muted">Unassigned</span>`}</td><td>${fleet.length > 0 && ["accepted", "assigned"].includes(contract.contractState) ? `<form method="post" action="/actions/auto-plan-contract" class="inline"><input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" /><input type="hidden" name="companyContractId" value="${escapeHtml(contract.companyContractId)}" /><label>Aircraft<select name="aircraftId">${pilotOptions}</select></label><button type="submit">Auto-plan</button></form>` : ""}</td></tr>`).join("")}</tbody></table>`}
-  </section>`;
+  const companyContractsBody = contracts.length === 0
+    ? `<div class="empty-state">No accepted company contracts yet.</div>`
+    : `<div class="table-wrap"><table><thead><tr><th>State</th><th>Route</th><th>Payload</th><th>Deadline</th><th>Assigned</th><th></th></tr></thead><tbody>${contracts.map((contract) => `<tr><td>${renderBadge(contract.contractState)}</td><td><div class="meta-stack"><span class="route">${escapeHtml(contract.originAirportId)} -> ${escapeHtml(contract.destinationAirportId)}</span><span class="muted">${formatMoney(contract.acceptedPayoutAmount)}</span></div></td><td>${contract.volumeType === "cargo" ? `${contract.cargoWeightLb ?? 0} lb cargo` : `${contract.passengerCount ?? 0} pax`}</td><td><div class="meta-stack"><span>${escapeHtml(formatDate(contract.deadlineUtc))}</span><span class="muted">earliest ${escapeHtml(formatDate(contract.earliestStartUtc))}</span></div></td><td>${contract.assignedAircraftId ? escapeHtml(contract.assignedAircraftId) : `<span class="muted">Unassigned</span>`}</td><td>${fleet.length > 0 && ["accepted", "assigned"].includes(contract.contractState) ? `<form method="post" action="/actions/auto-plan-contract" class="inline">${hiddenContext}<input type="hidden" name="companyContractId" value="${escapeHtml(contract.companyContractId)}" /><label>Aircraft<select name="aircraftId">${pilotOptions}</select></label><button type="submit">Auto-plan</button></form>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 
-  const fleetSection = `<section class="panel">
-    <h3>Fleet</h3>
-    ${fleet.length === 0 ? `<div class="empty-state">No aircraft in the fleet yet.</div>` : `<table><thead><tr><th>Aircraft</th><th>Status</th><th>Location</th><th>Capability</th></tr></thead><tbody>${fleet.map((aircraft) => `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(aircraft.registration)}</span><span class="muted">${escapeHtml(aircraft.modelDisplayName)}</span></div></td><td><div class="meta-stack">${renderBadge(aircraft.statusInput)}<span class="muted">dispatch ${aircraft.dispatchAvailable ? "yes" : "no"}</span></div></td><td>${escapeHtml(aircraft.currentAirportId)}</td><td><div class="meta-stack"><span>${aircraft.maxPassengers} pax / ${aircraft.maxCargoLb} lb</span><span class="muted">${aircraft.pilotQualificationGroup}</span></div></td></tr>`).join("")}</tbody></table>`}
-  </section>`;
+  const fleetBody = fleet.length === 0
+    ? `<div class="empty-state">No aircraft in the fleet yet.</div>`
+    : `<div class="table-wrap"><table><thead><tr><th>Aircraft</th><th>Status</th><th>Location</th><th>Capability</th></tr></thead><tbody>${fleet.map((aircraft) => `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(aircraft.registration)}</span><span class="muted">${escapeHtml(aircraft.modelDisplayName)}</span></div></td><td><div class="meta-stack">${renderBadge(aircraft.statusInput)}<span class="muted">dispatch ${aircraft.dispatchAvailable ? "yes" : "no"}</span></div></td><td>${escapeHtml(aircraft.currentAirportId)}</td><td><div class="meta-stack"><span>${aircraft.maxPassengers} pax / ${aircraft.maxCargoLb} lb</span><span class="muted">${escapeHtml(aircraft.pilotQualificationGroup)}</span></div></td></tr>`).join("")}</tbody></table></div>`;
 
-  const staffingSection = `<section class="panel">
-    <h3>Staffing</h3>
-    ${!model.staffingState || model.staffingState.staffingPackages.length === 0 ? `<div class="empty-state">No staffing packages are active yet.</div>` : `<table><thead><tr><th>Category</th><th>Qualification</th><th>Coverage</th><th>Fixed Cost</th></tr></thead><tbody>${model.staffingState.coverageSummaries.map((summary) => `<tr><td>${escapeHtml(summary.laborCategory)}</td><td>${escapeHtml(summary.qualificationGroup)}</td><td>${summary.activeCoverageUnits}</td><td>${formatMoney(model.staffingState?.staffingPackages.filter((entry) => entry.qualificationGroup === summary.qualificationGroup && entry.laborCategory === summary.laborCategory).reduce((sum, entry) => sum + entry.fixedCostAmount, 0))}</td></tr>`).join("")}</tbody></table>`}
-  </section>`;
+  const staffingBody = !model.staffingState || staffingPackages.length === 0
+    ? `<div class="empty-state">No staffing packages are active yet.</div>`
+    : `<div class="table-wrap"><table><thead><tr><th>Category</th><th>Qualification</th><th>Coverage</th><th>Fixed Cost</th></tr></thead><tbody>${model.staffingState.coverageSummaries.map((summary) => `<tr><td>${escapeHtml(summary.laborCategory)}</td><td>${escapeHtml(summary.qualificationGroup)}</td><td>${summary.activeCoverageUnits}</td><td>${formatMoney(staffingPackages.filter((entry) => entry.qualificationGroup === summary.qualificationGroup && entry.laborCategory === summary.laborCategory).reduce((sum, entry) => sum + entry.fixedCostAmount, 0))}</td></tr>`).join("")}</tbody></table></div>`;
 
-  const schedulesSection = `<section class="panel">
-    <h3>Schedules</h3>
-    ${schedules.length === 0 ? `<div class="empty-state">No schedules yet.</div>` : `<table><thead><tr><th>Schedule</th><th>State</th><th>Legs</th><th></th></tr></thead><tbody>${schedules.map((schedule) => `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(schedule.scheduleId)}</span><span class="muted">${escapeHtml(schedule.aircraftId)}</span></div></td><td>${renderBadge(schedule.isDraft ? "draft" : schedule.scheduleState)}</td><td><div class="meta-stack">${schedule.legs.map((leg) => `<span>${leg.sequenceNumber}. ${escapeHtml(leg.originAirportId)} -> ${escapeHtml(leg.destinationAirportId)} <span class="muted">${escapeHtml(leg.legState)}</span></span>`).join("")}</div></td><td>${schedule.isDraft ? `<form method="post" action="/actions/commit-schedule" class="inline"><input type="hidden" name="saveId" value="${escapeHtml(model.saveId)}" /><input type="hidden" name="scheduleId" value="${escapeHtml(schedule.scheduleId)}" /><button type="submit">Commit</button></form>` : ""}</td></tr>`).join("")}</tbody></table>`}
-  </section>`;
+  const schedulesBody = schedules.length === 0
+    ? `<div class="empty-state">No schedules yet.</div>`
+    : `<div class="table-wrap"><table><thead><tr><th>Schedule</th><th>State</th><th>Legs</th><th></th></tr></thead><tbody>${schedules.map((schedule) => `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(schedule.scheduleId)}</span><span class="muted">${escapeHtml(schedule.aircraftId)}</span></div></td><td>${renderBadge(schedule.isDraft ? "draft" : schedule.scheduleState)}</td><td><div class="meta-stack">${schedule.legs.map((leg) => `<span>${leg.sequenceNumber}. ${escapeHtml(leg.originAirportId)} -> ${escapeHtml(leg.destinationAirportId)} <span class="muted">${escapeHtml(leg.legState)}</span></span>`).join("")}</div></td><td>${schedule.isDraft ? `<form method="post" action="/actions/commit-schedule" class="inline">${hiddenContext}<input type="hidden" name="scheduleId" value="${escapeHtml(schedule.scheduleId)}" /><button type="submit">Commit</button></form>` : ""}</td></tr>`).join("")}</tbody></table></div>`;
 
-  const eventsSection = `<section class="panel">
-    <h3>Recent Activity</h3>
-    ${!model.eventLog || model.eventLog.entries.length === 0 ? `<div class="empty-state">No event log entries yet.</div>` : `<div class="event-list">${model.eventLog.entries.map((entry) => `<div class="event-item"><div class="meta-stack"><div>${entry.severity ? renderBadge(entry.severity) : ""} <strong>${escapeHtml(entry.message)}</strong></div><div class="muted">${escapeHtml(formatDate(entry.eventTimeUtc))} - ${escapeHtml(entry.eventType)}</div></div></div>`).join("")}</div>`}
-  </section>`;
+  const eventLogBody = !model.eventLog || model.eventLog.entries.length === 0
+    ? `<div class="empty-state">No event log entries yet.</div>`
+    : `<div class="event-list">${model.eventLog.entries.map((entry) => `<div class="event-item"><div class="meta-stack"><div>${entry.severity ? renderBadge(entry.severity) : ""} <strong>${escapeHtml(entry.message)}</strong></div><div class="muted">${escapeHtml(formatDate(entry.eventTimeUtc))} - ${escapeHtml(entry.eventType)}</div></div></div>`).join("")}</div>`;
+
+  const quickActionsPanel = renderPanel("Quick Actions", `<div class="actions">
+    <div class="action-group tight">${refreshForm}</div>
+    ${advanceTimeForm}
+  </div>`);
+
+  const dashboardSnapshotPanel = renderPanel("Operating Snapshot", `<div class="summary-list">
+    <div class="summary-item"><div class="eyebrow">Accepted contracts waiting</div><strong>${upcomingContracts.length}</strong><div class="muted">Need assignment or execution.</div></div>
+    <div class="summary-item"><div class="eyebrow">Draft schedules</div><strong>${draftSchedules.length}</strong><div class="muted">Ready for review and commit.</div></div>
+    <div class="summary-item"><div class="eyebrow">Active schedules</div><strong>${activeSchedules.length}</strong><div class="muted">Currently holding aircraft capacity.</div></div>
+    <div class="summary-item"><div class="eyebrow">Idle aircraft</div><strong>${idleAircraftCount}</strong><div class="muted">Immediately dispatchable aircraft.</div></div>
+  </div>`);
+
+  const dashboardQueuePanel = renderPanel("Upcoming Work", upcomingContracts.length === 0
+    ? `<div class="empty-state">No accepted contracts waiting for assignment.</div>`
+    : `<div class="summary-list">${upcomingContracts.slice(0, 6).map((contract) => `<div class="summary-item"><div class="meta-stack"><span class="route">${escapeHtml(contract.originAirportId)} -> ${escapeHtml(contract.destinationAirportId)}</span><span class="muted">${formatMoney(contract.acceptedPayoutAmount)} - due ${escapeHtml(formatDate(contract.deadlineUtc))}</span></div></div>`).join("")}</div>`);
+
+  const dispatchControlsPanel = renderPanel("Dispatch Controls", `<div class="actions">${advanceTimeForm}</div>`, {
+    actionHtml: `<div class="pill-row"><span class="pill">${activeSchedules.length} active</span><span class="pill">${draftSchedules.length} drafts</span></div>`,
+  });
+
+  const activeTabBody = (() => {
+    switch (activeTab) {
+      case "contracts":
+        return `<div class="view-grid two-up">${renderPanel("Contract Board", contractBoardBody, { actionHtml: refreshForm })}${renderPanel("Company Contracts", companyContractsBody)}</div>`;
+      case "aircraft":
+        return `<div class="view-grid sidebar-wide">${renderPanel("Aircraft Actions", `<div class="actions">${acquireAircraftForm}${advanceTimeForm}</div>`)}${renderPanel("Fleet", fleetBody)}</div>`;
+      case "staffing":
+        return `<div class="view-grid sidebar-wide">${renderPanel("Staffing Actions", `<div class="actions"><div class="action-group tight">${staffingActionRow}</div></div>`)}${renderPanel("Active Staffing", staffingBody)}</div>`;
+      case "dispatch":
+        return `<div class="view-grid stack-and-side"><div class="stack-column">${renderPanel("Schedules", schedulesBody)}${dispatchControlsPanel}</div><div class="stack-column">${renderPanel("Contracts Ready For Dispatch", companyContractsBody)}</div></div>`;
+      case "activity":
+        return `<div class="view-grid two-up">${renderPanel("Recent Activity", eventLogBody)}${renderPanel("Dispatch Snapshot", `<div class="summary-list"><div class="summary-item"><div class="eyebrow">Current time</div><strong>${escapeHtml(formatDate(company.currentTimeUtc))}</strong><div class="muted">Home base ${escapeHtml(company.homeBaseAirportId)}</div></div><div class="summary-item"><div class="eyebrow">Event volume</div><strong>${model.eventLog?.entries.length ?? 0}</strong><div class="muted">Most recent operational events in this save.</div></div><div class="summary-item"><div class="eyebrow">Open contracts</div><strong>${upcomingContracts.length}</strong><div class="muted">Accepted contracts still in play.</div></div><div class="summary-item"><div class="eyebrow">Dispatchable fleet</div><strong>${idleAircraftCount}</strong><div class="muted">Aircraft available for new work.</div></div></div>`)}</div>`;
+      case "dashboard":
+      default:
+        return `<div class="view-grid stack-and-side"><div class="stack-column">${quickActionsPanel}${dashboardSnapshotPanel}${dashboardQueuePanel}</div><div class="stack-column">${renderPanel("Recent Activity", eventLogBody)}</div></div>`;
+    }
+  })();
 
   return renderShell(
     company.displayName,
     saveIds,
     model.saveId,
     flash,
-    `${metrics}<div class="grid two">${quickActions}${offersSection}</div><div class="grid two">${contractsSection}${schedulesSection}</div><div class="grid two">${fleetSection}${staffingSection}</div>${eventsSection}`,
+    `<div class="content-shell">${renderMetricStrip(model)}${renderSaveTabs(model.saveId, activeTab)}${activeTabBody}</div>`,
   );
 }
+
 async function handleCreateSave(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = (form.get("saveId")?.trim() || `save_${Date.now()}`).replace(/[^a-zA-Z0-9_-]/g, "_");
   const worldSeed = form.get("worldSeed")?.trim() || randomUUID();
@@ -628,11 +829,17 @@ async function handleCreateSave(response: ServerResponse, form: URLSearchParams)
     },
   });
 
-  redirect(response, result.success ? saveRoute(saveId, { notice: `Created save ${saveId}.` }) : `/?error=${encodeURIComponent(result.hardBlockers[0] ?? "Could not create save.")}`);
+  if (!result.success) {
+    redirect(response, `/?error=${encodeURIComponent(result.hardBlockers[0] ?? "Could not create save.")}`);
+    return;
+  }
+
+  redirect(response, saveRoute(saveId, { flash: { notice: `Created save ${saveId}.` } }));
 }
 
 async function handleCreateCompany(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const result = await backend.dispatch({
     commandId: commandId("cmd_company"),
     saveId,
@@ -646,11 +853,17 @@ async function handleCreateCompany(response: ServerResponse, form: URLSearchPara
     },
   });
 
-  redirect(response, saveRoute(saveId, result.success ? { notice: `Created company ${form.get("displayName") ?? "FlightLine Regional"}.` } : { error: result.hardBlockers[0] ?? "Could not create company." }));
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: `Created company ${form.get("displayName") ?? "FlightLine Regional"}.` }
+      : { error: result.hardBlockers[0] ?? "Could not create company." },
+  }));
 }
 
 async function handleAcquireAircraft(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const company = await backend.loadCompanyContext(saveId);
   const selectedOption = starterAircraftOptions.find((option) => option.modelId === form.get("aircraftModelId")) ?? starterAircraftOptions[0];
   const result = await backend.dispatch({
@@ -667,16 +880,22 @@ async function handleAcquireAircraft(response: ServerResponse, form: URLSearchPa
     },
   });
 
-  redirect(response, saveRoute(saveId, result.success ? { notice: `Acquired ${selectedOption.label}.` } : { error: result.hardBlockers[0] ?? "Could not acquire aircraft." }));
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: `Acquired ${selectedOption.label}.` }
+      : { error: result.hardBlockers[0] ?? "Could not acquire aircraft." },
+  }));
 }
 
 async function handleAddStaffing(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const presetKey = form.get("presetKey") as StaffingPresetKey | null;
   const preset = presetKey ? staffingPresets[presetKey] : null;
 
   if (!preset) {
-    redirect(response, saveRoute(saveId, { error: "Unknown staffing preset." }));
+    redirect(response, saveRoute(saveId, { tab, flash: { error: "Unknown staffing preset." } }));
     return;
   }
 
@@ -695,11 +914,17 @@ async function handleAddStaffing(response: ServerResponse, form: URLSearchParams
     },
   });
 
-  redirect(response, saveRoute(saveId, result.success ? { notice: `Activated ${preset.label}.` } : { error: result.hardBlockers[0] ?? "Could not add staffing." }));
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: `Activated ${preset.label}.` }
+      : { error: result.hardBlockers[0] ?? "Could not add staffing." },
+  }));
 }
 
 async function handleRefreshContractBoard(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const result = await backend.dispatch({
     commandId: commandId("cmd_refresh"),
     saveId,
@@ -709,11 +934,17 @@ async function handleRefreshContractBoard(response: ServerResponse, form: URLSea
     payload: { refreshReason: "manual" },
   });
 
-  redirect(response, saveRoute(saveId, result.success ? { notice: "Refreshed contract board." } : { error: result.hardBlockers[0] ?? "Could not refresh contract board." }));
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: "Refreshed contract board." }
+      : { error: result.hardBlockers[0] ?? "Could not refresh contract board." },
+  }));
 }
 
 async function handleAcceptContract(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const contractOfferId = form.get("contractOfferId") ?? "";
   const result = await backend.dispatch({
     commandId: commandId("cmd_accept"),
@@ -724,11 +955,17 @@ async function handleAcceptContract(response: ServerResponse, form: URLSearchPar
     payload: { contractOfferId },
   });
 
-  redirect(response, saveRoute(saveId, result.success ? { notice: `Accepted contract offer ${contractOfferId}.` } : { error: result.hardBlockers[0] ?? "Could not accept contract." }));
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: `Accepted contract offer ${contractOfferId}.` }
+      : { error: result.hardBlockers[0] ?? "Could not accept contract." },
+  }));
 }
 
 async function handleAutoPlanContract(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const companyContractId = form.get("companyContractId") ?? "";
   const aircraftId = form.get("aircraftId") ?? "";
   const [companyContext, companyContracts, fleetState] = await Promise.all([
@@ -742,7 +979,7 @@ async function handleAutoPlanContract(response: ServerResponse, form: URLSearchP
   const aircraftModel = aircraft ? aircraftReference.findModel(aircraft.aircraftModelId) : null;
 
   if (!companyContext || !contract || !aircraft || !aircraftModel) {
-    redirect(response, saveRoute(saveId, { error: "Could not resolve the contract or aircraft for auto-planning." }));
+    redirect(response, saveRoute(saveId, { tab, flash: { error: "Could not resolve the contract or aircraft for auto-planning." } }));
     return;
   }
 
@@ -769,7 +1006,7 @@ async function handleAutoPlanContract(response: ServerResponse, form: URLSearchP
     const contractArrival = addMinutesIso(contractDeparture, estimateFlightMinutes(contract.originAirportId, contract.destinationAirportId, aircraftModel.cruiseSpeedKtas));
 
     if (contractArrival > contract.deadlineUtc) {
-      redirect(response, saveRoute(saveId, { error: "Auto-plan would miss the contract deadline for this aircraft." }));
+      redirect(response, saveRoute(saveId, { tab, flash: { error: "Auto-plan would miss the contract deadline for this aircraft." } }));
       return;
     }
 
@@ -795,18 +1032,21 @@ async function handleAutoPlanContract(response: ServerResponse, form: URLSearchP
       },
     });
 
-    const flash = result.hardBlockers.length > 0
-      ? { error: result.hardBlockers[0] }
-      : { notice: `Drafted schedule ${String(result.metadata?.scheduleId ?? "")}.` };
-    redirect(response, saveRoute(saveId, flash));
+    redirect(response, saveRoute(saveId, {
+      tab,
+      flash: result.hardBlockers.length > 0
+        ? { error: result.hardBlockers[0] }
+        : { notice: `Drafted schedule ${String(result.metadata?.scheduleId ?? "")}.` },
+    }));
   } catch (error) {
     const message = error instanceof Error ? error.message : "Auto-plan failed.";
-    redirect(response, saveRoute(saveId, { error: message }));
+    redirect(response, saveRoute(saveId, { tab, flash: { error: message } }));
   }
 }
 
 async function handleCommitSchedule(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const scheduleId = form.get("scheduleId") ?? "";
   const result = await backend.dispatch({
     commandId: commandId("cmd_commit"),
@@ -817,23 +1057,21 @@ async function handleCommitSchedule(response: ServerResponse, form: URLSearchPar
     payload: { scheduleId },
   });
 
-  redirect(
-    response,
-    saveRoute(
-      saveId,
-      result.success
-        ? { notice: `Committed schedule ${scheduleId}.` }
-        : { error: result.hardBlockers[0] ?? "Could not commit schedule." },
-    ),
-  );
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: `Committed schedule ${scheduleId}.` }
+      : { error: result.hardBlockers[0] ?? "Could not commit schedule." },
+  }));
 }
 
 async function handleAdvanceTime(response: ServerResponse, form: URLSearchParams): Promise<void> {
   const saveId = form.get("saveId") ?? "";
+  const tab = normalizeTab(form.get("tab"));
   const companyContext = await backend.loadCompanyContext(saveId);
 
   if (!companyContext) {
-    redirect(response, saveRoute(saveId, { error: "Could not load the save company context." }));
+    redirect(response, saveRoute(saveId, { tab, flash: { error: "Could not load the save company context." } }));
     return;
   }
 
@@ -854,15 +1092,16 @@ async function handleAdvanceTime(response: ServerResponse, form: URLSearchParams
     },
   });
 
-  const notice = result.success
-    ? `Advanced time to ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} (${String(result.metadata?.stoppedBecause ?? "target_time")}).`
-    : undefined;
-  const error = result.success ? undefined : (result.hardBlockers[0] ?? "Could not advance time.");
-
-  redirect(response, saveRoute(saveId, { notice, error }));
+  redirect(response, saveRoute(saveId, {
+    tab,
+    flash: result.success
+      ? { notice: `Advanced time to ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} (${String(result.metadata?.stoppedBecause ?? "target_time")}).` }
+      : { error: result.hardBlockers[0] ?? "Could not advance time." },
+  }));
 }
 
-const actionHandlers: Record<string, (response: ServerResponse, form: URLSearchParams) => Promise<void>> = {
+const actionHandlers
+: Record<string, (response: ServerResponse, form: URLSearchParams) => Promise<void>> = {
   "/actions/create-save": handleCreateSave,
   "/actions/create-company": handleCreateCompany,
   "/actions/acquire-aircraft": handleAcquireAircraft,
@@ -906,7 +1145,8 @@ async function handleRequest(request: IncomingMessage, response: ServerResponse)
     }
 
     const model = await loadSavePageModel(saveId);
-    sendHtml(response, renderSavePage(model, saveIds, flash));
+    const activeTab = normalizeTab(requestUrl.searchParams.get("tab"));
+    sendHtml(response, renderSavePage(model, saveIds, flash, activeTab));
     return;
   }
 

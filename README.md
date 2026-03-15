@@ -13,7 +13,8 @@ What exists today:
 - an initial TypeScript backend scaffold in `src/`
 - a working SQLite save bootstrap and early backend command handlers in `src/`
 - read-side company, contract-board, contract, fleet, staffing, schedule, and event-log query services in `src/`
-- a minimal local operations UI in `src/ui/`
+- a minimal tabbed local operations UI in `src/ui/`
+- an Electron desktop shell in `src/desktop/`
 - screen wireframes in `wireframes/`
 - a local airport reference database in `data/airports/`
 - a local aircraft reference database in `data/aircraft/`
@@ -74,7 +75,7 @@ Key folders:
 
 - `strategy/`: product, systems, economy, staffing, airport, and generation design docs
 - `implementation/`: backend aggregates, command model, schema blueprint, and doc-boundary review
-- `src/`: TypeScript backend scaffold, save runtime, command handlers, query services, persistence utilities, and the local UI server
+- `src/`: TypeScript backend scaffold, save runtime, command handlers, query services, persistence utilities, the local UI server, and the Electron desktop shell
 - `wireframes/`: markdown wireframes for the first MVP management screens
 - `data/airports/`: local SQLite airport snapshot, schema, and data notes
 - `data/aircraft/`: local SQLite aircraft snapshot, schema, and data notes
@@ -257,11 +258,18 @@ It currently supports:
 - refreshing and accepting contracts
 - auto-planning, committing, and reviewing schedules
 - advancing time and reviewing recent operational events
+- working inside top-level tabs so the full-screen window stays fixed while tables and panels scroll internally
 
-Run it locally with:
+Run it in the browser with:
 
 - `npm run ui`
 - then open `http://localhost:4321`
+
+Run it as a desktop app with:
+
+- `npm run desktop`
+
+The Electron entrypoint lives at `src/desktop/main.ts`.
 
 ## Recommended Technical Direction
 
@@ -269,7 +277,7 @@ The current technical recommendation is:
 
 - TypeScript for domain and UI code
 - SQLite for persistence
-- Tauri later for desktop packaging
+- Electron for the current desktop shell
 - optional richer client framework later if the local operations UI outgrows the current server-rendered approach
 
 Target architecture:

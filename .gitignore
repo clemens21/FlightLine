@@ -1,4 +1,4 @@
-.vendor/
+﻿.vendor/
 scripts/airports/__pycache__/
 data/airports/flightline-airports.sqlite-shm
 data/airports/flightline-airports.sqlite-wal
@@ -18,3 +18,5 @@ dist/
 coverage/
 *.tsbuildinfo
 .npm-cache/
+.electron-cache/
+.codex-tmp/
