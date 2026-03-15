@@ -123,10 +123,15 @@ async function createMainWindow(): Promise<void> {
     mainWindow = null;
   });
 
-  await mainWindow.loadURL(uiUrl);
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
   });
+
+  await mainWindow.loadURL(uiUrl);
+
+  if (!mainWindow.isVisible()) {
+    mainWindow?.show();
+  }
 }
 
 app.on("window-all-closed", () => {
