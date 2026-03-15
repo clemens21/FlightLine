@@ -1,0 +1,186 @@
+import type {
+  AircraftLayoutId,
+  AircraftModelId,
+  AirportId,
+  CommandId,
+  ContractOfferId,
+  CurrencyAmount,
+  JsonObject,
+  SaveId,
+  UtcIsoString,
+} from "../../domain/common/primitives.js";
+import type { FlightLegType } from "../../domain/dispatch/types.js";
+import type { BaseRole, CompanyPhase } from "../../domain/company/types.js";
+import type { OwnershipType } from "../../domain/fleet/types.js";
+import type { DifficultyProfile } from "../../domain/save-runtime/types.js";
+import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
+import type { AdvanceTimeStopCondition } from "../../domain/simulation/types.js";
+
+export type CommandName =
+  | "CreateSaveGame"
+  | "CreateCompany"
+  | "AcquireAircraft"
+  | "ActivateStaffingPackage"
+  | "RefreshContractBoard"
+  | "RefreshAircraftMarket"
+  | "RefreshStaffingMarket"
+  | "ExpireOfferWindow"
+  | "AcceptContractOffer"
+  | "ShortlistContractOffer"
+  | "CancelCompanyContract"
+  | "SaveScheduleDraft"
+  | "CommitAircraftSchedule"
+  | "ScheduleMaintenance"
+  | "AdvanceTime";
+
+export interface CreateSaveGamePayload {
+  worldSeed: string;
+  difficultyProfile: DifficultyProfile;
+  startTimeUtc: UtcIsoString;
+  airportSnapshotVersion?: string;
+  aircraftSnapshotVersion?: string;
+}
+
+export interface CreateCompanyPayload {
+  displayName: string;
+  starterAirportId: AirportId;
+  startingCashAmount: CurrencyAmount;
+  reserveBalanceAmount?: CurrencyAmount;
+  baseRole?: BaseRole;
+  companyPhase?: CompanyPhase;
+  progressionTier?: number;
+  startingReputationScore?: number;
+}
+
+export interface AcquireAircraftPayload {
+  aircraftModelId: AircraftModelId;
+  deliveryAirportId: AirportId;
+  ownershipType: OwnershipType;
+  registration: string;
+  displayName?: string;
+  activeCabinLayoutId?: AircraftLayoutId;
+  sourceOfferId?: string;
+  upfrontPaymentAmount?: CurrencyAmount;
+  recurringPaymentAmount?: CurrencyAmount;
+  paymentCadence?: "weekly" | "monthly";
+  termMonths?: number;
+  rateBandOrApr?: number;
+}
+
+export interface ActivateStaffingPackagePayload {
+  laborCategory: LaborCategory;
+  employmentModel: EmploymentModel;
+  qualificationGroup: string;
+  coverageUnits: number;
+  fixedCostAmount: CurrencyAmount;
+  variableCostRate?: CurrencyAmount;
+  serviceRegionCode?: string;
+  startsAtUtc?: UtcIsoString;
+  endsAtUtc?: UtcIsoString;
+  sourceOfferId?: string;
+}
+
+export interface ScheduleDraftLegPayload {
+  legType: FlightLegType;
+  linkedCompanyContractId?: string;
+  originAirportId: AirportId;
+  destinationAirportId: AirportId;
+  plannedDepartureUtc: UtcIsoString;
+  plannedArrivalUtc: UtcIsoString;
+  assignedQualificationGroup?: string;
+  payloadSnapshot?: JsonObject;
+}
+
+export interface SaveScheduleDraftPayload {
+  aircraftId: string;
+  scheduleId?: string;
+  scheduleKind?: "operational" | "maintenance_only";
+  legs: ScheduleDraftLegPayload[];
+}
+
+export interface CommitAircraftSchedulePayload {
+  scheduleId: string;
+}
+
+export interface RefreshContractBoardPayload {
+  refreshReason?: "scheduled" | "manual" | "bootstrap";
+}
+
+export interface AcceptContractOfferPayload {
+  contractOfferId: ContractOfferId;
+}
+
+export interface AdvanceTimePayload {
+  targetTimeUtc: UtcIsoString;
+  stopConditions?: AdvanceTimeStopCondition[];
+  selectedAircraftId?: string;
+  selectedContractId?: string;
+}
+
+export interface CommandEnvelope<TPayload> {
+  commandId: CommandId;
+  saveId: SaveId;
+  commandName: CommandName;
+  issuedAtUtc: string;
+  actorType: "player" | "system";
+  payload: TPayload;
+}
+
+export type CreateSaveGameCommand = CommandEnvelope<CreateSaveGamePayload> & {
+  commandName: "CreateSaveGame";
+};
+
+export type CreateCompanyCommand = CommandEnvelope<CreateCompanyPayload> & {
+  commandName: "CreateCompany";
+};
+
+export type AcquireAircraftCommand = CommandEnvelope<AcquireAircraftPayload> & {
+  commandName: "AcquireAircraft";
+};
+
+export type ActivateStaffingPackageCommand = CommandEnvelope<ActivateStaffingPackagePayload> & {
+  commandName: "ActivateStaffingPackage";
+};
+
+export type SaveScheduleDraftCommand = CommandEnvelope<SaveScheduleDraftPayload> & {
+  commandName: "SaveScheduleDraft";
+};
+
+export type CommitAircraftScheduleCommand = CommandEnvelope<CommitAircraftSchedulePayload> & {
+  commandName: "CommitAircraftSchedule";
+};
+
+export type RefreshContractBoardCommand = CommandEnvelope<RefreshContractBoardPayload> & {
+  commandName: "RefreshContractBoard";
+};
+
+export type AcceptContractOfferCommand = CommandEnvelope<AcceptContractOfferPayload> & {
+  commandName: "AcceptContractOffer";
+};
+
+export type AdvanceTimeCommand = CommandEnvelope<AdvanceTimePayload> & {
+  commandName: "AdvanceTime";
+};
+
+export type SupportedCommand =
+  | CreateSaveGameCommand
+  | CreateCompanyCommand
+  | AcquireAircraftCommand
+  | ActivateStaffingPackageCommand
+  | SaveScheduleDraftCommand
+  | CommitAircraftScheduleCommand
+  | RefreshContractBoardCommand
+  | AcceptContractOfferCommand
+  | AdvanceTimeCommand;
+
+export interface CommandResult {
+  success: boolean;
+  commandId: string;
+  changedAggregateIds: string[];
+  validationMessages: string[];
+  hardBlockers: string[];
+  warnings: string[];
+  emittedEventIds: string[];
+  emittedLedgerEntryIds: string[];
+  metadata?: JsonObject;
+}

@@ -89,6 +89,8 @@ Initial screens:
 
 ## Data Model
 
+The canonical save boundaries and entity responsibilities for MVP are defined in [game-state-model.md](/Z:/projects/FlightLine/strategy/game-state-model.md). This document stays at the architecture level; that one should be treated as the implementation-facing source of truth for state.
+
 Core entities for MVP:
 
 - `Company`
@@ -211,18 +213,18 @@ FlightLine/
 
 ## Immediate Next Step
 
-Start by scaffolding the TypeScript project and implementing the domain model for:
+Use the implementation docs in [implementation/index.md](/Z:/projects/FlightLine/implementation/index.md) to scaffold the backend domain and persistence layers.
 
-- airports
-- aircraft models
-- aircraft
-- aircraft offers
-- staffing plans and qualification coverage
-- contracts
-- assignments
-- company finances
-- game clock
+The first backend slice should cover:
 
-That gives us the backbone needed for every later system.
+- company and finance state
+- aircraft and acquisition agreements
+- staffing packages and labor allocation
+- contract offer windows and accepted contracts
+- aircraft schedules and flight legs
+- maintenance state and tasks
+- game clock and event history
+
+That gives us the backbone needed for the first playable management loop.
 
 

@@ -1,0 +1,26 @@
+{
+  "name": "flightline",
+  "version": "1.0.0",
+  "description": "FlightLine airline management simulation",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run build && node test/backend-smoke.test.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-save-schema.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^20.11.28",
+    "@types/sql.js": "^1.4.9",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.1"
+  }
+}

@@ -1,4 +1,4 @@
-﻿.vendor/
+.vendor/
 scripts/airports/__pycache__/
 data/airports/flightline-airports.sqlite-shm
 data/airports/flightline-airports.sqlite-wal
@@ -9,3 +9,12 @@ data/airports/snapshots/*
 data/aircraft/flightline-aircraft.sqlite-shm
 data/aircraft/flightline-aircraft.sqlite-wal
 scripts/aircraft/__pycache__/
+data/saves/*.sqlite
+!data/saves/README.md
+data/saves/*.sqlite-shm
+data/saves/*.sqlite-wal
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.npm-cache/

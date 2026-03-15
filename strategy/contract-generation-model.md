@@ -6,6 +6,8 @@ This document turns the high-level contract system into a concrete generation mo
 
 The contract system should create plausible work from the world, then curate it into a readable board for the player.
 
+For the implementation-facing MVP generator spec, see [contract-generator-v1.md](/Z:/projects/FlightLine/strategy/contract-generator-v1.md).
+
 ## Design Standard
 
 A good contract generator should satisfy five rules:

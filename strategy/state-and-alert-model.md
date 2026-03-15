@@ -6,6 +6,8 @@ This document standardizes the shared statuses and alert hierarchy used across t
 
 Wireframes should not invent local meanings for state. The same aircraft, contract, or staffing condition should look and behave consistently across Dashboard, Fleet, Dispatch, Maintenance, and Finance.
 
+These statuses should be treated as read-model outputs derived from the canonical entities defined in [game-state-model.md](/Z:/projects/FlightLine/strategy/game-state-model.md), not as a separate competing source of truth.
+
 ## Modeling Principle
 
 Avoid overloading a single status field with multiple meanings.

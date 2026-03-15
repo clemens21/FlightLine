@@ -1,29 +1,33 @@
-﻿# FlightLine
+# FlightLine
 
 FlightLine is an airline and aircraft management simulation project.
 
 ## Current Status
 
-This repository is currently a strategy, wireframing, and data foundation workspace.
+This repository is currently a strategy, implementation-design, backend-scaffold, wireframing, and data foundation workspace.
 
 What exists today:
 
 - product strategy and system design docs in `strategy/`
+- implementation-facing backend design docs in `implementation/`
+- an initial TypeScript backend scaffold in `src/`
+- a working SQLite save bootstrap and early backend command handlers in `src/`
+- read-side company, contract-board, fleet, and staffing query services in `src/`
 - screen wireframes in `wireframes/`
 - a local airport reference database in `data/airports/`
 - a local aircraft reference database in `data/aircraft/`
+- a local save-slot folder in `data/saves/`
 - Python scripts that build and enrich the airport database in `scripts/airports/`
 - Python scripts that build the aircraft database in `scripts/aircraft/`
+- a canonical game-state model for saves, commands, and simulation boundaries in `strategy/game-state-model.md`
 
 What does not exist yet:
 
-- application scaffold
-- simulation engine implementation
 - UI implementation
-- save-game model
-- test suite
+- full scheduled-event and recurring-obligation coverage
+- feature-complete automated test coverage
 
-This means the project is still in pre-production. The product shape is being defined before code architecture hardens.
+This means the project is still in pre-production, but it now has a real backend bootstrap path and an initial executable management loop instead of docs only.
 
 ## Product Direction
 
@@ -52,23 +56,31 @@ MVP explicitly excludes Microsoft Flight Simulator integration.
 FlightLine/
   README.md
   strategy/
+  implementation/
+  src/
   wireframes/
   data/
     airports/
     aircraft/
+    saves/
   scripts/
     airports/
     aircraft/
+  test/
 ```
 
 Key folders:
 
 - `strategy/`: product, systems, economy, staffing, airport, and generation design docs
+- `implementation/`: backend aggregates, command model, schema blueprint, and doc-boundary review
+- `src/`: TypeScript backend scaffold, save runtime, command handlers, query services, and persistence utilities
 - `wireframes/`: markdown wireframes for the first MVP management screens
 - `data/airports/`: local SQLite airport snapshot, schema, and data notes
 - `data/aircraft/`: local SQLite aircraft snapshot, schema, and data notes
+- `data/saves/`: local save-slot SQLite files and notes
 - `scripts/airports/`: airport database build, enrichment, and derived-field scripts
 - `scripts/aircraft/`: aircraft database build scripts and curated seed data
+- `test/`: backend smoke tests that exercise the current implementation slice
 
 ## Start Here
 
@@ -76,15 +88,65 @@ If you are new to the repo, read these first:
 
 1. `strategy/mvp-foundation.md`
 2. `strategy/technical-foundation.md`
-3. `strategy/strategy-index.md`
-4. `wireframes/index.md`
+3. `strategy/game-state-model.md`
+4. `strategy/strategy-index.md`
+5. `implementation/index.md`
+6. `wireframes/index.md`
 
 Useful design clusters:
 
 - product and progression: `strategy/product-pillars.md`, `strategy/gameplay-loop-and-progression.md`
 - staffing and aircraft acquisition: `strategy/labor-and-staffing.md`, `strategy/aircraft-acquisition.md`, `strategy/aircraft-data-model.md`, `strategy/aircraft-roster-and-balance.md`, `strategy/msfs-aircraft-alignment.md`
-- world data and generation: `strategy/airport-data-strategy.md`, `strategy/content-generation-systems.md`, `strategy/contract-generation-model.md`, `strategy/aircraft-market-model.md`, `strategy/staffing-market-model.md`
-- pre-wireframe UX: `strategy/user-flows.md`, `strategy/state-and-alert-model.md`, `strategy/screen-blueprints.md`
+- world data and generation: `strategy/airport-data-strategy.md`, `strategy/content-generation-systems.md`, `strategy/contract-generation-model.md`, `strategy/contract-generator-v1.md`, `strategy/aircraft-market-model.md`, `strategy/staffing-market-model.md`
+- simulation and execution: `strategy/technical-foundation.md`, `strategy/game-state-model.md`, `strategy/dispatch-validation-and-time-advance.md`, `strategy/state-and-alert-model.md`
+- backend implementation design: `implementation/backend-domain-model.md`, `implementation/backend-command-model.md`, `implementation/save-schema-blueprint.md`
+- pre-wireframe UX: `strategy/user-flows.md`, `strategy/screen-blueprints.md`
+
+## Current Backend Slice
+
+The first implementation slice now exists in `src/`.
+
+What it does today:
+
+- creates a save-slot SQLite file
+- applies the initial save migration set
+- records schema migrations inside the save DB
+- implements `CreateSaveGame`
+- implements `CreateCompany`
+- implements `AcquireAircraft`
+- implements `ActivateStaffingPackage`
+- implements `SaveScheduleDraft`
+- implements `CommitAircraftSchedule`
+- implements `RefreshContractBoard`
+- implements `AcceptContractOffer`
+- implements `AdvanceTime`
+- validates starter airports, aircraft acquisitions, draft schedules, and contract origins against the real airport and aircraft reference databases
+- persists fleet, staffing packages, labor reservations, scheduled events, recurring obligations, event log, command log, offer windows, contract offers, accepted contracts, and ledger state
+- executes scheduled departure, arrival, and contract-deadline events with aircraft-state, contract-state, and ledger effects
+- exposes read models for active company state, the active contract board, fleet state, staffing state, and aircraft schedules
+
+Current backend entry surface:
+
+- `src/application/backend-service.ts`
+- `src/application/commands/create-save-game.ts`
+- `src/application/commands/create-company.ts`
+- `src/application/commands/acquire-aircraft.ts`
+- `src/application/commands/activate-staffing-package.ts`
+- `src/application/commands/save-schedule-draft.ts`
+- `src/application/commands/commit-aircraft-schedule.ts`
+- `src/application/commands/refresh-contract-board.ts`
+- `src/application/commands/accept-contract-offer.ts`
+- `src/application/queries/company-state.ts`
+- `src/application/queries/contract-board.ts`
+- `src/application/queries/fleet-state.ts`
+- `src/application/queries/schedule-state.ts`
+- `src/application/queries/staffing-state.ts`
+- `src/infrastructure/persistence/sqlite/sqlite-file-database.ts`
+- `src/infrastructure/persistence/sqlite/migrations.ts`
+- `src/infrastructure/reference/airport-reference.ts`
+- `src/infrastructure/reference/aircraft-reference.ts`
+
+Current test coverage is still intentionally narrow: one smoke test now proves save creation, company creation, aircraft acquisition, staffing activation, contract acceptance, draft-save, schedule commit, first-leg execution through `AdvanceTime`, and duplicate rejection.
 
 ## Wireframes
 
@@ -195,23 +257,17 @@ Target architecture:
 - persistence layer for reference data and save state
 - presentation layer for management screens
 
-See `strategy/technical-foundation.md` for the full rationale.
+See `strategy/technical-foundation.md`, `strategy/game-state-model.md`, and `implementation/index.md` for the full rationale, state boundaries, and backend implementation shape.
 
 ## Immediate Next Step
 
-The next implementation milestone should use the airport and aircraft reference layers to prove the first real game code slice:
+The next implementation milestone should expose and broaden the now-working execution loop:
 
-- scaffold the TypeScript project
-- define core domain types
-- load airport and aircraft reference data
-- generate a minimal aircraft market
-- generate a minimal staffing model
-- generate contracts
-- assign one contract to one aircraft
-- advance time to resolution
-- persist and reload company state
+- expose company, contracts, fleet, staffing, schedules, and time-advance results in a minimal operations UI
+- add broader event coverage for recurring obligations, maintenance tasks, and failure recovery
+- add richer read models for execution history, alerts, and ledger views
 
-That milestone should prove the architecture before broader UI polish or deeper simulation expansion.
+That milestone should turn the backend slice into the first playable internal tool before broader UI polish or deeper simulation expansion.
 
 ## Design Standard
 
@@ -225,16 +281,16 @@ New design work in this repository should answer four questions clearly:
 ## Working Notes
 
 - The airport and aircraft SQLite files are intentionally tracked in git as versioned reference snapshots.
+- Save-slot SQLite files are intentionally local and ignored by git.
 - SQLite sidecar files such as `*.sqlite-wal` and `*.sqlite-shm` are ignored.
 - Raw source snapshots are treated as local workspace assets unless explicitly committed.
-- The repo is currently optimized for strategic design and data preparation, not yet active game development.
+- The repo is currently optimized for strategic design, data preparation, and early backend implementation.
 
 ## Roadmap From Here
 
 The current best next sequence is:
 
-1. turn airport-derived tags into concrete contract generation rules
-2. use the aircraft and airport reference data to prototype aircraft market and contract generation behavior
-3. define staffing capability packages and qualification rules
-4. scaffold the application and domain layers
-5. implement the first playable vertical slice
+1. expose the first playable vertical slice in UI on top of the current backend slice
+2. expand execution coverage for recurring obligations, maintenance, alerts, and recovery flows
+3. expand balancing and secondary systems once the core loop runs end to end
+
