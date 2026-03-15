@@ -13,6 +13,7 @@ data/saves/*.sqlite
 !data/saves/README.md
 data/saves/*.sqlite-shm
 data/saves/*.sqlite-wal
+data/logs/*.log
 node_modules/
 dist/
 coverage/
