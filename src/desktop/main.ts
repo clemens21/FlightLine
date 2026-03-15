@@ -253,9 +253,7 @@ process.on("unhandledRejection", (error) => {
   logDesktopError(`Unhandled rejection: ${formatDesktopError(error)}`);
 });
 
-async function main(): Promise<void> {
-  logDesktopInfo(`Desktop bootstrap starting. cwd=${process.cwd()} execPath=${process.execPath} uiUrl=${uiUrl}`);
-  await app.whenReady();
+async function startDesktopBootstrap(): Promise<void> {
   logDesktopInfo("Electron app.whenReady() resolved.");
   app.setName("FlightLine");
   startUiServer();
@@ -281,7 +279,10 @@ process.on("SIGTERM", () => {
   void stopUiServer().finally(() => app.quit());
 });
 
-await main().catch(async (error) => {
+logDesktopInfo(`Desktop bootstrap starting. cwd=${process.cwd()} execPath=${process.execPath} uiUrl=${uiUrl}`);
+logDesktopInfo("Waiting for Electron app readiness without top-level await.");
+
+void app.whenReady().then(() => startDesktopBootstrap()).catch(async (error) => {
   const formatted = formatDesktopError(error);
   logDesktopError(`Desktop bootstrap failed: ${formatted}`);
 
