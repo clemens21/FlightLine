@@ -12,7 +12,9 @@ import { handleRefreshContractBoard } from "./commands/refresh-contract-board.js
 import { handleSaveScheduleDraft } from "./commands/save-schedule-draft.js";
 import type { CommandResult, SupportedCommand } from "./commands/types.js";
 import { loadActiveCompanyContext, type CompanyContext } from "./queries/company-state.js";
+import { loadCompanyContracts, type CompanyContractsView } from "./queries/company-contracts.js";
 import { loadActiveContractBoard, type ContractBoardView } from "./queries/contract-board.js";
+import { loadRecentEventLog, type EventLogView } from "./queries/event-log.js";
 import { loadFleetState, type FleetStateView } from "./queries/fleet-state.js";
 import { loadAircraftSchedules, type AircraftScheduleView } from "./queries/schedule-state.js";
 import { loadStaffingState, type StaffingStateView } from "./queries/staffing-state.js";
@@ -225,6 +227,19 @@ export class FlightLineBackend {
     }
   }
 
+  async loadCompanyContracts(saveId: string): Promise<CompanyContractsView | null> {
+    const opened = await this.openExistingSaveDatabase(saveId);
+    if (!opened) {
+      return null;
+    }
+
+    try {
+      return loadCompanyContracts(opened.database, saveId);
+    } finally {
+      await opened.database.close();
+    }
+  }
+
   async loadActiveContractBoard(saveId: string): Promise<ContractBoardView | null> {
     const opened = await this.openExistingSaveDatabase(saveId);
     if (!opened) {
@@ -233,6 +248,19 @@ export class FlightLineBackend {
 
     try {
       return loadActiveContractBoard(opened.database, saveId);
+    } finally {
+      await opened.database.close();
+    }
+  }
+
+  async loadRecentEventLog(saveId: string, limit = 20): Promise<EventLogView | null> {
+    const opened = await this.openExistingSaveDatabase(saveId);
+    if (!opened) {
+      return null;
+    }
+
+    try {
+      return loadRecentEventLog(opened.database, saveId, limit);
     } finally {
       await opened.database.close();
     }
@@ -321,3 +349,5 @@ export class FlightLineBackend {
     return `flightline-aircraft:${fileStat.size}:${fileStat.mtime.toISOString()}`;
   }
 }
+
+

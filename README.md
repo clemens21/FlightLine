@@ -12,7 +12,8 @@ What exists today:
 - implementation-facing backend design docs in `implementation/`
 - an initial TypeScript backend scaffold in `src/`
 - a working SQLite save bootstrap and early backend command handlers in `src/`
-- read-side company, contract-board, fleet, and staffing query services in `src/`
+- read-side company, contract-board, contract, fleet, staffing, schedule, and event-log query services in `src/`
+- a minimal local operations UI in `src/ui/`
 - screen wireframes in `wireframes/`
 - a local airport reference database in `data/airports/`
 - a local aircraft reference database in `data/aircraft/`
@@ -23,11 +24,11 @@ What exists today:
 
 What does not exist yet:
 
-- UI implementation
+- polished production UI implementation
 - full scheduled-event and recurring-obligation coverage
 - feature-complete automated test coverage
 
-This means the project is still in pre-production, but it now has a real backend bootstrap path and an initial executable management loop instead of docs only.
+This means the project is still in pre-production, but it now has a real backend bootstrap path, an initial executable management loop, and a usable internal operations UI instead of docs only.
 
 ## Product Direction
 
@@ -73,7 +74,7 @@ Key folders:
 
 - `strategy/`: product, systems, economy, staffing, airport, and generation design docs
 - `implementation/`: backend aggregates, command model, schema blueprint, and doc-boundary review
-- `src/`: TypeScript backend scaffold, save runtime, command handlers, query services, and persistence utilities
+- `src/`: TypeScript backend scaffold, save runtime, command handlers, query services, persistence utilities, and the local UI server
 - `wireframes/`: markdown wireframes for the first MVP management screens
 - `data/airports/`: local SQLite airport snapshot, schema, and data notes
 - `data/aircraft/`: local SQLite aircraft snapshot, schema, and data notes
@@ -123,7 +124,7 @@ What it does today:
 - validates starter airports, aircraft acquisitions, draft schedules, and contract origins against the real airport and aircraft reference databases
 - persists fleet, staffing packages, labor reservations, scheduled events, recurring obligations, event log, command log, offer windows, contract offers, accepted contracts, and ledger state
 - executes scheduled departure, arrival, and contract-deadline events with aircraft-state, contract-state, and ledger effects
-- exposes read models for active company state, the active contract board, fleet state, staffing state, and aircraft schedules
+- exposes read models for active company state, company contracts, the active contract board, fleet state, staffing state, aircraft schedules, and recent event log entries
 
 Current backend entry surface:
 
@@ -137,7 +138,9 @@ Current backend entry surface:
 - `src/application/commands/refresh-contract-board.ts`
 - `src/application/commands/accept-contract-offer.ts`
 - `src/application/queries/company-state.ts`
+- `src/application/queries/company-contracts.ts`
 - `src/application/queries/contract-board.ts`
+- `src/application/queries/event-log.ts`
 - `src/application/queries/fleet-state.ts`
 - `src/application/queries/schedule-state.ts`
 - `src/application/queries/staffing-state.ts`
@@ -241,14 +244,33 @@ Important note:
 - the committed SQLite snapshot is self-contained for project use
 - MSFS metadata is tracked as a user-facing crosswalk on top of a broader aircraft catalog, not as the only gate on what planes can exist in FlightLine
 
+## Local UI
+
+A minimal local operations UI now exists at:
+
+- `src/ui/server.ts`
+
+It currently supports:
+
+- creating save slots and companies
+- acquiring starter aircraft and staffing packages
+- refreshing and accepting contracts
+- auto-planning, committing, and reviewing schedules
+- advancing time and reviewing recent operational events
+
+Run it locally with:
+
+- `npm run ui`
+- then open `http://localhost:4321`
+
 ## Recommended Technical Direction
 
 The current technical recommendation is:
 
 - TypeScript for domain and UI code
-- React for the management interface
 - SQLite for persistence
 - Tauri later for desktop packaging
+- optional richer client framework later if the local operations UI outgrows the current server-rendered approach
 
 Target architecture:
 
@@ -261,13 +283,13 @@ See `strategy/technical-foundation.md`, `strategy/game-state-model.md`, and `imp
 
 ## Immediate Next Step
 
-The next implementation milestone should expose and broaden the now-working execution loop:
+The next implementation milestone should broaden the now-working execution loop and local UI:
 
-- expose company, contracts, fleet, staffing, schedules, and time-advance results in a minimal operations UI
 - add broader event coverage for recurring obligations, maintenance tasks, and failure recovery
 - add richer read models for execution history, alerts, and ledger views
+- expand the local operations UI from the current internal tool into a fuller playable management surface
 
-That milestone should turn the backend slice into the first playable internal tool before broader UI polish or deeper simulation expansion.
+That milestone should turn the current internal operations UI into the first genuinely playable vertical slice before broader polish or deeper simulation expansion.
 
 ## Design Standard
 

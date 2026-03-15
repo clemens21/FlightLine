@@ -1,4 +1,4 @@
-export * from "./domain/common/primitives.js";
+﻿export * from "./domain/common/primitives.js";
 export * from "./domain/save-runtime/types.js";
 export * from "./domain/company/types.js";
 export * from "./domain/finance/types.js";
@@ -12,7 +12,9 @@ export * from "./domain/simulation/types.js";
 export * from "./domain/events/types.js";
 export * from "./application/commands/types.js";
 export * from "./application/queries/company-state.js";
+export * from "./application/queries/company-contracts.js";
 export * from "./application/queries/contract-board.js";
+export * from "./application/queries/event-log.js";
 export * from "./application/queries/fleet-state.js";
 export * from "./application/queries/schedule-state.js";
 export * from "./application/queries/staffing-state.js";

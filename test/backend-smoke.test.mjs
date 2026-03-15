@@ -163,7 +163,14 @@ try {
 
   const selectedOffer = board.offers.find((offer) => {
     const windowHours = (new Date(offer.latestCompletionUtc).getTime() - new Date(offer.earliestStartUtc).getTime()) / (60 * 60 * 1000);
-    return offer.originAirportId === "KDEN" && windowHours >= 6;
+    const fitsPassengers = offer.passengerCount === undefined || offer.passengerCount <= fleetState.aircraft[0].maxPassengers;
+    const fitsCargo = offer.cargoWeightLb === undefined || offer.cargoWeightLb <= fleetState.aircraft[0].maxCargoLb;
+    const fitBucket = typeof offer.explanationMetadata?.fit_bucket === "string" ? offer.explanationMetadata.fit_bucket : undefined;
+    return offer.originAirportId === "KDEN" && windowHours >= 6 && fitsPassengers && fitsCargo && fitBucket === "flyable_now";
+  }) ?? board.offers.find((offer) => {
+    const fitsPassengers = offer.passengerCount === undefined || offer.passengerCount <= fleetState.aircraft[0].maxPassengers;
+    const fitsCargo = offer.cargoWeightLb === undefined || offer.cargoWeightLb <= fleetState.aircraft[0].maxCargoLb;
+    return fitsPassengers && fitsCargo;
   }) ?? board.offers[0];
   assert.ok(selectedOffer);
   assert.equal(selectedOffer.offerStatus, "available");

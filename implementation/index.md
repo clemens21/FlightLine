@@ -23,4 +23,4 @@ These implementation docs are grounded in:
 
 ## Current Goal
 
-The goal of this folder is to get FlightLine from strategy into a backend that can actually be scaffolded and implemented without re-deciding the model every time.
+The goal of this folder is to get FlightLine from strategy into backend and persistence structures that can actually be scaffolded, implemented, and surfaced in the local operations UI without re-deciding the model every time.
