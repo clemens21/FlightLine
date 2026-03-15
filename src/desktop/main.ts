@@ -56,6 +56,7 @@ function startUiServer(): void {
     env: {
       ...process.env,
       PORT: String(desktopPort),
+      ELECTRON_RUN_AS_NODE: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
