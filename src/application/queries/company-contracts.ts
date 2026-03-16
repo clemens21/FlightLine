@@ -12,6 +12,7 @@ interface CompanyContractRow extends Record<string, unknown> {
   passengerCount: number | null;
   cargoWeightLb: number | null;
   acceptedPayoutAmount: number;
+  penaltyModelJson: string;
   acceptedAtUtc: string;
   earliestStartUtc: string | null;
   deadlineUtc: string;
@@ -29,6 +30,7 @@ export interface CompanyContractView {
   passengerCount: number | undefined;
   cargoWeightLb: number | undefined;
   acceptedPayoutAmount: number;
+  cancellationPenaltyAmount: number;
   acceptedAtUtc: string;
   earliestStartUtc: string | undefined;
   deadlineUtc: string;
@@ -40,6 +42,19 @@ export interface CompanyContractsView {
   saveId: SaveId;
   companyId: string;
   contracts: CompanyContractView[];
+}
+
+function parseCancellationPenaltyAmount(penaltyModelJson: string, fallbackAmount: number): number {
+  try {
+    const parsed = JSON.parse(penaltyModelJson) as Record<string, unknown>;
+    if (typeof parsed.cancellationPenaltyAmount === "number" && Number.isFinite(parsed.cancellationPenaltyAmount)) {
+      return Math.max(0, Math.round(parsed.cancellationPenaltyAmount));
+    }
+  } catch {
+    // Ignore malformed penalty metadata and use fallback.
+  }
+
+  return Math.max(0, Math.round(fallbackAmount));
 }
 
 export function loadCompanyContracts(saveDatabase: SqliteFileDatabase, saveId: SaveId): CompanyContractsView | null {
@@ -60,6 +75,7 @@ export function loadCompanyContracts(saveDatabase: SqliteFileDatabase, saveId: S
       passenger_count AS passengerCount,
       cargo_weight_lb AS cargoWeightLb,
       accepted_payout_amount AS acceptedPayoutAmount,
+      penalty_model_json AS penaltyModelJson,
       accepted_at_utc AS acceptedAtUtc,
       earliest_start_utc AS earliestStartUtc,
       deadline_utc AS deadlineUtc,
@@ -94,6 +110,7 @@ export function loadCompanyContracts(saveDatabase: SqliteFileDatabase, saveId: S
       passengerCount: row.passengerCount ?? undefined,
       cargoWeightLb: row.cargoWeightLb ?? undefined,
       acceptedPayoutAmount: row.acceptedPayoutAmount,
+      cancellationPenaltyAmount: parseCancellationPenaltyAmount(row.penaltyModelJson, row.acceptedPayoutAmount * 0.14),
       acceptedAtUtc: row.acceptedAtUtc,
       earliestStartUtc: row.earliestStartUtc ?? undefined,
       deadlineUtc: row.deadlineUtc,

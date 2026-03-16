@@ -2,15 +2,18 @@ import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { handleAcceptContractOffer } from "./commands/accept-contract-offer.js";
+import { handleCancelCompanyContract } from "./commands/cancel-company-contract.js";
 import { handleAdvanceTime } from "./commands/advance-time.js";
 import { handleAcquireAircraft } from "./commands/acquire-aircraft.js";
 import { handleActivateStaffingPackage } from "./commands/activate-staffing-package.js";
 import { handleCommitAircraftSchedule } from "./commands/commit-aircraft-schedule.js";
 import { handleCreateCompany } from "./commands/create-company.js";
 import { handleCreateSaveGame } from "./commands/create-save-game.js";
+import { handleRefreshAircraftMarket } from "./commands/refresh-aircraft-market.js";
 import { handleRefreshContractBoard } from "./commands/refresh-contract-board.js";
 import { handleSaveScheduleDraft } from "./commands/save-schedule-draft.js";
 import type { CommandResult, SupportedCommand } from "./commands/types.js";
+import { loadActiveAircraftMarket, type AircraftMarketView } from "./queries/aircraft-market.js";
 import { loadActiveCompanyContext, type CompanyContext } from "./queries/company-state.js";
 import { loadCompanyContracts, type CompanyContractsView } from "./queries/company-contracts.js";
 import { loadActiveContractBoard, type ContractBoardView } from "./queries/contract-board.js";
@@ -35,11 +38,21 @@ interface ResolvedFlightLineBackendConfig {
   aircraftDatabasePath: string;
 }
 
+export interface FlightLineSaveReadContext {
+  saveId: string;
+  saveFilePath: string;
+  saveDatabase: SqliteFileDatabase;
+}
+
+interface SaveSession extends FlightLineSaveReadContext {}
+
 function assertUnreachable(value: never): never {
   throw new Error(`Unhandled command: ${JSON.stringify(value)}`);
 }
 
 export class FlightLineBackend {
+  private readonly saveSessions = new Map<string, Promise<SaveSession>>();
+
   private constructor(
     private readonly config: ResolvedFlightLineBackendConfig,
     private readonly airportReference: AirportReferenceRepository,
@@ -66,148 +79,96 @@ export class FlightLineBackend {
   async dispatch(command: SupportedCommand): Promise<CommandResult> {
     switch (command.commandName) {
       case "CreateSaveGame": {
-        const { database, saveFilePath } = await this.openSaveDatabase(command.saveId);
+        const session = await this.openSaveSession(command.saveId, { createIfMissing: true });
 
-        try {
-          return await handleCreateSaveGame(command, {
-            saveDatabase: database,
-            saveFilePath,
-            resolveAirportSnapshotVersion: async () => this.airportReference.getSnapshotVersion(),
-            resolveAircraftSnapshotVersion: async () => this.resolveAircraftSnapshotVersion(),
-          });
-        } finally {
-          await database.close();
-        }
+        return handleCreateSaveGame(command, {
+          saveDatabase: session.saveDatabase,
+          saveFilePath: session.saveFilePath,
+          resolveAirportSnapshotVersion: async () => this.airportReference.getSnapshotVersion(),
+          resolveAircraftSnapshotVersion: async () => this.resolveAircraftSnapshotVersion(),
+        });
       }
 
       case "CreateCompany": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
-
-        try {
-          return await handleCreateCompany(command, {
-            saveDatabase: opened.database,
-            airportReference: this.airportReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleCreateCompany(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "AcquireAircraft": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
-
-        try {
-          return await handleAcquireAircraft(command, {
-            saveDatabase: opened.database,
-            airportReference: this.airportReference,
-            aircraftReference: this.aircraftReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleAcquireAircraft(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "ActivateStaffingPackage": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
-
-        try {
-          return await handleActivateStaffingPackage(command, {
-            saveDatabase: opened.database,
-            aircraftReference: this.aircraftReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleActivateStaffingPackage(command, {
+          saveDatabase: context.saveDatabase,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "SaveScheduleDraft": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
-
-        try {
-          return await handleSaveScheduleDraft(command, {
-            saveDatabase: opened.database,
-            airportReference: this.airportReference,
-            aircraftReference: this.aircraftReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleSaveScheduleDraft(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "CommitAircraftSchedule": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
-
-        try {
-          return await handleCommitAircraftSchedule(command, {
-            saveDatabase: opened.database,
-            airportReference: this.airportReference,
-            aircraftReference: this.aircraftReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleCommitAircraftSchedule(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "RefreshContractBoard": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshContractBoard(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
 
-        try {
-          return await handleRefreshContractBoard(command, {
-            saveDatabase: opened.database,
-            airportReference: this.airportReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+      case "RefreshAircraftMarket": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshAircraftMarket(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "AcceptContractOffer": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleAcceptContractOffer(command, {
+          saveDatabase: context.saveDatabase,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
 
-        try {
-          return await handleAcceptContractOffer(command, {
-            saveDatabase: opened.database,
-          });
-        } finally {
-          await opened.database.close();
-        }
+      case "CancelCompanyContract": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleCancelCompanyContract(command, {
+          saveDatabase: context.saveDatabase,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
       case "AdvanceTime": {
-        const opened = await this.openExistingSaveDatabase(command.saveId);
-        if (!opened) {
-          return this.missingSaveResult(command.commandId, command.saveId);
-        }
-
-        try {
-          return await handleAdvanceTime(command, {
-            saveDatabase: opened.database,
-            aircraftReference: this.aircraftReference,
-          });
-        } finally {
-          await opened.database.close();
-        }
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleAdvanceTime(command, {
+          saveDatabase: context.saveDatabase,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
     }
 
@@ -215,98 +176,83 @@ export class FlightLineBackend {
   }
 
   async loadCompanyContext(saveId: string): Promise<CompanyContext | null> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return null;
-    }
-
-    try {
-      return loadActiveCompanyContext(opened.database, saveId);
-    } finally {
-      await opened.database.close();
-    }
+    return this.withExistingSaveDatabase(saveId, (context) => loadActiveCompanyContext(context.saveDatabase, saveId));
   }
 
   async loadCompanyContracts(saveId: string): Promise<CompanyContractsView | null> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return null;
-    }
-
-    try {
-      return loadCompanyContracts(opened.database, saveId);
-    } finally {
-      await opened.database.close();
-    }
+    return this.withExistingSaveDatabase(saveId, (context) => loadCompanyContracts(context.saveDatabase, saveId));
   }
 
   async loadActiveContractBoard(saveId: string): Promise<ContractBoardView | null> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return null;
-    }
+    return this.withExistingSaveDatabase(saveId, (context) => loadActiveContractBoard(context.saveDatabase, saveId));
+  }
 
-    try {
-      return loadActiveContractBoard(opened.database, saveId);
-    } finally {
-      await opened.database.close();
-    }
+  async loadActiveAircraftMarket(saveId: string): Promise<AircraftMarketView | null> {
+    return this.withExistingSaveDatabase(saveId, (context) => loadActiveAircraftMarket(context.saveDatabase, saveId));
   }
 
   async loadRecentEventLog(saveId: string, limit = 20): Promise<EventLogView | null> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return null;
-    }
-
-    try {
-      return loadRecentEventLog(opened.database, saveId, limit);
-    } finally {
-      await opened.database.close();
-    }
+    return this.withExistingSaveDatabase(saveId, (context) => loadRecentEventLog(context.saveDatabase, saveId, limit));
   }
 
   async loadFleetState(saveId: string): Promise<FleetStateView | null> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return null;
-    }
-
-    try {
-      return loadFleetState(opened.database, this.aircraftReference, saveId);
-    } finally {
-      await opened.database.close();
-    }
+    return this.withExistingSaveDatabase(saveId, (context) => loadFleetState(context.saveDatabase, this.aircraftReference, saveId));
   }
 
   async loadStaffingState(saveId: string): Promise<StaffingStateView | null> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return null;
-    }
-
-    try {
-      return loadStaffingState(opened.database, saveId);
-    } finally {
-      await opened.database.close();
-    }
+    return this.withExistingSaveDatabase(saveId, (context) => loadStaffingState(context.saveDatabase, saveId));
   }
 
   async loadAircraftSchedules(saveId: string, aircraftId?: string): Promise<AircraftScheduleView[]> {
-    const opened = await this.openExistingSaveDatabase(saveId);
-    if (!opened) {
-      return [];
+    const schedules = await this.withExistingSaveDatabase(saveId, (context) => loadAircraftSchedules(context.saveDatabase, saveId, aircraftId));
+    return schedules ?? [];
+  }
+
+  async withExistingSaveDatabase<TResult>(
+    saveId: string,
+    reader: (context: FlightLineSaveReadContext) => TResult | Promise<TResult>,
+  ): Promise<TResult | null> {
+    const session = await this.getExistingSaveSession(saveId);
+
+    if (!session) {
+      return null;
     }
 
-    try {
-      return loadAircraftSchedules(opened.database, saveId, aircraftId);
-    } finally {
-      await opened.database.close();
+    return reader(session);
+  }
+
+  async closeSaveSession(saveId: string): Promise<void> {
+    const existingSessionPromise = this.saveSessions.get(saveId);
+
+    if (!existingSessionPromise) {
+      return;
     }
+
+    this.saveSessions.delete(saveId);
+    const session = await existingSessionPromise;
+    await session.saveDatabase.close();
   }
 
   async close(): Promise<void> {
-    await Promise.all([this.airportReference.close(), this.aircraftReference.close()]);
+    const sessionPromises = [...this.saveSessions.values()];
+    this.saveSessions.clear();
+
+    await Promise.allSettled([
+      ...sessionPromises.map(async (sessionPromise) => {
+        const session = await sessionPromise;
+        await session.saveDatabase.close();
+      }),
+      this.airportReference.close(),
+      this.aircraftReference.close(),
+    ]);
+  }
+
+  getAirportReference(): AirportReferenceRepository {
+    return this.airportReference;
+  }
+
+  getAircraftReference(): AircraftReferenceRepository {
+    return this.aircraftReference;
   }
 
   private missingSaveResult(commandId: string, saveId: string): CommandResult {
@@ -322,15 +268,7 @@ export class FlightLineBackend {
     };
   }
 
-  private async openSaveDatabase(saveId: string): Promise<{ database: SqliteFileDatabase; saveFilePath: string }> {
-    const saveFilePath = resolve(this.config.saveDirectoryPath, `${saveId}.sqlite`);
-    const database = await SqliteFileDatabase.open(saveFilePath);
-    await applySaveMigrations(database);
-    await database.persist();
-    return { database, saveFilePath };
-  }
-
-  private async openExistingSaveDatabase(saveId: string): Promise<{ database: SqliteFileDatabase; saveFilePath: string } | null> {
+  private async getExistingSaveSession(saveId: string): Promise<SaveSession | null> {
     const saveFilePath = resolve(this.config.saveDirectoryPath, `${saveId}.sqlite`);
 
     try {
@@ -339,9 +277,39 @@ export class FlightLineBackend {
       return null;
     }
 
-    const database = await SqliteFileDatabase.open(saveFilePath);
-    await applySaveMigrations(database);
-    return { database, saveFilePath };
+    return this.openSaveSession(saveId, { createIfMissing: false });
+  }
+
+  private async openSaveSession(saveId: string, options: { createIfMissing: boolean }): Promise<SaveSession> {
+    const existingSession = this.saveSessions.get(saveId);
+
+    if (existingSession) {
+      return existingSession;
+    }
+
+    const saveFilePath = resolve(this.config.saveDirectoryPath, `${saveId}.sqlite`);
+    const sessionPromise = (async () => {
+      const saveDatabase = await SqliteFileDatabase.open(saveFilePath, {
+        readonly: false,
+        fileMustExist: !options.createIfMissing,
+        enableWriteOptimizations: true,
+      });
+      await applySaveMigrations(saveDatabase);
+      return {
+        saveId,
+        saveFilePath,
+        saveDatabase,
+      } satisfies SaveSession;
+    })();
+
+    this.saveSessions.set(saveId, sessionPromise);
+
+    try {
+      return await sessionPromise;
+    } catch (error) {
+      this.saveSessions.delete(saveId);
+      throw error;
+    }
   }
 
   private async resolveAircraftSnapshotVersion(): Promise<string> {
@@ -349,5 +317,3 @@ export class FlightLineBackend {
     return `flightline-aircraft:${fileStat.size}:${fileStat.mtime.toISOString()}`;
   }
 }
-
-

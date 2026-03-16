@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { SqliteFileDatabase } from "./sqlite-file-database.js";
 
-const SAVE_MIGRATION_FILES = ["0001_initial.sql"] as const;
+const SAVE_MIGRATION_FILES = ["0001_initial.sql", "0002_route_plan.sql", "0003_aircraft_market.sql"] as const;
 const saveSchemaDirectoryUrl = new URL("../save-schema/", import.meta.url);
 
 export async function applySaveMigrations(database: SqliteFileDatabase, appVersion = "dev"): Promise<void> {
@@ -51,3 +51,4 @@ export async function applySaveMigrations(database: SqliteFileDatabase, appVersi
     });
   }
 }
+

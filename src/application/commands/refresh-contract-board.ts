@@ -14,6 +14,10 @@ interface ActiveWindowRow extends Record<string, unknown> {
   offerWindowId: string;
 }
 
+interface AircraftLocationRow extends Record<string, unknown> {
+  currentAirportId: string;
+}
+
 export async function handleRefreshContractBoard(
   command: RefreshContractBoardCommand,
   dependencies: RefreshContractBoardDependencies,
@@ -25,16 +29,16 @@ export async function handleRefreshContractBoard(
     hardBlockers.push(`Save ${command.saveId} does not have an active company.`);
   }
 
-  const originAirport = companyContext
+  const homeBaseAirport = companyContext
     ? dependencies.airportReference.findAirport(companyContext.homeBaseAirportId)
     : null;
 
-  if (!originAirport) {
+  if (!homeBaseAirport) {
     hardBlockers.push("A valid home-base airport is required before generating contracts.");
   }
 
-  if (originAirport && !originAirport.accessibleNow) {
-    hardBlockers.push(`Home base ${originAirport.airportKey} is not currently accessible.`);
+  if (homeBaseAirport && !homeBaseAirport.accessibleNow) {
+    hardBlockers.push(`Home base ${homeBaseAirport.airportKey} is not currently accessible.`);
   }
 
   if (hardBlockers.length > 0) {
@@ -51,8 +55,24 @@ export async function handleRefreshContractBoard(
   }
 
   const refreshReason = command.payload.refreshReason ?? "manual";
-  const candidateAirports = dependencies.airportReference.listContractDestinations(originAirport!);
-  const generatedBoard = generateContractBoard(companyContext!, originAirport!, candidateAirports, refreshReason);
+  const aircraftLocationRows = dependencies.saveDatabase.all<AircraftLocationRow>(
+    `SELECT DISTINCT current_airport_id AS currentAirportId
+    FROM company_aircraft
+    WHERE company_id = $company_id
+      AND delivery_state IN ('delivered', 'available')`,
+    { $company_id: companyContext!.companyId },
+  );
+
+  const footprintOrigins = [
+    companyContext!.homeBaseAirportId,
+    ...companyContext!.baseAirportIds,
+    ...aircraftLocationRows.map((row) => row.currentAirportId),
+  ]
+    .map((airportId) => dependencies.airportReference.findAirport(airportId))
+    .filter((airport): airport is NonNullable<typeof airport> => airport != null && airport.accessibleNow);
+
+  const candidateAirports = dependencies.airportReference.listContractMarketAirports();
+  const generatedBoard = generateContractBoard(companyContext!, footprintOrigins, candidateAirports, refreshReason);
 
   if (generatedBoard.offers.length === 0) {
     return {
@@ -228,6 +248,7 @@ export async function handleRefreshContractBoard(
         $metadata_json: JSON.stringify({
           refreshReason,
           homeBaseAirportId: companyContext!.homeBaseAirportId,
+          originAirportIds: footprintOrigins.map((airport) => airport.airportKey),
           offerCount: generatedBoard.offers.length,
         }),
       },

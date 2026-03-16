@@ -4,16 +4,16 @@ FlightLine is an airline and aircraft management simulation project.
 
 ## Current Status
 
-This repository is currently a strategy, implementation-design, backend-scaffold, wireframing, and data foundation workspace.
+This repository is currently a strategy, implementation-design, backend, desktop UI, wireframing, and data foundation workspace.
 
 What exists today:
 
 - product strategy and system design docs in `strategy/`
 - implementation-facing backend design docs in `implementation/`
-- an initial TypeScript backend scaffold in `src/`
-- a working SQLite save bootstrap and early backend command handlers in `src/`
+- a TypeScript backend and native SQLite save runtime in `src/`
+- persistent save-session reuse and migration-backed save slots in `src/`
 - read-side company, contract-board, contract, fleet, staffing, schedule, and event-log query services in `src/`
-- a minimal tabbed local operations UI in `src/ui/`
+- an incremental desktop operations UI with a launcher, save-loading screen, in-place tabs, and partial action updates in `src/ui/`
 - an Electron desktop shell in `src/desktop/`
 - screen wireframes in `wireframes/`
 - a local airport reference database in `data/airports/`
@@ -29,7 +29,7 @@ What does not exist yet:
 - full scheduled-event and recurring-obligation coverage
 - feature-complete automated test coverage
 
-This means the project is still in pre-production, but it now has a real backend bootstrap path, an initial executable management loop, and a usable internal operations UI instead of docs only.
+This means the project is still in pre-production, but it now has a real backend, a working native-save path, an initial executable management loop, and a usable internal desktop operations UI instead of docs only.
 
 ## Product Direction
 
@@ -75,14 +75,14 @@ Key folders:
 
 - `strategy/`: product, systems, economy, staffing, airport, and generation design docs
 - `implementation/`: backend aggregates, command model, schema blueprint, and doc-boundary review
-- `src/`: TypeScript backend scaffold, save runtime, command handlers, query services, persistence utilities, the local UI server, and the Electron desktop shell
+- `src/`: TypeScript backend, save runtime, command handlers, query services, persistence utilities, the incremental local UI server, and the Electron desktop shell
 - `wireframes/`: markdown wireframes for the first MVP management screens
 - `data/airports/`: local SQLite airport snapshot, schema, and data notes
 - `data/aircraft/`: local SQLite aircraft snapshot, schema, and data notes
 - `data/saves/`: local save-slot SQLite files and notes
 - `scripts/airports/`: airport database build, enrichment, and derived-field scripts
 - `scripts/aircraft/`: aircraft database build scripts and curated seed data
-- `test/`: backend smoke tests that exercise the current implementation slice
+- `test/`: backend and lifecycle smoke tests that exercise the current implementation slice
 
 ## Start Here
 
@@ -100,8 +100,8 @@ Useful design clusters:
 - product and progression: `strategy/product-pillars.md`, `strategy/gameplay-loop-and-progression.md`
 - staffing and aircraft acquisition: `strategy/labor-and-staffing.md`, `strategy/aircraft-acquisition.md`, `strategy/aircraft-data-model.md`, `strategy/aircraft-roster-and-balance.md`, `strategy/msfs-aircraft-alignment.md`
 - world data and generation: `strategy/airport-data-strategy.md`, `strategy/content-generation-systems.md`, `strategy/contract-generation-model.md`, `strategy/contract-generator-v1.md`, `strategy/aircraft-market-model.md`, `strategy/staffing-market-model.md`
-- simulation and execution: `strategy/technical-foundation.md`, `strategy/game-state-model.md`, `strategy/dispatch-validation-and-time-advance.md`, `strategy/state-and-alert-model.md`
-- backend implementation design: `implementation/backend-domain-model.md`, `implementation/backend-command-model.md`, `implementation/save-schema-blueprint.md`
+- simulation and execution: `strategy/technical-foundation.md`, `strategy/game-state-model.md`, `strategy/dispatch-validation-and-time-advance.md`, `strategy/state-and-alert-model.md`, `strategy/time-and-calendar.md`
+- backend implementation design: `implementation/backend-domain-model.md`, `implementation/backend-command-model.md`, `implementation/save-schema-blueprint.md`, `implementation/calendar-event-model.md`
 - pre-wireframe UX: `strategy/user-flows.md`, `strategy/screen-blueprints.md`
 
 ## Current Backend Slice
@@ -113,6 +113,7 @@ What it does today:
 - creates a save-slot SQLite file
 - applies the initial save migration set
 - records schema migrations inside the save DB
+- reuses native SQLite save sessions instead of rewriting whole save files on every command
 - implements `CreateSaveGame`
 - implements `CreateCompany`
 - implements `AcquireAircraft`
@@ -123,9 +124,9 @@ What it does today:
 - implements `AcceptContractOffer`
 - implements `AdvanceTime`
 - validates starter airports, aircraft acquisitions, draft schedules, and contract origins against the real airport and aircraft reference databases
-- persists fleet, staffing packages, labor reservations, scheduled events, recurring obligations, event log, command log, offer windows, contract offers, accepted contracts, and ledger state
+- persists fleet, staffing packages, labor reservations, scheduled events, recurring obligations, event log, command log, offer windows, contract offers, accepted contracts, saved route plans, and ledger state
 - executes scheduled departure, arrival, and contract-deadline events with aircraft-state, contract-state, and ledger effects
-- exposes read models for active company state, company contracts, the active contract board, fleet state, staffing state, aircraft schedules, and recent event log entries
+- exposes read models for active company state, company contracts, the active contract board, fleet state, staffing state, aircraft schedules, recent event log entries, and saved route-plan state
 
 Current backend entry surface:
 
@@ -138,6 +139,7 @@ Current backend entry surface:
 - `src/application/commands/commit-aircraft-schedule.ts`
 - `src/application/commands/refresh-contract-board.ts`
 - `src/application/commands/accept-contract-offer.ts`
+- `src/application/commands/advance-time.ts`
 - `src/application/queries/company-state.ts`
 - `src/application/queries/company-contracts.ts`
 - `src/application/queries/contract-board.ts`
@@ -150,7 +152,7 @@ Current backend entry surface:
 - `src/infrastructure/reference/airport-reference.ts`
 - `src/infrastructure/reference/aircraft-reference.ts`
 
-Current test coverage is still intentionally narrow: one smoke test now proves save creation, company creation, aircraft acquisition, staffing activation, contract acceptance, draft-save, schedule commit, first-leg execution through `AdvanceTime`, and duplicate rejection.
+Current test coverage is still intentionally narrow: backend smoke and route-planner coverage now prove save creation, company creation, aircraft acquisition, staffing activation, large-board contract generation, contract acceptance, planner persistence, planner upgrade from candidate to accepted, route-plan draft binding, schedule commit, time advance, duplicate rejection, and contracts-board lifecycle refresh behavior.
 
 ## Wireframes
 
@@ -247,18 +249,22 @@ Important note:
 
 ## Local UI
 
-A minimal local operations UI now exists at:
+An internal desktop operations UI now exists at:
 
 - `src/ui/server.ts`
 
 It currently supports:
 
-- creating save slots and companies
-- acquiring starter aircraft and staffing packages
-- refreshing and accepting contracts
-- auto-planning, committing, and reviewing schedules
+- a simplified launcher for creating, opening, and deleting local save slots
+- a dedicated save-opening shell with a staged loading screen and airplane progress bar
+- bootstrap-first save loading so the shell opens before heavy tabs like contracts
+- client-side in-save tabs that load in place instead of full-window navigation
+- partial JSON action updates for company creation, aircraft acquisition, staffing activation, route-plan editing, route-plan dispatch binding, auto-planning, schedule commit, contract acceptance, and time advance
+- a persistent contracts board with 200+ offers, client-side search/filtering, in-place acceptance, endpoint-aware chaining, a saved route planner, and a route map
+- route-plan handoff in Dispatch plus auto-planning, committing, and reviewing schedules
 - advancing time and reviewing recent operational events
-- working inside top-level tabs so the full-screen window stays fixed while tables and panels scroll internally
+- timing logs for bootstrap, tab loads, contract-board lifecycle, and in-save action endpoints
+- fixed-window desktop behavior where scrolling stays inside panels instead of the full app window
 
 Run it in the browser with:
 
@@ -276,9 +282,9 @@ The Electron entrypoint lives at `src/desktop/main.ts`.
 The current technical recommendation is:
 
 - TypeScript for domain and UI code
-- SQLite for persistence
+- native SQLite for persistence and save slots
 - Electron for the current desktop shell
-- optional richer client framework later if the local operations UI outgrows the current server-rendered approach
+- optional richer client framework later if the local operations UI outgrows the current TypeScript + server-rendered shell approach
 
 Target architecture:
 
@@ -323,4 +329,5 @@ The current best next sequence is:
 1. expose the first playable vertical slice in UI on top of the current backend slice
 2. expand execution coverage for recurring obligations, maintenance, alerts, and recovery flows
 3. expand balancing and secondary systems once the core loop runs end to end
+
 

@@ -30,6 +30,19 @@ interface ExistingAcceptedContractRow extends Record<string, unknown> {
   companyContractId: string;
 }
 
+function describeAcceptedContract(
+  originAirportId: string,
+  destinationAirportId: string,
+  volumeType: "passenger" | "cargo",
+  passengerCount: number | null,
+  cargoWeightLb: number | null,
+): string {
+  const payload = volumeType === "cargo"
+    ? `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(cargoWeightLb ?? 0)} lb cargo`
+    : `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(passengerCount ?? 0)} pax`;
+  return `${originAirportId} -> ${destinationAirportId} ${volumeType} contract (${payload})`;
+}
+
 export async function handleAcceptContractOffer(
   command: AcceptContractOfferCommand,
   dependencies: AcceptContractOfferDependencies,
@@ -117,6 +130,13 @@ export async function handleAcceptContractOffer(
 
   const companyContractId = createPrefixedId("contract");
   const eventLogEntryId = createPrefixedId("event");
+  const acceptedContractSummary = describeAcceptedContract(
+    offerRow!.originAirportId,
+    offerRow!.destinationAirportId,
+    offerRow!.volumeType,
+    offerRow!.passengerCount,
+    offerRow!.cargoWeightLb,
+  );
 
   dependencies.saveDatabase.transaction(() => {
     dependencies.saveDatabase.run(
@@ -181,6 +201,37 @@ export async function handleAcceptContractOffer(
     );
 
     dependencies.saveDatabase.run(
+      `UPDATE route_plan_item
+      SET source_type = 'accepted_contract',
+          source_id = $company_contract_id,
+          planner_item_status = 'accepted_ready',
+          origin_airport_id = $origin_airport_id,
+          destination_airport_id = $destination_airport_id,
+          volume_type = $volume_type,
+          passenger_count = $passenger_count,
+          cargo_weight_lb = $cargo_weight_lb,
+          payout_amount = $payout_amount,
+          earliest_start_utc = $earliest_start_utc,
+          deadline_utc = $deadline_utc,
+          updated_at_utc = $updated_at_utc
+      WHERE source_type = 'candidate_offer'
+        AND source_id = $contract_offer_id`,
+      {
+        $company_contract_id: companyContractId,
+        $origin_airport_id: offerRow!.originAirportId,
+        $destination_airport_id: offerRow!.destinationAirportId,
+        $volume_type: offerRow!.volumeType,
+        $passenger_count: offerRow!.passengerCount,
+        $cargo_weight_lb: offerRow!.cargoWeightLb,
+        $payout_amount: offerRow!.payoutAmount,
+        $earliest_start_utc: offerRow!.earliestStartUtc,
+        $deadline_utc: offerRow!.latestCompletionUtc,
+        $updated_at_utc: companyContext!.currentTimeUtc,
+        $contract_offer_id: offerRow!.contractOfferId,
+      },
+    );
+
+    dependencies.saveDatabase.run(
       `INSERT INTO event_log_entry (
         event_log_entry_id,
         save_id,
@@ -213,7 +264,7 @@ export async function handleAcceptContractOffer(
         $source_object_type: "company_contract",
         $source_object_id: companyContractId,
         $severity: "info",
-        $message: `Accepted contract offer ${offerRow!.contractOfferId}.`,
+        $message: `Accepted ${acceptedContractSummary}.`,
         $metadata_json: JSON.stringify({
           contractOfferId: offerRow!.contractOfferId,
           offerWindowId: offerRow!.offerWindowId,
@@ -263,7 +314,7 @@ export async function handleAcceptContractOffer(
     success: true,
     commandId: command.commandId,
     changedAggregateIds: [companyContractId, offerRow!.contractOfferId],
-    validationMessages: [`Accepted contract offer ${offerRow!.contractOfferId}.`],
+    validationMessages: [`Accepted ${acceptedContractSummary}.`],
     hardBlockers: [],
     warnings: [],
     emittedEventIds: [eventLogEntryId],
@@ -271,6 +322,8 @@ export async function handleAcceptContractOffer(
     metadata: {
       companyContractId,
       contractOfferId: offerRow!.contractOfferId,
+      contractSummary: acceptedContractSummary,
     },
   };
 }
+

@@ -4,12 +4,16 @@
   "description": "FlightLine airline management simulation",
   "main": "dist/desktop/main.js",
   "scripts": {
-    "test": "npm run build && node test/backend-smoke.test.mjs",
+    "test": "npm run test:unit",
     "build": "tsc -p tsconfig.json && node scripts/copy-save-schema.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx src/index.ts",
     "ui": "npm run build && node dist/ui/server.js",
-    "desktop": "npm run build && electron dist/desktop/main.js"
+    "desktop": "npm run build && electron dist/desktop/main.js",
+    "test:unit": "npm run build && node test/run-tests.mjs",
+    "test:ui:setup": "node test/setup-playwright.mjs",
+    "test:ui": "npm run build && node test/run-ui-tests.mjs",
+    "test:all": "npm run test:unit && npm run test:ui"
   },
   "keywords": [],
   "author": "",
@@ -17,13 +21,14 @@
   "private": true,
   "type": "module",
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.28",
-    "@types/sql.js": "^1.4.9",
     "electron": "^41.0.2",
+    "playwright": "^1.58.2",
     "tsx": "^4.7.1",
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "sql.js": "^1.14.1"
+    "better-sqlite3": "^12.8.0"
   }
 }

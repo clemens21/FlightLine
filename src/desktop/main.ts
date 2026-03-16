@@ -1,4 +1,4 @@
-﻿import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -12,6 +12,7 @@ const uiUrl = `http://${desktopHost}:${desktopPort}`;
 const thisDirectory = dirname(fileURLToPath(import.meta.url));
 const uiServerEntry = resolve(thisDirectory, "..", "ui", "server.js");
 const desktopLogDirectoryPath = resolve(process.cwd(), "data", "logs");
+const nodeExecutable = process.env.FLIGHTLINE_NODE_BINARY ?? "node";
 const desktopLogFilePath = resolve(desktopLogDirectoryPath, "desktop-startup.log");
 
 let mainWindow: BrowserWindow | null = null;
@@ -107,9 +108,9 @@ function startUiServer(): void {
     return;
   }
 
-  logDesktopInfo(`Starting UI server with ${process.execPath} ${uiServerEntry} on port ${desktopPort}.`);
+  logDesktopInfo(`Starting UI server with ${nodeExecutable} ${uiServerEntry} on port ${desktopPort}.`);
 
-  uiServerProcess = spawn(process.execPath, [uiServerEntry], {
+  uiServerProcess = spawn(nodeExecutable, [uiServerEntry], {
     env: {
       ...process.env,
       PORT: String(desktopPort),
@@ -209,6 +210,16 @@ async function createMainWindow(): Promise<void> {
     logDesktopInfo(`Main window finished loading ${uiUrl}.`);
   });
 
+  mainWindow.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    const prefix = `Renderer console level=${level} source=${sourceId || "unknown"} line=${line}: ${message}`;
+    if (level >= 2) {
+      logDesktopError(prefix);
+      return;
+    }
+
+    logDesktopInfo(prefix);
+  });
+
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedUrl, isMainFrame) => {
     logDesktopError(`Main window failed to load url=${validatedUrl} code=${errorCode} description=${errorDescription} mainFrame=${isMainFrame}.`);
   });
@@ -299,3 +310,4 @@ void app.whenReady().then(() => startDesktopBootstrap()).catch(async (error) => 
 
   app.exit(1);
 });
+

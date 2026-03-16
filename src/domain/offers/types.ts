@@ -10,7 +10,7 @@
 } from "../common/primitives.js";
 
 export type OfferWindowType = "contract_board" | "aircraft_market" | "staffing_market";
-export type OfferStatus = "available" | "shortlisted" | "accepted" | "expired";
+export type OfferStatus = "available" | "shortlisted" | "accepted" | "acquired" | "expired";
 
 export interface OfferWindow {
   offerWindowId: OfferWindowId;

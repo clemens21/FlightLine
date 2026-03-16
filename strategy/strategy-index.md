@@ -1,4 +1,4 @@
-﻿# FlightLine Strategy Index
+# FlightLine Strategy Index
 
 ## Purpose
 
@@ -34,6 +34,7 @@ Read order:
 26. `aircraft-market-model.md`
 27. `staffing-market-model.md`
 28. `airport-derived-tags-plan.md`
+29. `time-and-calendar.md`
 
 Wireframes:
 
@@ -94,3 +95,4 @@ Any later design proposal should answer four questions clearly:
 - What information does the player need before committing?
 - How does the system scale from one aircraft to many?
 - What repetitive work can be reduced without flattening the strategy?
+

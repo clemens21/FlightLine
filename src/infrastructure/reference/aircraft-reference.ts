@@ -133,7 +133,11 @@ export class AircraftReferenceRepository {
   private constructor(private readonly database: SqliteFileDatabase) {}
 
   static async open(filePath: string): Promise<AircraftReferenceRepository> {
-    const database = await SqliteFileDatabase.open(filePath);
+    const database = await SqliteFileDatabase.open(filePath, {
+      readonly: true,
+      fileMustExist: true,
+      enableWriteOptimizations: false,
+    });
     return new AircraftReferenceRepository(database);
   }
 
@@ -191,6 +195,60 @@ export class AircraftReferenceRepository {
     );
 
     return row ? this.mapModel(row) : null;
+  }
+
+  listModels(): AircraftModelRecord[] {
+    const rows = this.database.all<AircraftModelLookupRow>(
+      `SELECT
+        model_id AS modelId,
+        family_id AS familyId,
+        display_name AS displayName,
+        short_name AS shortName,
+        variant_kind AS variantKind,
+        in_service_role AS inServiceRole,
+        aircraft_category AS aircraftCategory,
+        max_passengers AS maxPassengers,
+        max_cargo_lb AS maxCargoLb,
+        max_takeoff_weight_lb AS maxTakeoffWeightLb,
+        max_payload_lb AS maxPayloadLb,
+        cargo_volume_cuft AS cargoVolumeCuft,
+        range_nm AS rangeNm,
+        cruise_speed_ktas AS cruiseSpeedKtas,
+        minimum_runway_ft AS minimumRunwayFt,
+        preferred_runway_ft AS preferredRunwayFt,
+        hard_surface_required AS hardSurfaceRequired,
+        rough_field_capable AS roughFieldCapable,
+        minimum_airport_size AS minimumAirportSize,
+        preferred_airport_size AS preferredAirportSize,
+        gate_requirement AS gateRequirement,
+        required_ground_service_level AS requiredGroundServiceLevel,
+        cargo_loading_type AS cargoLoadingType,
+        market_value_usd AS marketValueUsd,
+        target_lease_rate_monthly_usd AS targetLeaseRateMonthlyUsd,
+        variable_operating_cost_per_hour_usd AS variableOperatingCostPerHourUsd,
+        fixed_support_cost_per_day_usd AS fixedSupportCostPerDayUsd,
+        maintenance_reserve_per_hour_usd AS maintenanceReservePerHourUsd,
+        pilot_qualification_group AS pilotQualificationGroup,
+        pilots_required AS pilotsRequired,
+        flight_attendants_required AS flightAttendantsRequired,
+        mechanic_skill_group AS mechanicSkillGroup,
+        inspection_interval_hours AS inspectionIntervalHours,
+        inspection_interval_cycles AS inspectionIntervalCycles,
+        maintenance_downtime_hours AS maintenanceDowntimeHours,
+        startup_eligible AS startupEligible,
+        progression_tier AS progressionTier,
+        market_role_pool AS marketRolePool,
+        airport_access_profile AS airportAccessProfile,
+        best_fit_contract_tags AS bestFitContractTags,
+        msfs2024_status AS msfs2024Status,
+        msfs2024_available_for_user AS msfs2024AvailableForUser,
+        msfs2024_user_note AS msfs2024UserNote,
+        data_confidence AS dataConfidence
+      FROM aircraft_model
+      ORDER BY progression_tier, display_name, model_id`,
+    );
+
+    return rows.map((row) => this.mapModel(row));
   }
 
   findLayout(layoutId: string): AircraftLayoutRecord | null {

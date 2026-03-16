@@ -1,52 +1,52 @@
-import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import DatabaseConstructor from "better-sqlite3";
+import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
-import { pathToFileURL } from "node:url";
 
-import initSqlJs from "sql.js";
-import type { BindParams, Database as SqlJsDatabase, SqlJsStatic } from "sql.js";
+export type BindParams = Record<string, unknown> | readonly unknown[] | unknown | undefined;
 
-const require = createRequire(import.meta.url);
-let sqlJsPromise: Promise<SqlJsStatic> | null = null;
+export interface SqliteFileDatabaseOpenOptions {
+  readonly?: boolean;
+  fileMustExist?: boolean;
+  enableWriteOptimizations?: boolean;
+}
 
-async function loadSqlJs(): Promise<SqlJsStatic> {
-  if (!sqlJsPromise) {
-    sqlJsPromise = initSqlJs({
-      locateFile: (file) => {
-        const resolvedFilePath = require.resolve(`sql.js/dist/${file}`);
-        return pathToFileURL(resolvedFilePath).href;
-      },
-    });
-  }
+function hasNamedParameters(params: BindParams): params is Record<string, unknown> {
+  return typeof params === "object" && params !== null && !Array.isArray(params);
+}
 
-  return sqlJsPromise;
+function normalizeNamedParameters(params: Record<string, unknown>): Record<string, unknown> {
+  const normalizedEntries = Object.entries(params).map(([key, value]) => [key.replace(/^[:@$]/u, ""), value]);
+  return Object.fromEntries(normalizedEntries);
 }
 
 export class SqliteFileDatabase {
   private constructor(
     public readonly filePath: string,
-    private readonly database: SqlJsDatabase,
+    private readonly database: InstanceType<typeof DatabaseConstructor>,
+    private readonly readOnly: boolean,
   ) {}
 
-  static async open(filePath: string): Promise<SqliteFileDatabase> {
-    await mkdir(dirname(filePath), { recursive: true });
+  static async open(filePath: string, options: SqliteFileDatabaseOpenOptions = {}): Promise<SqliteFileDatabase> {
+    const readOnly = options.readonly ?? false;
 
-    let sourceBytes: Buffer | undefined;
-
-    try {
-      sourceBytes = await readFile(filePath);
-    } catch (error) {
-      const maybeNodeError = error as NodeJS.ErrnoException;
-
-      if (maybeNodeError.code !== "ENOENT") {
-        throw error;
-      }
+    if (!readOnly) {
+      await mkdir(dirname(filePath), { recursive: true });
     }
 
-    const SQL = await loadSqlJs();
-    const database = sourceBytes ? new SQL.Database(sourceBytes) : new SQL.Database();
-    const sqliteFileDatabase = new SqliteFileDatabase(filePath, database);
-    sqliteFileDatabase.run("PRAGMA foreign_keys = ON;");
+    const database = new DatabaseConstructor(filePath, {
+      readonly: readOnly,
+      fileMustExist: options.fileMustExist ?? false,
+      timeout: 5000,
+    });
+
+    const sqliteFileDatabase = new SqliteFileDatabase(filePath, database, readOnly);
+    sqliteFileDatabase.exec("PRAGMA foreign_keys = ON;");
+
+    if (!readOnly && (options.enableWriteOptimizations ?? true)) {
+      sqliteFileDatabase.exec("PRAGMA journal_mode = WAL;");
+      sqliteFileDatabase.exec("PRAGMA synchronous = NORMAL;");
+    }
+
     return sqliteFileDatabase;
   }
 
@@ -55,49 +55,71 @@ export class SqliteFileDatabase {
   }
 
   run(sql: string, params?: BindParams): void {
-    this.database.run(sql, params);
+    const statement = this.database.prepare(sql);
+
+    if (params === undefined) {
+      statement.run();
+      return;
+    }
+
+    if (Array.isArray(params)) {
+      statement.run(...params);
+      return;
+    }
+
+    if (hasNamedParameters(params)) {
+      statement.run(normalizeNamedParameters(params));
+      return;
+    }
+
+    statement.run(params);
   }
 
   getOne<TRow extends Record<string, unknown>>(sql: string, params?: BindParams): TRow | null {
-    const statement = this.database.prepare(sql, params);
+    const statement = this.database.prepare(sql);
+    let row: TRow | undefined;
 
-    try {
-      if (!statement.step()) {
-        return null;
-      }
-
-      return statement.getAsObject() as TRow;
-    } finally {
-      statement.free();
+    if (params === undefined) {
+      row = statement.get() as TRow | undefined;
+    } else if (Array.isArray(params)) {
+      row = statement.get(...params) as TRow | undefined;
+    } else if (hasNamedParameters(params)) {
+      row = statement.get(normalizeNamedParameters(params)) as TRow | undefined;
+    } else {
+      row = statement.get(params) as TRow | undefined;
     }
+
+    return row ?? null;
   }
 
   all<TRow extends Record<string, unknown>>(sql: string, params?: BindParams): TRow[] {
-    const statement = this.database.prepare(sql, params);
+    const statement = this.database.prepare(sql);
 
-    try {
-      const rows: TRow[] = [];
-
-      while (statement.step()) {
-        rows.push(statement.getAsObject() as TRow);
-      }
-
-      return rows;
-    } finally {
-      statement.free();
+    if (params === undefined) {
+      return statement.all() as TRow[];
     }
+
+    if (Array.isArray(params)) {
+      return statement.all(...params) as TRow[];
+    }
+
+    if (hasNamedParameters(params)) {
+      return statement.all(normalizeNamedParameters(params)) as TRow[];
+    }
+
+    return statement.all(params) as TRow[];
   }
 
   transaction<TResult>(operation: () => TResult): TResult {
-    this.run("BEGIN IMMEDIATE TRANSACTION;");
+    this.exec("BEGIN IMMEDIATE TRANSACTION;");
 
     try {
       const result = operation();
-      this.run("COMMIT;");
+      this.exec("COMMIT;");
       return result;
     } catch (error) {
       try {
-        this.run("ROLLBACK;");
+        this.exec("ROLLBACK;");
       } catch {
         // Ignore rollback errors so the original error is preserved.
       }
@@ -107,11 +129,30 @@ export class SqliteFileDatabase {
   }
 
   async persist(): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, Buffer.from(this.database.export()));
+    if (!this.readOnly) {
+      this.exec("PRAGMA wal_checkpoint(PASSIVE);");
+    }
   }
 
   async close(): Promise<void> {
+    if (!this.database.open) {
+      return;
+    }
+
+    if (!this.readOnly) {
+      try {
+        this.exec("PRAGMA optimize;");
+      } catch {
+        // Best effort only.
+      }
+
+      try {
+        this.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      } catch {
+        // Best effort only.
+      }
+    }
+
     this.database.close();
   }
 }

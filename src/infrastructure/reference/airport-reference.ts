@@ -57,14 +57,48 @@ export interface AirportRecord {
   longestHardRunwayFt: number | undefined;
 }
 
+const airportLookupSelect = `SELECT
+  a.airport_key AS airportKey,
+  a.ident_code AS identCode,
+  a.name AS name,
+  a.airport_type AS airportType,
+  a.airport_size AS airportSize,
+  a.continent AS continent,
+  a.iso_country AS isoCountry,
+  a.iso_region AS isoRegion,
+  a.municipality AS municipality,
+  a.timezone AS timezone,
+  a.latitude_deg AS latitudeDeg,
+  a.longitude_deg AS longitudeDeg,
+  a.scheduled_service AS scheduledService,
+  COALESCE(p.accessible_now, 0) AS accessibleNow,
+  COALESCE(p.supports_small_utility, 0) AS supportsSmallUtility,
+  p.market_region AS marketRegion,
+  COALESCE(p.passenger_score, 0) AS passengerScore,
+  COALESCE(p.cargo_score, 0) AS cargoScore,
+  COALESCE(p.remote_score, 0) AS remoteScore,
+  COALESCE(p.tourism_score, 0) AS tourismScore,
+  COALESCE(p.business_score, 0) AS businessScore,
+  p.demand_archetype AS demandArchetype,
+  COALESCE(p.contract_generation_weight, 1.0) AS contractGenerationWeight,
+  p.longest_hard_runway_ft AS longestHardRunwayFt
+FROM airport AS a
+LEFT JOIN airport_profile AS p ON p.airport_id = a.id`;
+
 export class AirportReferenceRepository {
+  private readonly lookupCache = new Map<string, AirportRecord | null>();
+
   private constructor(
     private readonly filePath: string,
     private readonly database: SqliteFileDatabase,
   ) {}
 
   static async open(filePath: string): Promise<AirportReferenceRepository> {
-    const database = await SqliteFileDatabase.open(filePath);
+    const database = await SqliteFileDatabase.open(filePath, {
+      readonly: true,
+      fileMustExist: true,
+      enableWriteOptimizations: false,
+    });
     return new AirportReferenceRepository(filePath, database);
   }
 
@@ -75,34 +109,13 @@ export class AirportReferenceRepository {
       return null;
     }
 
+    const cachedAirport = this.lookupCache.get(normalizedLookup);
+    if (cachedAirport !== undefined) {
+      return cachedAirport;
+    }
+
     const row = this.database.getOne<AirportLookupRow>(
-      `SELECT
-        a.airport_key AS airportKey,
-        a.ident_code AS identCode,
-        a.name AS name,
-        a.airport_type AS airportType,
-        a.airport_size AS airportSize,
-        a.continent AS continent,
-        a.iso_country AS isoCountry,
-        a.iso_region AS isoRegion,
-        a.municipality AS municipality,
-        a.timezone AS timezone,
-        a.latitude_deg AS latitudeDeg,
-        a.longitude_deg AS longitudeDeg,
-        a.scheduled_service AS scheduledService,
-        COALESCE(p.accessible_now, 0) AS accessibleNow,
-        COALESCE(p.supports_small_utility, 0) AS supportsSmallUtility,
-        p.market_region AS marketRegion,
-        COALESCE(p.passenger_score, 0) AS passengerScore,
-        COALESCE(p.cargo_score, 0) AS cargoScore,
-        COALESCE(p.remote_score, 0) AS remoteScore,
-        COALESCE(p.tourism_score, 0) AS tourismScore,
-        COALESCE(p.business_score, 0) AS businessScore,
-        p.demand_archetype AS demandArchetype,
-        COALESCE(p.contract_generation_weight, 1.0) AS contractGenerationWeight,
-        p.longest_hard_runway_ft AS longestHardRunwayFt
-      FROM airport AS a
-      LEFT JOIN airport_profile AS p ON p.airport_id = a.id
+      `${airportLookupSelect}
       WHERE UPPER(a.airport_key) = $lookup
          OR UPPER(a.ident_code) = $lookup
          OR UPPER(COALESCE(a.icao_code, '')) = $lookup
@@ -120,7 +133,52 @@ export class AirportReferenceRepository {
       { $lookup: normalizedLookup },
     );
 
-    return row ? this.mapAirportRow(row) : null;
+    const airport = row ? this.mapAirportRow(row) : null;
+    this.cacheAirport(airport, normalizedLookup);
+    return airport;
+  }
+
+  findAirportsByAirportKeys(airportKeys: string[]): Map<string, AirportRecord> {
+    const normalizedKeys = [...new Set(airportKeys.map((airportKey) => airportKey.trim().toUpperCase()).filter(Boolean))];
+    const airportsByKey = new Map<string, AirportRecord>();
+    const missingKeys: string[] = [];
+
+    for (const airportKey of normalizedKeys) {
+      const cachedAirport = this.lookupCache.get(airportKey);
+      if (cachedAirport !== undefined) {
+        if (cachedAirport) {
+          airportsByKey.set(airportKey, cachedAirport);
+        }
+        continue;
+      }
+      missingKeys.push(airportKey);
+    }
+
+    if (missingKeys.length > 0) {
+      const placeholders = missingKeys.map(() => "?").join(", ");
+      const rows = this.database.all<AirportLookupRow>(
+        `${airportLookupSelect}
+        WHERE UPPER(a.airport_key) IN (${placeholders})`,
+        missingKeys,
+      );
+
+      const fetchedByKey = new Map<string, AirportRecord>();
+      for (const row of rows) {
+        const airport = this.mapAirportRow(row);
+        fetchedByKey.set(airport.airportKey.toUpperCase(), airport);
+        this.cacheAirport(airport);
+      }
+
+      for (const airportKey of missingKeys) {
+        const airport = fetchedByKey.get(airportKey) ?? null;
+        this.lookupCache.set(airportKey, airport);
+        if (airport) {
+          airportsByKey.set(airportKey, airport);
+        }
+      }
+    }
+
+    return airportsByKey;
   }
 
   listContractDestinations(originAirport: AirportRecord, limit = 400): AirportRecord[] {
@@ -176,6 +234,52 @@ export class AirportReferenceRepository {
     return rows.map((row) => this.mapAirportRow(row));
   }
 
+  listContractMarketAirports(limit = 3200): AirportRecord[] {
+    const rows = this.database.all<AirportLookupRow>(
+      `SELECT
+        a.airport_key AS airportKey,
+        a.ident_code AS identCode,
+        a.name AS name,
+        a.airport_type AS airportType,
+        a.airport_size AS airportSize,
+        a.continent AS continent,
+        a.iso_country AS isoCountry,
+        a.iso_region AS isoRegion,
+        a.municipality AS municipality,
+        a.timezone AS timezone,
+        a.latitude_deg AS latitudeDeg,
+        a.longitude_deg AS longitudeDeg,
+        a.scheduled_service AS scheduledService,
+        COALESCE(p.accessible_now, 0) AS accessibleNow,
+        COALESCE(p.supports_small_utility, 0) AS supportsSmallUtility,
+        p.market_region AS marketRegion,
+        COALESCE(p.passenger_score, 0) AS passengerScore,
+        COALESCE(p.cargo_score, 0) AS cargoScore,
+        COALESCE(p.remote_score, 0) AS remoteScore,
+        COALESCE(p.tourism_score, 0) AS tourismScore,
+        COALESCE(p.business_score, 0) AS businessScore,
+        p.demand_archetype AS demandArchetype,
+        COALESCE(p.contract_generation_weight, 1.0) AS contractGenerationWeight,
+        p.longest_hard_runway_ft AS longestHardRunwayFt
+      FROM airport AS a
+      JOIN airport_profile AS p ON p.airport_id = a.id
+      WHERE p.accessible_now = 1
+        AND a.airport_type NOT IN ('heliport', 'seaplane_base', 'balloonport', 'closed')
+        AND COALESCE(p.longest_hard_runway_ft, 0) >= 2500
+      ORDER BY
+        COALESCE(p.contract_generation_weight, 1.0) DESC,
+        COALESCE(p.passenger_score, 0) + COALESCE(p.cargo_score, 0) + COALESCE(p.business_score, 0) DESC,
+        a.airport_size DESC,
+        a.airport_key ASC
+      LIMIT $limit`,
+      {
+        $limit: limit,
+      },
+    );
+
+    return rows.map((row) => this.mapAirportRow(row));
+  }
+
   async getSnapshotVersion(): Promise<string> {
     const schemaVersionRow = this.database.getOne<{ value: string }>(
       "SELECT value FROM meta WHERE key = 'schema_version' LIMIT 1",
@@ -186,7 +290,27 @@ export class AirportReferenceRepository {
   }
 
   async close(): Promise<void> {
+    this.lookupCache.clear();
     await this.database.close();
+  }
+
+  private cacheAirport(airport: AirportRecord | null, primaryLookup?: string): void {
+    if (!airport) {
+      if (primaryLookup) {
+        this.lookupCache.set(primaryLookup, null);
+      }
+      return;
+    }
+
+    const aliases = [
+      primaryLookup,
+      airport.airportKey,
+      airport.identCode,
+    ].filter((alias): alias is string => Boolean(alias));
+
+    for (const alias of aliases) {
+      this.lookupCache.set(alias.trim().toUpperCase(), airport);
+    }
   }
 
   private mapAirportRow(row: AirportLookupRow): AirportRecord {

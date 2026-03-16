@@ -25,6 +25,12 @@ interface FleetAircraftRow extends Record<string, unknown> {
   recurringPaymentAmount: number | null;
   paymentCadence: "weekly" | "monthly" | null;
   agreementEndAtUtc: string | null;
+  conditionBandInput: string | null;
+  hoursSinceInspection: number | null;
+  cyclesSinceInspection: number | null;
+  hoursToService: number | null;
+  maintenanceStateInput: string | null;
+  aogFlag: number | null;
 }
 
 export interface FleetAircraftView {
@@ -39,6 +45,12 @@ export interface FleetAircraftView {
   airframeHoursTotal: number;
   airframeCyclesTotal: number;
   conditionValue: number;
+  conditionBandInput: string;
+  hoursSinceInspection: number;
+  cyclesSinceInspection: number;
+  hoursToService: number;
+  maintenanceStateInput: string;
+  aogFlag: boolean;
   statusInput: string;
   dispatchAvailable: boolean;
   activeScheduleId: string | undefined;
@@ -107,9 +119,16 @@ export function loadFleetState(
       aa.acquisition_agreement_id AS acquisitionAgreementId,
       aa.recurring_payment_amount AS recurringPaymentAmount,
       aa.payment_cadence AS paymentCadence,
-      aa.end_at_utc AS agreementEndAtUtc
+      aa.end_at_utc AS agreementEndAtUtc,
+      mps.condition_band_input AS conditionBandInput,
+      mps.hours_since_inspection AS hoursSinceInspection,
+      mps.cycles_since_inspection AS cyclesSinceInspection,
+      mps.hours_to_service AS hoursToService,
+      mps.maintenance_state_input AS maintenanceStateInput,
+      mps.aog_flag AS aogFlag
     FROM company_aircraft AS ca
     LEFT JOIN acquisition_agreement AS aa ON aa.aircraft_id = ca.aircraft_id
+    LEFT JOIN maintenance_program_state AS mps ON mps.aircraft_id = ca.aircraft_id
     WHERE ca.company_id = $company_id
     ORDER BY ca.acquired_at_utc, ca.registration`,
     { $company_id: companyContext.companyId },
@@ -136,6 +155,12 @@ export function loadFleetState(
       airframeHoursTotal: row.airframeHoursTotal,
       airframeCyclesTotal: row.airframeCyclesTotal,
       conditionValue: row.conditionValue,
+      conditionBandInput: row.conditionBandInput ?? "excellent",
+      hoursSinceInspection: row.hoursSinceInspection ?? 0,
+      cyclesSinceInspection: row.cyclesSinceInspection ?? 0,
+      hoursToService: row.hoursToService ?? 0,
+      maintenanceStateInput: row.maintenanceStateInput ?? "current",
+      aogFlag: row.aogFlag === 1,
       statusInput: row.statusInput,
       dispatchAvailable: row.dispatchAvailable === 1,
       activeScheduleId: row.activeScheduleId ?? undefined,

@@ -4,6 +4,7 @@ import type {
   AirportId,
   CommandId,
   ContractOfferId,
+  CompanyContractId,
   CurrencyAmount,
   JsonObject,
   SaveId,
@@ -65,6 +66,16 @@ export interface AcquireAircraftPayload {
   paymentCadence?: "weekly" | "monthly";
   termMonths?: number;
   rateBandOrApr?: number;
+  seededAirframeHoursTotal?: number;
+  seededAirframeCyclesTotal?: number;
+  seededConditionValue?: number;
+  seededStatusInput?: string;
+  seededConditionBandInput?: string;
+  seededHoursSinceInspection?: number;
+  seededCyclesSinceInspection?: number;
+  seededHoursToService?: number;
+  seededMaintenanceStateInput?: string;
+  seededAogFlag?: boolean;
 }
 
 export interface ActivateStaffingPackagePayload {
@@ -106,8 +117,16 @@ export interface RefreshContractBoardPayload {
   refreshReason?: "scheduled" | "manual" | "bootstrap";
 }
 
+export interface RefreshAircraftMarketPayload {
+  refreshReason?: "scheduled" | "manual" | "bootstrap";
+}
+
 export interface AcceptContractOfferPayload {
   contractOfferId: ContractOfferId;
+}
+
+export interface CancelCompanyContractPayload {
+  companyContractId: CompanyContractId;
 }
 
 export interface AdvanceTimePayload {
@@ -154,8 +173,16 @@ export type RefreshContractBoardCommand = CommandEnvelope<RefreshContractBoardPa
   commandName: "RefreshContractBoard";
 };
 
+export type RefreshAircraftMarketCommand = CommandEnvelope<RefreshAircraftMarketPayload> & {
+  commandName: "RefreshAircraftMarket";
+};
+
 export type AcceptContractOfferCommand = CommandEnvelope<AcceptContractOfferPayload> & {
   commandName: "AcceptContractOffer";
+};
+
+export type CancelCompanyContractCommand = CommandEnvelope<CancelCompanyContractPayload> & {
+  commandName: "CancelCompanyContract";
 };
 
 export type AdvanceTimeCommand = CommandEnvelope<AdvanceTimePayload> & {
@@ -170,7 +197,9 @@ export type SupportedCommand =
   | SaveScheduleDraftCommand
   | CommitAircraftScheduleCommand
   | RefreshContractBoardCommand
+  | RefreshAircraftMarketCommand
   | AcceptContractOfferCommand
+  | CancelCompanyContractCommand
   | AdvanceTimeCommand;
 
 export interface CommandResult {

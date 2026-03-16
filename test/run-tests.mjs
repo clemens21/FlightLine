@@ -1,0 +1,22 @@
+import { syncDistSaveSchema } from "./helpers/dist-assets.mjs";
+
+await syncDistSaveSchema();
+
+await import("./backend-smoke.test.mjs");
+await import("./save-slot-files.test.mjs");
+await import("./contracts-board-lifecycle.test.mjs");
+await import("./route-planner.test.mjs");
+
+await import("./aircraft-tab.test.mjs");
+
+await import("./save-shell.test.mjs");
+
+await import("./contracts-view.test.mjs");
+
+await import("./clock-calendar.test.mjs");
+
+await import("./route-plan-ops.test.mjs");
+
+await import("./offer-selection.test.mjs");
+
+await import("./ui-server-smoke.test.mjs");

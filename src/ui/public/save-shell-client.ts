@@ -1,0 +1,923 @@
+import { mountAircraftTab, type AircraftTabController } from "./aircraft-tab-client.js";
+import { mountContractsTab, type ContractsTabController } from "./contracts-tab-client.js";
+import type { ClockPanelPayload, ClockRateMode } from "../clock-calendar-model.js";
+import type {
+  SaveBootstrapPayload,
+  SavePageTab,
+  SaveTabPayload,
+  ShellSummaryPayload,
+} from "../save-shell-model.js";
+
+interface ActionResponse {
+  success: boolean;
+  shell: ShellSummaryPayload;
+  tab?: SaveTabPayload;
+  clock?: ClockPanelPayload;
+  message?: string;
+  error?: string;
+}
+
+interface ClockPayloadResponse {
+  payload?: ClockPanelPayload;
+  error?: string;
+}
+
+interface PrefetchedOpenPayload {
+  saveId: string;
+  initialTab: SavePageTab;
+  bootstrap: SaveBootstrapPayload;
+  tab: SaveTabPayload;
+  cachedAtUtc: string;
+}
+
+interface ShellConfig {
+  saveId: string;
+  initialTab: SavePageTab;
+}
+
+const appRoot = document.querySelector<HTMLElement>("[data-save-shell-app]");
+const clockRateModes: ClockRateMode[] = ["paused", "1x", "4x", "10x", "60x"];
+const clockRateLabels: Record<ClockRateMode, string> = {
+  paused: "Pause",
+  "1x": "1x",
+  "4x": "4x",
+  "10x": "10x",
+  "60x": "60x",
+};
+
+console.info("[save-shell] module loaded", { hasAppRoot: Boolean(appRoot) });
+
+if (appRoot) {
+  try {
+    const configScript = appRoot.querySelector<HTMLScriptElement>("[data-shell-config]");
+    console.info("[save-shell] config script lookup", {
+      found: Boolean(configScript),
+      hasText: Boolean(configScript?.textContent),
+    });
+
+    const config = configScript?.textContent
+      ? (JSON.parse(configScript.textContent) as ShellConfig)
+      : null;
+
+    console.info("[save-shell] parsed config", config);
+
+    if (config) {
+      void mountSaveShell(appRoot, config);
+    } else {
+      console.error("[save-shell] shell config missing");
+    }
+  } catch (error) {
+    console.error("[save-shell] failed before mount", error);
+  }
+}
+
+async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<void> {
+  const loader = root.querySelector<HTMLElement>("[data-shell-loader]");
+  const frame = root.querySelector<HTMLElement>("[data-shell-frame]");
+  const titleNodeRaw = root.querySelector<HTMLElement>("[data-shell-title]");
+  const subtitleNodeRaw = root.querySelector<HTMLElement>("[data-shell-subtitle]");
+  const cashCardNodeRaw = root.querySelector<HTMLElement>("[data-shell-cash-card]");
+  const tabsNodeRaw = root.querySelector<HTMLElement>("[data-shell-tabs]");
+  const flashNodeRaw = root.querySelector<HTMLElement>("[data-shell-flash]");
+  const tabPanelNodeRaw = root.querySelector<HTMLElement>("[data-shell-tab-panel]");
+  const tabLoadingNodeRaw = root.querySelector<HTMLElement>("[data-shell-tab-loading]");
+  const loaderTitleNodeRaw = root.querySelector<HTMLElement>("[data-loader-title]");
+  const loaderErrorNodeRaw = root.querySelector<HTMLElement>("[data-loader-error]");
+  const loaderActionsNodeRaw = root.querySelector<HTMLElement>("[data-loader-actions]");
+  const loaderRetryButtonRaw = root.querySelector<HTMLButtonElement>("[data-loader-retry]");
+  const settingsMenuRaw = root.querySelector<HTMLDetailsElement>("[data-settings-menu]");
+  const settingsThemeButtonRaw = root.querySelector<HTMLButtonElement>("[data-settings-theme]");
+  const settingsThemeLabelRaw = root.querySelector<HTMLElement>("[data-settings-theme-label]");
+  const clockMenuRaw = root.querySelector<HTMLDetailsElement>("[data-clock-menu]");
+  const clockLabelRaw = root.querySelector<HTMLElement>("[data-clock-label]");
+  const clockRateRaw = root.querySelector<HTMLElement>("[data-clock-rate]");
+  const clockPanelRaw = root.querySelector<HTMLElement>("[data-clock-panel]");
+
+  if (
+    !loader
+    || !frame
+    || !titleNodeRaw
+    || !subtitleNodeRaw
+    || !cashCardNodeRaw
+    || !tabsNodeRaw
+    || !flashNodeRaw
+    || !tabPanelNodeRaw
+    || !tabLoadingNodeRaw
+    || !loaderTitleNodeRaw
+    || !loaderErrorNodeRaw
+    || !loaderActionsNodeRaw
+    || !loaderRetryButtonRaw
+    || !settingsMenuRaw
+    || !settingsThemeButtonRaw
+    || !settingsThemeLabelRaw
+    || !clockMenuRaw
+    || !clockLabelRaw
+    || !clockRateRaw
+    || !clockPanelRaw
+  ) {
+    return;
+  }
+
+  const loaderNode: HTMLElement = loader;
+  const frameNode: HTMLElement = frame;
+  const titleNode: HTMLElement = titleNodeRaw;
+  const subtitleNode: HTMLElement = subtitleNodeRaw;
+  const cashCardNode: HTMLElement = cashCardNodeRaw;
+  const tabsNode: HTMLElement = tabsNodeRaw;
+  const flashNode: HTMLElement = flashNodeRaw;
+  const tabPanelNode: HTMLElement = tabPanelNodeRaw;
+  const tabLoadingNode: HTMLElement = tabLoadingNodeRaw;
+  const loaderTitleNode: HTMLElement = loaderTitleNodeRaw;
+  const loaderErrorNode: HTMLElement = loaderErrorNodeRaw;
+  const loaderActionsNode: HTMLElement = loaderActionsNodeRaw;
+  const loaderRetryButton: HTMLButtonElement = loaderRetryButtonRaw;
+  const settingsMenu: HTMLDetailsElement = settingsMenuRaw;
+  const settingsThemeButton: HTMLButtonElement = settingsThemeButtonRaw;
+  const settingsThemeLabel: HTMLElement = settingsThemeLabelRaw;
+  const clockMenu: HTMLDetailsElement = clockMenuRaw;
+  const clockLabel: HTMLElement = clockLabelRaw;
+  const clockRateNode: HTMLElement = clockRateRaw;
+  const clockPanel: HTMLElement = clockPanelRaw;
+  const themeWindow = window as Window & { toggleTheme?: () => string | void };
+
+  const tabCache = new Map<SavePageTab, SaveTabPayload>();
+  let shell: ShellSummaryPayload | null = null;
+  let activeTab: SavePageTab = config.initialTab;
+  let contractsController: ContractsTabController | null = null;
+  let aircraftController: AircraftTabController | null = null;
+  let clockPayload: ClockPanelPayload | null = null;
+  let clockDateActionOpen = false;
+  let clockMode = restoreClockRate(config.saveId);
+  let clockTickInFlight = false;
+  let clockAccumulatedSimMs = 0;
+  let lastClockWallMs = Date.now();
+  let clockTimerHandle: number | null = null;
+
+  const tabLabels: Array<[SavePageTab, string]> = [
+    ["dashboard", "Overview"],
+    ["contracts", "Contracts"],
+    ["aircraft", "Aircraft"],
+    ["staffing", "Staff"],
+    ["dispatch", "Dispatch"],
+    ["activity", "Activity"],
+  ];
+
+  loaderTitleNode.textContent = `Opening ${config.saveId}`;
+
+  function syncSettingsMenuTheme(): void {
+    const isDark = document.body.dataset.theme === "dark";
+    settingsThemeLabel.textContent = isDark ? "Dark" : "Light";
+    settingsThemeButton.textContent = isDark ? "Switch to light theme" : "Switch to dark theme";
+  }
+
+  function syncClockTrigger(): void {
+    if (!shell?.hasCompany) {
+      clockLabel.textContent = "Setup first";
+      clockRateNode.textContent = "--";
+      return;
+    }
+
+    clockRateNode.textContent = clockMode === "paused" ? "Pause" : clockMode;
+    if (!clockPayload) {
+      clockLabel.textContent = "Loading...";
+      return;
+    }
+
+    clockLabel.textContent = `${clockPayload.currentLocalTimeLabel} | ${clockPayload.currentLocalDateLabel}`;
+  }
+
+  syncSettingsMenuTheme();
+  syncClockTrigger();
+  window.addEventListener("flightline:theme-changed", () => {
+    syncSettingsMenuTheme();
+  });
+
+  loaderRetryButton.addEventListener("click", () => {
+    window.location.reload();
+  });
+
+  function showLoaderError(message: string): void {
+    console.error("[save-shell] handoff failed:", message);
+    loaderErrorNode.textContent = message;
+    loaderErrorNode.hidden = false;
+    loaderActionsNode.hidden = false;
+  }
+
+  window.addEventListener("error", (event) => {
+    console.error("[save-shell] window error", event.message, event.error);
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    console.error("[save-shell] unhandled rejection", event.reason);
+  });
+
+  function showShellScreen(): void {
+    console.info("[save-shell] showing shell screen");
+    root.dataset.screen = "shell";
+    frameNode.hidden = false;
+    loaderNode.hidden = true;
+  }
+
+  function renderShellChrome(summary: ShellSummaryPayload): void {
+    console.info("[save-shell] render chrome", { title: summary.title, tabId: activeTab });
+    shell = summary;
+    titleNode.textContent = summary.title;
+    subtitleNode.textContent = summary.subtitle;
+    if (!summary.hasCompany || summary.currentCashAmount === null) {
+      cashCardNode.hidden = true;
+      cashCardNode.innerHTML = "";
+    } else {
+      cashCardNode.hidden = false;
+      cashCardNode.innerHTML = `<div class="eyebrow">Cash</div><strong>${escapeHtml(formatMoney(summary.currentCashAmount))}</strong><span class="muted">${escapeHtml((summary.financialPressureBand ?? "stable").replaceAll("_", " "))}</span>`;
+    }
+    tabsNode.innerHTML = tabLabels
+      .map(([tabId, label]) => `<a href="#" class="tab-link ${activeTab === tabId ? "current" : ""}" data-shell-tab="${tabId}"><span>${escapeHtml(label)}</span><span class="tab-count">${escapeHtml(summary.tabCounts[tabId])}</span></a>`)
+      .join("");
+    syncClockTrigger();
+  }
+
+  function showFlash(message: { tone: "notice" | "error"; text: string } | null): void {
+    if (!message) {
+      flashNode.innerHTML = "";
+      return;
+    }
+
+    flashNode.innerHTML = `<div class="flash ${message.tone === "error" ? "error" : "notice"}">${escapeHtml(message.text)}</div>`;
+  }
+
+  function renderClockPanel(): void {
+    if (!shell?.hasCompany) {
+      clockPanel.innerHTML = `<div class="empty-state compact">Create a company before opening the clock and calendar.</div>`;
+      return;
+    }
+
+    if (!clockPayload) {
+      clockPanel.innerHTML = `<div class="empty-state compact">Loading clock...</div>`;
+      return;
+    }
+
+    const dayButtons = clockPayload.days
+      .map((day) => {
+        const markerCount = Math.min(3, Math.max(day.criticalCount, day.warningCount, day.eventCount));
+        const markers = Array.from({ length: markerCount }, (_, index) => {
+          const tone = index < day.criticalCount ? "critical" : index < day.criticalCount + day.warningCount ? "warning" : "";
+          return `<span class="clock-day-dot ${tone}"></span>`;
+        }).join("");
+        return `<button type="button" class="clock-day ${day.isCurrentMonth ? "" : "outside"} ${day.isToday ? "today" : ""} ${day.isSelected ? "selected" : ""}" data-clock-day="${escapeHtml(day.localDate)}"><span class="clock-day-number">${day.dayNumber}</span><span class="clock-day-markers">${markers || `<span class="clock-day-dot"></span>`}</span></button>`;
+      })
+      .join("");
+
+    const agendaItems = clockPayload.agenda.length === 0
+      ? `<div class="empty-state compact">No scheduled milestones on ${escapeHtml(clockPayload.selectedDateLabel)}.</div>`
+      : `<div class="clock-agenda-list">${clockPayload.agenda.map((event) => `<article class="clock-agenda-item ${event.severity}"><div class="clock-agenda-head"><strong>${escapeHtml(event.title)}</strong><span class="pill">${escapeHtml(event.localTimeLabel)}</span></div><div class="muted">${escapeHtml(event.subtitle)}</div><div class="eyebrow">${escapeHtml(event.category)} | ${escapeHtml(event.relatedTab)}</div></article>`).join("")}</div>`;
+
+    const simTo0600 = clockPayload.quickActions.simTo0600;
+    const warningList = simTo0600.warningEvents.length === 0
+      ? `<div class="muted">No milestones are currently scheduled before the selected morning on ${escapeHtml(clockPayload.selectedDateLabel)}.</div>`
+      : `<div class="clock-warning-list">${simTo0600.warningEvents.slice(0, 4).map((event) => `<article class="clock-warning-item ${event.severity}"><div class="clock-agenda-head"><strong>${escapeHtml(event.title)}</strong><span class="pill">${escapeHtml(event.localTimeLabel)}</span></div><div class="muted">${escapeHtml(event.subtitle)}</div></article>`).join("")}${simTo0600.warningCount > 4 ? `<div class="muted">${escapeHtml(String(simTo0600.warningCount - 4))} more milestone${simTo0600.warningCount - 4 === 1 ? "" : "s"} would also be passed.</div>` : ``}</div>`;
+
+    const dayActionCard = clockDateActionOpen
+      ? `<section class="clock-day-popover"><div class="clock-day-popover-head"><div><div class="eyebrow">Selected date</div><strong>${escapeHtml(clockPayload.selectedDateLabel)}</strong></div><button type="button" class="button-secondary compact" data-clock-day-action-close="1">Close</button></div>${simTo0600.warningCount > 0 ? `<div class="clock-day-warning"><strong>Warning:</strong> simulating to the selected morning would pass ${escapeHtml(String(simTo0600.warningCount))} milestone${simTo0600.warningCount === 1 ? "" : "s"}.</div>` : ``}${warningList}<div class="clock-day-popover-actions"><button type="button" class="button-secondary" data-clock-sim-0600="${escapeHtml(simTo0600.localDate)}" ${simTo0600.enabled ? "" : "disabled"}>${escapeHtml(simTo0600.label)}</button>${simTo0600.enabled ? `<span class="muted">Advance to the morning anchor for the selected day.</span>` : `<span class="muted">The selected morning anchor on this day has already passed.</span>`}</div></section>`
+      : ``;
+
+    clockPanel.innerHTML = `
+      <section class="clock-current">
+        <div class="eyebrow">Simulation Clock</div>
+        <div class="clock-current-time">
+          <strong>${escapeHtml(clockPayload.currentLocalTimeLabel)}</strong>
+          <span class="pill">${escapeHtml(clockRateLabels[clockMode])}</span>
+        </div>
+        <div class="clock-meta-line"><span>${escapeHtml(clockPayload.currentLocalDateLabel)}</span><span>${escapeHtml(clockPayload.timeZone)}</span><span>UTC ${escapeHtml(clockPayload.utcTimeLabel)}</span></div>
+        ${clockPayload.nextCriticalEvent ? `<div class="muted">Next critical: ${escapeHtml(clockPayload.nextCriticalEvent.localTimeLabel)} � ${escapeHtml(clockPayload.nextCriticalEvent.title)}</div>` : `<div class="muted">No critical calendar items in the current month view.</div>`}
+      </section>
+      <section class="clock-rate-row">
+        ${clockRateModes.map((mode) => `<button type="button" class="clock-rate-button ${clockMode === mode ? "current" : ""}" data-clock-rate-mode="${mode}">${escapeHtml(clockRateLabels[mode])}</button>`).join("")}
+      </section>
+      <section class="clock-calendar-grid">
+        <div class="clock-calendar-head"><div><div class="eyebrow">Calendar</div><strong>${escapeHtml(clockPayload.monthLabel)}</strong></div><div class="muted">${escapeHtml(clockPayload.selectedDateLabel)}</div></div>
+        <div class="clock-weekdays">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => `<span class="clock-weekday">${label}</span>`).join("")}</div>
+        <div class="clock-days">${dayButtons}</div>
+      </section>
+      ${dayActionCard}
+      <section class="clock-agenda">
+        <div class="clock-calendar-head"><div><div class="eyebrow">Agenda</div><strong>${escapeHtml(clockPayload.selectedDateLabel)}</strong></div></div>
+        ${agendaItems}
+      </section>
+    `;
+  }
+  async function loadClock(selectedLocalDate = clockPayload?.selectedLocalDate, showErrors = false): Promise<ClockPanelPayload | null> {
+    if (!shell?.hasCompany) {
+      clockPayload = null;
+      syncClockTrigger();
+      renderClockPanel();
+      return null;
+    }
+
+    try {
+      const response = await fetch(buildClockUrl(config.saveId, selectedLocalDate));
+      const result = (await response.json()) as ClockPayloadResponse;
+      if (!response.ok || !result.payload) {
+        throw new Error(result.error ?? "Could not load the clock.");
+      }
+
+      clockPayload = result.payload;
+      syncClockTrigger();
+      renderClockPanel();
+      return clockPayload;
+    } catch (error) {
+      if (showErrors) {
+        showFlash({
+          tone: "error",
+          text: error instanceof Error ? error.message : "Could not load the clock.",
+        });
+      }
+      clockPanel.innerHTML = `<div class="loading-error">${escapeHtml(error instanceof Error ? error.message : "Could not load the clock.")}</div>`;
+      return null;
+    }
+  }
+
+  function applyClockPayload(nextClock: ClockPanelPayload | undefined): void {
+    if (!nextClock) {
+      return;
+    }
+    clockPayload = nextClock;
+    syncClockTrigger();
+    renderClockPanel();
+  }
+
+  function resetClockTicker(now = Date.now()): void {
+    lastClockWallMs = now;
+    clockAccumulatedSimMs = 0;
+  }
+
+  function setClockMode(nextMode: ClockRateMode): void {
+    clockMode = nextMode;
+    persistClockRate(config.saveId, nextMode);
+    resetClockTicker();
+    syncClockTrigger();
+    renderClockPanel();
+  }
+
+  async function tickClockIfNeeded(): Promise<void> {
+    if (!shell?.hasCompany || !clockPayload || clockMode === "paused" || clockTickInFlight || root.dataset.screen !== "shell") {
+      return;
+    }
+
+    const multiplier = rateMultiplier(clockMode);
+    if (multiplier <= 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const elapsedWallMs = now - lastClockWallMs;
+    lastClockWallMs = now;
+    clockAccumulatedSimMs += elapsedWallMs * multiplier;
+
+    const wholeMinutes = Math.floor(clockAccumulatedSimMs / 60_000);
+    if (wholeMinutes <= 0) {
+      return;
+    }
+
+    clockAccumulatedSimMs -= wholeMinutes * 60_000;
+    clockTickInFlight = true;
+
+    try {
+      const result = await postClockAction("tick", new URLSearchParams({
+        minutes: String(wholeMinutes),
+        tab: activeTab,
+        selectedLocalDate: clockPayload.selectedLocalDate,
+      }));
+
+      if (!result.success) {
+        setClockMode("paused");
+        showFlash({ tone: "error", text: result.error ?? "Clock tick failed." });
+        return;
+      }
+
+      renderShellChrome(result.shell);
+      applyClockPayload(result.clock);
+      if (clockPayload && contractsController) {
+        await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
+      }
+      if (result.message) {
+        setClockMode("paused");
+        showFlash({ tone: "notice", text: result.message });
+      }
+    } catch (error) {
+      setClockMode("paused");
+      showFlash({ tone: "error", text: error instanceof Error ? error.message : "Clock tick failed." });
+    } finally {
+      clockTickInFlight = false;
+    }
+  }
+
+  async function postClockAction(action: "tick" | "advance-to-calendar-anchor", body: URLSearchParams): Promise<ActionResponse> {
+    const response = await fetch(`/api/save/${encodeURIComponent(config.saveId)}/clock/${action}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body,
+    });
+    return await response.json() as ActionResponse;
+  }
+
+  function renderTab(payload: SaveTabPayload): void {
+    console.info("[save-shell] render tab", { tabId: payload.tabId, contentLength: payload.contentHtml.length });
+    contractsController?.destroy();
+    contractsController = null;
+    aircraftController?.destroy();
+    aircraftController = null;
+    tabPanelNode.innerHTML = payload.contentHtml;
+
+    if (payload.tabId === "contracts") {
+      const host = tabPanelNode.querySelector<HTMLElement>("[data-contracts-host]");
+      if (host) {
+        contractsController = mountContractsTab(host, payload.contractsPayload ?? null, {
+          viewUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/view`,
+          acceptUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/accept`,
+          cancelUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/cancel`,
+          plannerAddUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/add`,
+          plannerRemoveUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/remove`,
+          plannerReorderUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/reorder`,
+          plannerClearUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/clear`,
+          plannerAcceptUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/accept`,
+          onShellUpdate(nextShell) {
+            tabCache.clear();
+            renderShellChrome(nextShell);
+          },
+          onMessage(message) {
+            showFlash(message);
+          },
+        });
+
+        if (clockPayload) {
+          void contractsController.syncCurrentTime(clockPayload.currentTimeUtc).catch((error) => {
+            console.error("[save-shell] contracts clock sync failed", error);
+          });
+        }
+      }
+    }
+
+    if (payload.tabId === "aircraft") {
+      const host = tabPanelNode.querySelector<HTMLElement>("[data-aircraft-tab-host]");
+      if (host && payload.aircraftPayload) {
+        aircraftController = mountAircraftTab(host, payload.aircraftPayload);
+      }
+    }
+  }
+
+  function applyPrefetchedPayload(prefetched: PrefetchedOpenPayload): void {
+    try {
+      console.info("[save-shell] apply prefetched payload start", { tabId: prefetched.initialTab });
+      activeTab = prefetched.initialTab;
+      tabCache.set(prefetched.tab.tabId, prefetched.tab);
+      renderShellChrome(prefetched.bootstrap.shell);
+      renderShellChrome(prefetched.tab.shell);
+      renderTab(prefetched.tab);
+      showFlash(null);
+      history.replaceState(null, "", buildSaveUrl(config.saveId, prefetched.initialTab));
+      showShellScreen();
+      void loadClock(undefined, false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown shell handoff failure.";
+      console.error("[save-shell] apply prefetched payload crashed", error);
+      showLoaderError(message);
+    }
+  }
+
+  async function hydrateShellDirectly(tabId: SavePageTab): Promise<void> {
+    try {
+      console.info("[save-shell] direct hydration start", {
+        saveId: config.saveId,
+        tabId,
+      });
+
+      loaderTitleNode.textContent = `Opening ${config.saveId}`;
+      loaderErrorNode.hidden = true;
+      loaderErrorNode.textContent = "";
+      loaderActionsNode.hidden = true;
+
+      const bootstrapResponse = await fetch(`/api/save/${encodeURIComponent(config.saveId)}/bootstrap?tab=${encodeURIComponent(tabId)}`);
+      const bootstrapPayload = (await bootstrapResponse.json()) as SaveBootstrapPayload | { error: string };
+      if (!bootstrapResponse.ok || !("shell" in bootstrapPayload)) {
+        throw new Error("error" in bootstrapPayload ? bootstrapPayload.error : "Could not load the save bootstrap.");
+      }
+
+      const tabPayload = await loadTab(tabId, true);
+      renderShellChrome(bootstrapPayload.shell);
+      renderShellChrome(tabPayload.shell);
+      renderTab(tabPayload);
+      showFlash(null);
+      history.replaceState(null, "", buildSaveUrl(config.saveId, tabId));
+      showShellScreen();
+      await loadClock(undefined, false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not open the save.";
+      console.error("[save-shell] direct hydration failed", error);
+      showLoaderError(message);
+    }
+  }
+
+  async function loadTab(tabId: SavePageTab, force = false): Promise<SaveTabPayload> {
+    activeTab = tabId;
+    if (shell) {
+      renderShellChrome(shell);
+    }
+
+    if (!force) {
+      const cached = tabCache.get(tabId);
+      if (cached) {
+        renderTab(cached);
+        history.replaceState(null, "", buildSaveUrl(config.saveId, tabId));
+        return cached;
+      }
+    }
+
+    tabLoadingNode.hidden = false;
+    tabLoadingNode.textContent = `Loading ${tabId}...`;
+
+    try {
+      const response = await fetch(`/api/save/${encodeURIComponent(config.saveId)}/tab/${tabId}`);
+      const payload = (await response.json()) as SaveTabPayload | { error: string };
+      if (!response.ok || !("contentHtml" in payload)) {
+        throw new Error("error" in payload ? payload.error : `Could not load ${tabId}.`);
+      }
+
+      tabCache.set(tabId, payload);
+      renderShellChrome(payload.shell);
+      renderTab(payload);
+      history.replaceState(null, "", buildSaveUrl(config.saveId, tabId));
+      return payload;
+    } finally {
+      tabLoadingNode.hidden = true;
+    }
+  }
+
+  root.addEventListener("click", (event: MouseEvent) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (!target) {
+      return;
+    }
+
+    const themeButton = target.closest<HTMLElement>("[data-settings-theme]");
+    if (themeButton) {
+      event.preventDefault();
+      themeWindow.toggleTheme?.();
+      syncSettingsMenuTheme();
+      settingsMenu.open = false;
+      return;
+    }
+
+    const clockRateButton = target.closest<HTMLElement>("[data-clock-rate-mode]");
+    if (clockRateButton) {
+      event.preventDefault();
+      const mode = clockRateButton.dataset.clockRateMode as ClockRateMode | undefined;
+      if (mode && clockRateModes.includes(mode)) {
+        setClockMode(mode);
+      }
+      return;
+    }
+
+    const clockDayButton = target.closest<HTMLElement>("[data-clock-day]");
+    if (clockDayButton) {
+      event.preventDefault();
+      const localDate = clockDayButton.dataset.clockDay ?? "";
+      if (localDate) {
+        clockDateActionOpen = true;
+        void loadClock(localDate, true);
+      }
+      return;
+    }
+    const clockActionCloseButton = target.closest<HTMLElement>("[data-clock-day-action-close]");
+    if (clockActionCloseButton) {
+      event.preventDefault();
+      clockDateActionOpen = false;
+      renderClockPanel();
+      return;
+    }
+    const clockAnchorButton = target.closest<HTMLButtonElement>("[data-clock-sim-0600]");
+    if (clockAnchorButton) {
+      event.preventDefault();
+      const localDate = clockAnchorButton.dataset.clockSim0600 ?? "";
+      const originalLabel = clockAnchorButton.textContent ?? "Sim to selected morning";
+      clockAnchorButton.disabled = true;
+      clockAnchorButton.textContent = "Simulating...";
+      void (async () => {
+        try {
+          const result = await postClockAction("advance-to-calendar-anchor", new URLSearchParams({
+            localDate,
+            tab: activeTab,
+          }));
+
+          renderShellChrome(result.shell);
+          applyClockPayload(result.clock);
+          if (result.tab) {
+            tabCache.clear();
+            tabCache.set(result.tab.tabId, result.tab);
+            activeTab = result.tab.tabId;
+            renderTab(result.tab);
+          } else if (clockPayload && contractsController) {
+            await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
+          }
+
+          if (result.success) {
+            clockDateActionOpen = false;
+          }
+
+          showFlash(result.success
+            ? result.message
+              ? { tone: "notice", text: result.message }
+              : null
+            : { tone: "error", text: result.error ?? "Could not advance to the selected morning." });
+        } catch (error) {
+          showFlash({
+            tone: "error",
+            text: error instanceof Error ? error.message : "Could not advance to the selected morning.",
+          });
+        } finally {
+          clockAnchorButton.disabled = false;
+          clockAnchorButton.textContent = originalLabel;
+        }
+      })();
+      return;
+    }
+
+    if (settingsMenu.open && !target.closest("[data-settings-menu]")) {
+      settingsMenu.open = false;
+    }
+
+    if (clockMenu.open && !target.closest("[data-clock-menu]")) {
+      clockMenu.open = false;
+    }
+  });
+
+  clockMenu.addEventListener("toggle", () => {
+    if (clockMenu.open) {
+      settingsMenu.open = false;
+      clockDateActionOpen = false;
+      void loadClock(undefined, true);
+      return;
+    }
+
+    clockDateActionOpen = false;
+  });
+
+  settingsMenu.addEventListener("toggle", () => {
+    if (settingsMenu.open) {
+      clockMenu.open = false;
+      clockDateActionOpen = false;
+    }
+  });
+
+  window.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      if (settingsMenu.open) {
+        settingsMenu.open = false;
+      }
+      if (clockMenu.open) {
+        clockMenu.open = false;
+      }
+    }
+  });
+
+  tabsNode.addEventListener("click", (event: MouseEvent) => {
+    const target = event.target instanceof HTMLElement
+      ? event.target.closest<HTMLElement>("[data-shell-tab]")
+      : null;
+    if (!target) {
+      return;
+    }
+
+    event.preventDefault();
+    const tabId = target.dataset.shellTab as SavePageTab | undefined;
+    if (!tabId) {
+      return;
+    }
+
+    void loadTab(tabId).catch((error) => {
+      showFlash({
+        tone: "error",
+        text: error instanceof Error ? error.message : `Could not load ${tabId}.`,
+      });
+    });
+  });
+
+  root.addEventListener("submit", (event: SubmitEvent) => {
+    const form = event.target instanceof HTMLFormElement ? event.target : null;
+    if (!form || !form.matches("[data-api-form]")) {
+      return;
+    }
+
+    event.preventDefault();
+    const submitter = event.submitter instanceof HTMLButtonElement ? event.submitter : null;
+    const originalLabel = submitter?.textContent ?? "";
+    if (submitter) {
+      submitter.disabled = true;
+      submitter.textContent = submitter.dataset.pendingLabel ?? "Working...";
+    }
+
+    void (async () => {
+      try {
+        const response = await fetch(form.action, {
+          method: form.method || "POST",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: toFormUrlEncoded(new FormData(form)),
+        });
+        const result = (await response.json()) as ActionResponse;
+
+        if (result.shell) {
+          renderShellChrome(result.shell);
+        }
+
+        applyClockPayload(result.clock);
+
+        if (result.tab) {
+          tabCache.clear();
+          tabCache.set(result.tab.tabId, result.tab);
+          activeTab = result.tab.tabId;
+          renderTab(result.tab);
+        }
+
+        if (!result.clock && shell?.hasCompany) {
+          void loadClock(undefined, false);
+        }
+
+        showFlash(
+          result.success
+            ? result.message
+              ? { tone: "notice", text: result.message }
+              : null
+            : { tone: "error", text: result.error ?? "Action failed." },
+        );
+      } catch (error) {
+        showFlash({
+          tone: "error",
+          text: error instanceof Error ? error.message : "Action failed.",
+        });
+      } finally {
+        if (submitter) {
+          submitter.disabled = false;
+          submitter.textContent = originalLabel;
+        }
+      }
+    })();
+  });
+
+  const prefetched = consumePrefetchedOpenPayload(config.saveId, config.initialTab);
+  if (prefetched) {
+    console.info("[save-shell] consumed prefetched payload", {
+      saveId: config.saveId,
+      tabId: prefetched.initialTab,
+    });
+    applyPrefetchedPayload(prefetched);
+  } else {
+    console.info("[save-shell] no prefetched payload; hydrating directly", {
+      saveId: config.saveId,
+      tabId: config.initialTab,
+      openedFromLoader: wasOpenedFromLoader(),
+    });
+    await hydrateShellDirectly(config.initialTab);
+  }
+
+  clockTimerHandle = window.setInterval(() => {
+    void tickClockIfNeeded();
+  }, 1000);
+
+  window.addEventListener("beforeunload", () => {
+    if (clockTimerHandle !== null) {
+      window.clearInterval(clockTimerHandle);
+      clockTimerHandle = null;
+    }
+  });
+}
+
+function buildOpenSaveUrl(saveId: string, tabId: SavePageTab): string {
+  return `/open-save/${encodeURIComponent(saveId)}${tabId === "dashboard" ? "" : `?tab=${tabId}`}`;
+}
+
+function wasOpenedFromLoader(): boolean {
+  const search = new URLSearchParams(window.location.search);
+  return search.get("opened") === "1";
+}
+
+function buildSaveUrl(saveId: string, tabId: SavePageTab): string {
+  const search = new URLSearchParams();
+
+  if (tabId !== "dashboard") {
+    search.set("tab", tabId);
+  }
+
+  const query = search.toString();
+  return `/save/${encodeURIComponent(saveId)}${query ? `?${query}` : ""}`;
+}
+
+function buildClockUrl(saveId: string, selectedDate?: string): string {
+  const search = new URLSearchParams();
+  if (selectedDate) {
+    search.set("selectedDate", selectedDate);
+  }
+  const query = search.toString();
+  return `/api/save/${encodeURIComponent(saveId)}/clock${query ? `?${query}` : ""}`;
+}
+
+function buildPrefetchKey(saveId: string, tabId: SavePageTab): string {
+  return `flightline-save-prefetch:${encodeURIComponent(saveId)}:${tabId}`;
+}
+
+function consumePrefetchedOpenPayload(saveId: string, initialTab: SavePageTab): PrefetchedOpenPayload | null {
+  try {
+    const cacheKey = buildPrefetchKey(saveId, initialTab);
+    const raw = localStorage.getItem(cacheKey);
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as PrefetchedOpenPayload;
+
+    if (!wasOpenedFromLoader()) {
+      return null;
+    }
+
+    const cachedAtMs = Date.parse(parsed.cachedAtUtc);
+    if (Number.isNaN(cachedAtMs) || Date.now() - cachedAtMs > 5 * 60_000) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+
+    if (
+      parsed.saveId !== saveId
+      || parsed.initialTab !== initialTab
+      || parsed.bootstrap.saveId !== saveId
+      || parsed.tab.saveId !== saveId
+      || parsed.tab.tabId !== initialTab
+    ) {
+      return null;
+    }
+
+    localStorage.removeItem(cacheKey);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function toFormUrlEncoded(formData: FormData): URLSearchParams {
+  const search = new URLSearchParams();
+  formData.forEach((value, key) => {
+    search.append(key, String(value));
+  });
+  return search;
+}
+
+function restoreClockRate(saveId: string): ClockRateMode {
+  try {
+    const raw = localStorage.getItem(`flightline-clock-rate:${encodeURIComponent(saveId)}`);
+    return clockRateModes.includes(raw as ClockRateMode) ? raw as ClockRateMode : "1x";
+  } catch {
+    return "1x";
+  }
+}
+
+function persistClockRate(saveId: string, mode: ClockRateMode): void {
+  localStorage.setItem(`flightline-clock-rate:${encodeURIComponent(saveId)}`, mode);
+}
+
+function rateMultiplier(mode: ClockRateMode): number {
+  switch (mode) {
+    case "paused":
+      return 0;
+    case "1x":
+      return 1;
+    case "4x":
+      return 4;
+    case "10x":
+      return 10;
+    case "60x":
+      return 60;
+  }
+}
+
+function formatMoney(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+
+
+
