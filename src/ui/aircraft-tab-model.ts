@@ -1,3 +1,8 @@
+/*
+ * Derives the aircraft-tab view model from fleet, schedule, staffing, maintenance, and company context.
+ * The browser client receives this pre-shaped payload so it can stay focused on interaction instead of simulation rules.
+ */
+
 import type { AircraftMarketView, AircraftOfferTermsView } from "../application/queries/aircraft-market.js";
 import type { CompanyContractsView } from "../application/queries/company-contracts.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
@@ -22,7 +27,6 @@ export type AircraftTableStaffingFilter = "all" | "covered" | "tight" | "uncover
 export type AircraftTableSortKey = "attention" | "tail" | "location" | "state" | "condition" | "staffing" | "range" | "payload" | "obligation";
 export type AircraftTableSortDirection = "asc" | "desc";
 export type AircraftMarketConditionBand = "new" | "excellent" | "healthy" | "watch" | "rough";
-export type AircraftMarketAffordabilityFilter = "all" | "can_buy_now" | "can_loan_now" | "can_lease_now";
 export type AircraftMarketSortKey = "asking_price" | "monthly_burden" | "condition" | "range" | "passengers" | "cargo" | "distance";
 export type AircraftMarketSortDirection = "asc" | "desc";
 
@@ -38,6 +42,8 @@ export interface AircraftTabLocationView {
   code: string;
   primaryLabel: string;
   secondaryLabel?: string;
+  latitudeDeg?: number;
+  longitudeDeg?: number;
 }
 
 export interface AircraftTabEventView {
@@ -170,8 +176,8 @@ export interface AircraftMarketFilters {
   searchText: string;
   rolePool: string;
   conditionBand: string;
-  locationText: string;
-  affordability: AircraftMarketAffordabilityFilter;
+  locationAirportText: string;
+  maxDistanceNm: string;
 }
 
 export interface AircraftMarketSort {
@@ -235,6 +241,8 @@ interface AirportLabel {
   code: string;
   primaryLabel: string;
   secondaryLabel?: string;
+  latitudeDeg?: number;
+  longitudeDeg?: number;
 }
 
 interface EventCandidate extends AircraftTabEventView {
@@ -256,8 +264,8 @@ const defaultMarketFilters: AircraftMarketFilters = {
   searchText: "",
   rolePool: "all",
   conditionBand: "all",
-  locationText: "",
-  affordability: "all",
+  locationAirportText: "",
+  maxDistanceNm: "0",
 };
 
 const defaultMarketSort: AircraftMarketSort = {
@@ -265,6 +273,7 @@ const defaultMarketSort: AircraftMarketSort = {
   direction: "asc",
 };
 
+// Public entry points shape raw backend and reference data into stable fleet and market workspaces for the browser client.
 export function buildAircraftTabPayload(params: BuildAircraftTabPayloadParams): AircraftTabPayload {
   const companyContext = normalizeCompanyContext(params.companyContext, params.fleetState);
   const fleetWorkspace = buildFleetWorkspace({
@@ -351,9 +360,11 @@ export function applyAircraftMarketViewState(
     ...payload.defaultSort,
     ...options.sort,
   };
+  const anchorLocation = resolveMarketAnchorLocation(payload, filters.locationAirportText);
+  const maxDistanceNm = parseMaxDistanceNm(filters.maxDistanceNm);
 
   const visibleOffers = payload.offers
-    .filter((offer) => matchesMarketFilters(offer, filters))
+    .filter((offer) => matchesMarketFilters(offer, filters, anchorLocation, maxDistanceNm))
     .slice()
     .sort((left, right) => compareMarketOffers(left, right, sort));
 
@@ -370,6 +381,7 @@ export function applyAircraftMarketViewState(
   };
 }
 
+// Fleet derivation is where posture, maintenance, staffing pressure, and next-event logic are fused per owned aircraft.
 function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFleetWorkspacePayload {
   const fleet = params.fleetState?.aircraft ?? [];
   const currentTimeMs = Date.parse(params.companyContext.currentTimeUtc);
@@ -514,6 +526,7 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
   };
 }
 
+// Market derivation keeps acquisition-oriented fit and risk logic separate from owned-fleet posture.
 function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMarketWorkspacePayload {
   const companyContext = params.companyContext as CompanyContext;
   const aircraftReference = params.aircraftReference;
@@ -523,7 +536,7 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
       currentTimeUtc: companyContext.currentTimeUtc,
       summaryCards: [
         {
-          label: "Market window",
+          label: "Live market",
           value: "0 listings",
           detail: "Aircraft reference data is required to build the market view.",
           tone: "neutral",
@@ -636,36 +649,36 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
   };
 }
 
+// Summary cards compress the heavier payloads into the top-line signals shown above each workspace.
 function buildMarketSummaryCards(
   params: BuildAircraftTabPayloadParams,
   offers: AircraftMarketOfferView[],
 ): AircraftTabSummaryCard[] {
   const companyContext = params.companyContext as CompanyContext;
-  const buyableCount = offers.filter((offer) => offer.canBuyNow).length;
-  const loanableCount = offers.filter((offer) => offer.canLoanNow).length;
-  const leasableCount = offers.filter((offer) => offer.canLeaseNow).length;
   const newCount = offers.filter((offer) => offer.listingType === "new").length;
   const usedCount = offers.length - newCount;
   const awayFromBaseCount = offers.filter((offer) => offer.currentAirportId !== companyContext.homeBaseAirportId).length;
   const lowestAskingPrice = offers.length > 0 ? Math.min(...offers.map((offer) => offer.askingPurchasePriceAmount)) : 0;
+  const highestAskingPrice = offers.length > 0 ? Math.max(...offers.map((offer) => offer.askingPurchasePriceAmount)) : 0;
+  const furthestListingNm = offers.length > 0 ? Math.max(...offers.map((offer) => offer.distanceFromHomeBaseNm)) : 0;
 
   return [
     {
-      label: "Market window",
+      label: "Live market",
       value: `${offers.length} listings`,
-      detail: params.aircraftMarket?.expiresAtUtc ? `Refreshes ${formatDate(params.aircraftMarket.expiresAtUtc)}` : "Refreshes every 7 in-game days.",
+      detail: "Listings rotate quietly as sim time advances.",
       tone: offers.length > 0 ? "accent" : "neutral",
     },
     {
-      label: "Affordability",
-      value: `${buyableCount} buy | ${loanableCount} loan`,
-      detail: `${leasableCount} lease-ready | lowest ask ${formatMoney(lowestAskingPrice)}`,
-      tone: buyableCount > 0 || loanableCount > 0 || leasableCount > 0 ? "accent" : "warn",
+      label: "Price range",
+      value: offers.length > 0 ? `${formatMoney(lowestAskingPrice)} to ${formatMoney(highestAskingPrice)}` : "No pricing",
+      detail: `${newCount} new | ${usedCount} used in the current live market.`,
+      tone: offers.length > 0 ? "accent" : "neutral",
     },
     {
-      label: "Listing mix",
-      value: `${newCount} new | ${usedCount} used`,
-      detail: `${awayFromBaseCount}/${offers.length || 0} listed away from the home base.`,
+      label: "Location spread",
+      value: `${awayFromBaseCount}/${offers.length || 0} away`,
+      detail: `Furthest listing ${formatNumber(furthestListingNm)} nm from ${companyContext.homeBaseAirportId}.`,
       tone: awayFromBaseCount > 0 ? "accent" : "neutral",
     },
   ];
@@ -743,6 +756,8 @@ function describeAirport(airportReference: AirportReferenceRepository, airportId
       code: airport.identCode || airport.airportKey,
       primaryLabel,
       secondaryLabel: secondaryParts.join(" | "),
+      latitudeDeg: airport.latitudeDeg,
+      longitudeDeg: airport.longitudeDeg,
     };
   }
 
@@ -750,9 +765,12 @@ function describeAirport(airportReference: AirportReferenceRepository, airportId
     airportId,
     code: airport.identCode || airport.airportKey,
     primaryLabel,
+    latitudeDeg: airport.latitudeDeg,
+    longitudeDeg: airport.longitudeDeg,
   };
 }
 
+// Client-side sorting and filtering are pure so the browser can recompute instantly after every interaction.
 function matchesFleetFilters(aircraft: AircraftTabAircraftView, filters: AircraftTableFilters): boolean {
   if (filters.readiness === "ready" && !aircraft.isReadyForNewWork) {
     return false;
@@ -825,7 +843,13 @@ function compareFleetAircraft(left: AircraftTabAircraftView, right: AircraftTabA
   return left.registration.localeCompare(right.registration, "en-US");
 }
 
-function matchesMarketFilters(offer: AircraftMarketOfferView, filters: AircraftMarketFilters): boolean {
+// The helpers below translate backend and reference inputs into UI-facing posture labels and risk signals.
+function matchesMarketFilters(
+  offer: AircraftMarketOfferView,
+  filters: AircraftMarketFilters,
+  anchorLocation: AircraftTabLocationView | null,
+  maxDistanceNm: number,
+): boolean {
   const searchText = filters.searchText.trim().toLowerCase();
   if (searchText) {
     const haystack = [
@@ -852,24 +876,103 @@ function matchesMarketFilters(offer: AircraftMarketOfferView, filters: AircraftM
     return false;
   }
 
-  const locationText = filters.locationText.trim().toLowerCase();
-  if (locationText) {
-    const haystack = [offer.location.code, offer.location.primaryLabel, offer.location.secondaryLabel ?? ""].join(" ").toLowerCase();
-    if (!haystack.includes(locationText)) {
-      return false;
+  const locationAirportText = filters.locationAirportText.trim().toLowerCase();
+  if (locationAirportText) {
+    if (anchorLocation && hasCoordinates(anchorLocation) && hasCoordinates(offer.location)) {
+      const distanceFromAnchorNm = haversineDistanceNm(
+        {
+          latitudeDeg: anchorLocation.latitudeDeg,
+          longitudeDeg: anchorLocation.longitudeDeg,
+        } as AirportRecord,
+        {
+          latitudeDeg: offer.location.latitudeDeg,
+          longitudeDeg: offer.location.longitudeDeg,
+        } as AirportRecord,
+      );
+      const allowedDistanceNm = maxDistanceNm > 0 ? maxDistanceNm : 0;
+      if (distanceFromAnchorNm > allowedDistanceNm) {
+        return false;
+      }
+    } else {
+      const haystack = [offer.location.code, offer.location.primaryLabel, offer.location.secondaryLabel ?? ""].join(" ").toLowerCase();
+      if (!haystack.includes(locationAirportText)) {
+        return false;
+      }
     }
   }
 
-  switch (filters.affordability) {
-    case "can_buy_now":
-      return offer.canBuyNow;
-    case "can_loan_now":
-      return offer.canLoanNow;
-    case "can_lease_now":
-      return offer.canLeaseNow;
-    default:
-      return true;
+  return true;
+}
+
+function resolveMarketAnchorLocation(
+  payload: AircraftMarketWorkspacePayload,
+  airportText: string,
+): AircraftTabLocationView | null {
+  const normalizedQuery = airportText.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return null;
   }
+
+  const candidates = dedupeLocations([payload.homeBaseLocation, ...payload.offers.map((offer) => offer.location)])
+    .filter((location) => hasCoordinates(location));
+
+  const exactCodeMatch = candidates.find((location) => location.code.toLowerCase() === normalizedQuery);
+  if (exactCodeMatch) {
+    return exactCodeMatch;
+  }
+
+  const exactIdMatch = candidates.find((location) => location.airportId.toLowerCase() === normalizedQuery);
+  if (exactIdMatch) {
+    return exactIdMatch;
+  }
+
+  const exactLabelMatch = candidates.find((location) => marketLocationHaystack(location) === normalizedQuery);
+  if (exactLabelMatch) {
+    return exactLabelMatch;
+  }
+
+  const prefixMatch = candidates.find((location) =>
+    location.code.toLowerCase().startsWith(normalizedQuery)
+    || location.primaryLabel.toLowerCase().startsWith(normalizedQuery)
+    || (location.secondaryLabel?.toLowerCase().startsWith(normalizedQuery) ?? false),
+  );
+  if (prefixMatch) {
+    return prefixMatch;
+  }
+
+  const partialMatch = candidates.find((location) => marketLocationHaystack(location).includes(normalizedQuery));
+  return partialMatch ?? null;
+}
+
+function dedupeLocations(locations: AircraftTabLocationView[]): AircraftTabLocationView[] {
+  const byAirportId = new Map<string, AircraftTabLocationView>();
+  for (const location of locations) {
+    if (!byAirportId.has(location.airportId)) {
+      byAirportId.set(location.airportId, location);
+    }
+  }
+  return [...byAirportId.values()];
+}
+
+function marketLocationHaystack(location: AircraftTabLocationView): string {
+  return [location.code, location.airportId, location.primaryLabel, location.secondaryLabel ?? ""]
+    .join(" ")
+    .toLowerCase();
+}
+
+function hasCoordinates(location: AircraftTabLocationView): location is AircraftTabLocationView & {
+  latitudeDeg: number;
+  longitudeDeg: number;
+} {
+  return Number.isFinite(location.latitudeDeg) && Number.isFinite(location.longitudeDeg);
+}
+
+function parseMaxDistanceNm(value: string): number {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+  return parsed;
 }
 
 function compareMarketOffers(left: AircraftMarketOfferView, right: AircraftMarketOfferView, sort: AircraftMarketSort): number {
@@ -1134,6 +1237,7 @@ function aircraftRoleLabel(model: {
   return "Utility all-rounder";
 }
 
+// Commitment and event helpers prioritize the next actionable thing the player needs to know about an aircraft.
 function buildCurrentCommitment(
   primarySchedule: AircraftScheduleView | undefined,
   maintenanceTask: MaintenanceTaskView | undefined,
@@ -1284,6 +1388,7 @@ function buildNextEvent(
   };
 }
 
+// Attention scoring and the "why it matters" bullets drive the default ordering and detail emphasis in the UI.
 function deriveWhyItMatters(params: {
   aircraft: FleetAircraftView;
   currentCommitment: AircraftTabEventView | undefined;

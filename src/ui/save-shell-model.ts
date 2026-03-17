@@ -1,3 +1,8 @@
+/*
+ * Defines the payload types that describe save-shell chrome, tabs, and incremental updates.
+ * Both the server and browser client rely on these shared shapes to keep shell handoffs predictable.
+ */
+
 import type { AircraftTabPayload } from "./aircraft-tab-model.js";
 import type { ContractsViewPayload } from "./contracts-view-model.js";
 

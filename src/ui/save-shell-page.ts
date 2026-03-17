@@ -1,3 +1,8 @@
+/*
+ * Renders the base HTML shell that the browser client hydrates after a save is opened.
+ * It provides the layout, static chrome, and bootstrapping hooks for the richer client-side shell experience.
+ */
+
 import type { SavePageTab } from "./save-shell-model.js";
 
 function escapeHtml(value: string): string {
@@ -857,9 +862,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-tab-main {
       min-height: 0;
+      height: 100%;
       display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
       gap: 18px;
-      align-content: start;
+      overflow: hidden;
     }
     .aircraft-side-column {
       min-height: 0;
@@ -868,12 +875,18 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       align-content: start;
     }
     .aircraft-summary-grid {
+      flex: 0 0 auto;
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 14px;
     }
+    .aircraft-workspace-body {
+      min-height: 0;
+      overflow: hidden;
+    }
     .aircraft-workbench {
       min-height: 0;
+      height: 100%;
       display: grid;
       grid-template-columns: minmax(0, 1.08fr) minmax(340px, .92fr);
       gap: 18px;

@@ -1,3 +1,8 @@
+/*
+ * Copies SQL save-schema files from source into dist after the TypeScript build completes.
+ * The runtime needs these migration files alongside the emitted JavaScript even though TypeScript does not compile them.
+ */
+
 import { mkdir, readdir, copyFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

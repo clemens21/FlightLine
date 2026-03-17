@@ -1,3 +1,8 @@
+/*
+ * Provides reusable Playwright helpers for launching the browser, stabilizing clicks, and waiting on shell transitions.
+ * The browser suites lean on these helpers to stay resilient against UI timing and pointer-interception quirks.
+ */
+
 import { access } from "node:fs/promises";
 
 import { chromium } from "playwright";

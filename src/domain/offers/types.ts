@@ -1,4 +1,9 @@
-﻿import type {
+/*
+ * Declares the domain types for offers so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
+import type {
   AircraftModelId,
   AirportId,
   CompanyId,

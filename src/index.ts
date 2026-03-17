@@ -1,4 +1,9 @@
-﻿export * from "./domain/common/primitives.js";
+/*
+ * Bootstraps the FlightLine backend service and re-exports the main application entry point.
+ * This is the narrow seam that both the UI server and tests import when they need a fully wired backend.
+ */
+
+export * from "./domain/common/primitives.js";
 export * from "./domain/save-runtime/types.js";
 export * from "./domain/company/types.js";
 export * from "./domain/finance/types.js";

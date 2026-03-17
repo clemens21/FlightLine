@@ -1,4 +1,9 @@
-﻿import type {
+/*
+ * Browser controller for the contracts tab inside the save shell.
+ * It owns filter state, board tabs, planner actions, map focus, and the client-side refresh loop for contracts data.
+ */
+
+import type {
   ContractsViewAcceptedContract,
   ContractsRoutePlanItem,
   ContractsViewAirport,
@@ -105,6 +110,7 @@ const defaultMapState: MapState = {
 const activeContractStates = new Set(["accepted", "assigned", "active"]);
 const closedContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);
 
+// Mounting wraps the entire contracts surface in one event-delegated controller because the tab rerenders wholesale after most interactions.
 export function mountContractsTab(
   root: HTMLElement,
   initialPayload: ContractsViewPayload | null,
@@ -164,6 +170,7 @@ export function mountContractsTab(
   focusSelectedRoute(state);
   render();
 
+  // Click actions cover board navigation, planner mutations, acceptance or cancellation, and selection changes.
   const handleClick = (event: Event) => {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (!target) {
@@ -360,6 +367,7 @@ export function mountContractsTab(
     }
   };
 
+  // Filter changes stay client-side; text fields debounce so typing does not constantly reset the user's selection.
   const handleFilterChange = (event: Event) => {
     const target = event.target as HTMLInputElement | HTMLSelectElement | null;
     if (!target) {
@@ -480,6 +488,7 @@ export function mountContractsTab(
   root.addEventListener("pointerup", handlePointerUp);
   root.addEventListener("pointercancel", handlePointerCancel);
 
+  // Server refreshes are reserved for board expiry or planner mutations; ordinary filtering and sorting stay entirely local.
   async function refreshContractsView(): Promise<void> {
     if (!options.viewUrl) {
       return;
@@ -876,6 +885,7 @@ export function mountContractsTab(
   }
 }
 
+// Focus bookkeeping preserves text inputs across full rerenders of the tab body.
 function captureFocusState(root: HTMLElement): FocusState | null {
   const activeElement = document.activeElement;
 
@@ -920,6 +930,7 @@ function restoreFocusState(root: HTMLElement, focusState: FocusState | null): vo
   }
 }
 
+// Rendering helpers below turn the current UI state into tables, planner cards, and selected-route callouts.
 function renderBoardTab(tabId: ContractsBoardTab, label: string, count: number, activeTab: ContractsBoardTab): string {
   return `<button type="button" class="contracts-board-tab ${activeTab === tabId ? "current" : ""}" data-board-tab="${tabId}" role="tab" aria-selected="${activeTab === tabId ? "true" : "false"}"><span>${escapeHtml(label)}</span><span class="contracts-board-tab-count">${escapeHtml(String(count))}</span></button>`;
 }
@@ -1233,6 +1244,7 @@ function compareRoutes(
   return (left.origin.code + left.destination.code).localeCompare(right.origin.code + right.destination.code);
 }
 
+// Geometry and formatting helpers stay at the bottom so the main controller reads in product terms.
 function routeHoursRemaining(route: RouteLike, currentTimeUtc: string): number {
   if ("timeRemainingHours" in route) {
     return route.timeRemainingHours;
@@ -1365,6 +1377,7 @@ function getClosedContracts(payload: ContractsViewPayload): ContractsViewCompany
   return payload.companyContracts.filter((contract) => closedContractStates.has(contract.contractState));
 }
 
+// Derived collections centralize filter rules so selection, counts, and rendering all agree on the same visible set.
 function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
   const minPayout = Number.parseInt(state.filters.payoutMin, 10);
   const maxPayout = Number.parseInt(state.filters.payoutMax, 10);
@@ -1626,6 +1639,7 @@ function focusSelectedRoute(state: ContractsUiState): void {
   };
 }
 
+// The route map is rendered as a lightweight SVG overlay instead of a heavier mapping library.
 function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: SelectedRoute | null): void {
   const svg = root.querySelector<SVGSVGElement>("[data-contracts-map]");
   if (!svg) {

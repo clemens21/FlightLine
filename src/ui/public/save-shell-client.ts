@@ -1,3 +1,8 @@
+/*
+ * Browser controller for the main save shell once a save is open.
+ * It hydrates shell chrome, swaps tabs, coordinates settings and clock menus, and delegates tab-specific behavior to smaller clients.
+ */
+
 import { mountAircraftTab, type AircraftTabController } from "./aircraft-tab-client.js";
 import { mountContractsTab, type ContractsTabController } from "./contracts-tab-client.js";
 import type { ClockPanelPayload, ClockRateMode } from "../clock-calendar-model.js";
@@ -35,6 +40,7 @@ interface ShellConfig {
   initialTab: SavePageTab;
 }
 
+// Module bootstrap is intentionally thin: parse inline config and hand control to the mounted controller.
 const appRoot = document.querySelector<HTMLElement>("[data-save-shell-app]");
 const clockRateModes: ClockRateMode[] = ["paused", "1x", "4x", "10x", "60x"];
 const clockRateLabels: Record<ClockRateMode, string> = {
@@ -140,6 +146,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const clockPanel: HTMLElement = clockPanelRaw;
   const themeWindow = window as Window & { toggleTheme?: () => string | void };
 
+  // Local shell state mirrors the latest shell, tab, and clock payloads so incremental responses can update only what changed.
   const tabCache = new Map<SavePageTab, SaveTabPayload>();
   let shell: ShellSummaryPayload | null = null;
   let activeTab: SavePageTab = config.initialTab;
@@ -164,6 +171,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
 
   loaderTitleNode.textContent = `Opening ${config.saveId}`;
 
+  // Top-bar helpers keep the chrome synchronized as theme, shell, and clock data change independently.
   function syncSettingsMenuTheme(): void {
     const isDark = document.body.dataset.theme === "dark";
     settingsThemeLabel.textContent = isDark ? "Dark" : "Light";
@@ -245,6 +253,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     flashNode.innerHTML = `<div class="flash ${message.tone === "error" ? "error" : "notice"}">${escapeHtml(message.text)}</div>`;
   }
 
+  // Clock helpers own the popover UI and the lightweight wall-clock-driven simulation ticker.
   function renderClockPanel(): void {
     if (!shell?.hasCompany) {
       clockPanel.innerHTML = `<div class="empty-state compact">Create a company before opening the clock and calendar.</div>`;
@@ -396,7 +405,12 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
 
       renderShellChrome(result.shell);
       applyClockPayload(result.clock);
-      if (clockPayload && contractsController) {
+      if (result.tab) {
+        tabCache.clear();
+        tabCache.set(result.tab.tabId, result.tab);
+        activeTab = result.tab.tabId;
+        renderTab(result.tab);
+      } else if (clockPayload && contractsController) {
         await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
       }
       if (result.message) {
@@ -422,6 +436,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     return await response.json() as ActionResponse;
   }
 
+  // Tabs arrive as server-rendered HTML, then opt into richer controllers when a tab needs client-only interaction.
   function renderTab(payload: SaveTabPayload): void {
     console.info("[save-shell] render tab", { tabId: payload.tabId, contentLength: payload.contentHtml.length });
     contractsController?.destroy();
@@ -519,6 +534,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     }
   }
 
+  // Tab loading uses a small in-memory cache until a mutation invalidates it.
   async function loadTab(tabId: SavePageTab, force = false): Promise<SaveTabPayload> {
     activeTab = tabId;
     if (shell) {
@@ -554,6 +570,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     }
   }
 
+  // Shell-level event delegation keeps forms and popovers working across repeated innerHTML rerenders.
   root.addEventListener("click", (event: MouseEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (!target) {
@@ -766,6 +783,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     })();
   });
 
+  // Opening a save prefers loader-prefetched payloads and falls back to direct bootstrap requests when that handoff is missing.
   const prefetched = consumePrefetchedOpenPayload(config.saveId, config.initialTab);
   if (prefetched) {
     console.info("[save-shell] consumed prefetched payload", {
@@ -794,6 +812,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   });
 }
 
+// The remaining helpers isolate URL construction, local storage, and small formatting concerns from the main controller body.
 function buildOpenSaveUrl(saveId: string, tabId: SavePageTab): string {
   return `/open-save/${encodeURIComponent(saveId)}${tabId === "dashboard" ? "" : `?tab=${tabId}`}`;
 }

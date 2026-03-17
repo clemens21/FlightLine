@@ -1,3 +1,8 @@
+/*
+ * Wraps the underlying SQLite connection with the small persistence API used throughout the app.
+ * It provides the read, write, transaction, and persistence helpers that command and query code build on.
+ */
+
 import DatabaseConstructor from "better-sqlite3";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";

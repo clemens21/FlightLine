@@ -1,4 +1,9 @@
-﻿export type ClockRateMode = "paused" | "1x" | "4x" | "10x" | "60x";
+/*
+ * Defines the payload types used by the clock and calendar UI.
+ * These shapes keep the server-side clock builder and browser shell client synchronized on what the popover can render.
+ */
+
+export type ClockRateMode = "paused" | "1x" | "4x" | "10x" | "60x";
 
 export interface CalendarDayView {
   localDate: string;

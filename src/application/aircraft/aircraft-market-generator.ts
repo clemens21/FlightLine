@@ -1,3 +1,8 @@
+/*
+ * Builds aircraft market offers from the company state, reference data, and acquisition heuristics.
+ * The generator decides which aircraft appear, how they are configured, and what commercial terms the player sees.
+ */
+
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { CompanyContext } from "../queries/company-state.js";
 import type { AirportRecord } from "../../infrastructure/reference/airport-reference.js";
@@ -30,6 +35,8 @@ export interface GeneratedAircraftOfferInput {
   leaseTerms: AircraftOfferTermsView;
   explanationMetadata: JsonObject;
   generatedSeed: string;
+  listedAtUtc: string;
+  availableUntilUtc: string;
 }
 
 export interface GeneratedAircraftMarket {
@@ -51,6 +58,8 @@ interface GenerateAircraftMarketParams {
   ownedRolePools: Set<string>;
   ownedPilotQualifications: Set<string>;
   previousModelCounts: Map<string, number>;
+  targetCount?: number;
+  ageProfile?: "initial" | "replacement";
 }
 
 interface ListingCountProfile {
@@ -125,17 +134,11 @@ function haversineDistanceNm(origin: AirportRecord, destination: AirportRecord):
   return earthRadiusNm * c;
 }
 
-function listingCountProfile(companyPhase: CompanyContext["companyPhase"]): ListingCountProfile {
-  switch (companyPhase) {
-    case "startup":
-      return { totalCount: 18, newCount: 4 };
-    case "small_operator":
-      return { totalCount: 24, newCount: 7 };
-    case "regional_carrier":
-    case "expanding":
-    default:
-      return { totalCount: 30, newCount: 10 };
-  }
+function listingCountProfile(targetCount = 180): ListingCountProfile {
+  return {
+    totalCount: targetCount,
+    newCount: Math.max(12, Math.round(targetCount * 0.20)),
+  };
 }
 
 function isCargoBiased(model: AircraftModelRecord): boolean {
@@ -193,63 +196,50 @@ function modelWeight(
   homeBaseAirport: AirportRecord,
   duplicateCount: number,
 ): number {
-  let weight = listingType === "new" ? 1.2 : 1.5;
-  const companyTier = params.companyContext.progressionTier;
+  let weight = listingType === "new" ? 0.9 : 1.1;
   const activeAircraftCount = params.companyContext.activeAircraftCount;
   const activeStaffingCount = params.companyContext.activeStaffingPackageCount;
 
-  if (params.companyContext.companyPhase === "startup" && model.startupEligible) {
-    weight += 4.5;
-  }
-
-  if (model.progressionTier <= companyTier + 1) {
-    weight += 2.8;
-  } else if (model.progressionTier <= companyTier + 2) {
-    weight += 1.2;
-  } else {
-    weight -= listingType === "new" ? 2.2 : 1.4;
-  }
-
   if (!params.ownedRolePools.has(model.marketRolePool)) {
-    weight += 2.6;
+    weight += 1.4;
   }
 
   if (activeAircraftCount === 0 && model.pilotsRequired === 1) {
-    weight += 3.2;
+    weight += 1.2;
   }
 
   if (activeAircraftCount === 0 && model.startupEligible) {
-    weight += 2;
+    weight += 0.8;
   }
 
   if (activeStaffingCount === 0 && model.pilotsRequired > 1) {
-    weight -= 1.4;
+    weight -= 0.6;
   }
 
   if (params.ownedPilotQualifications.has(model.pilotQualificationGroup)) {
-    weight += 1.4;
+    weight += 0.7;
   } else if (activeStaffingCount > 0) {
-    weight -= 0.8;
+    weight -= 0.3;
   }
 
   if (!compatibleAirport(homeBaseAirport, model)) {
-    weight -= 1.8;
+    weight -= 0.35;
   } else {
-    weight += 1.4;
+    weight += 0.35;
   }
 
   if (isCargoBiased(model) && ![...params.ownedRolePools].some((rolePool) => rolePool.includes("cargo"))) {
-    weight += 2.2;
+    weight += 0.8;
   }
 
   if (model.maxPassengers > 0 && ![...params.ownedRolePools].some((rolePool) => rolePool.includes("passenger"))) {
-    weight += 2.2;
+    weight += 0.8;
   }
 
-  weight -= duplicateCount * 1.8;
-  weight -= (params.previousModelCounts.get(model.modelId) ?? 0) * 1.25;
+  weight -= duplicateCount * 1.5;
+  weight -= (params.previousModelCounts.get(model.modelId) ?? 0) * 0.18;
 
-  return Math.max(weight, 0.1);
+  return Math.max(weight, 0.25);
 }
 
 function pickWeightedModel(
@@ -504,10 +494,61 @@ function buildLeaseTerms(
   };
 }
 
+function saleDurationDays(
+  model: AircraftModelRecord,
+  listingType: "new" | "used",
+  state: SeededAirframeState,
+  seed: string,
+): number {
+  const isLargeAircraft = model.maxPassengers >= 70 || model.minimumRunwayFt >= 6500 || model.rangeNm >= 2800;
+  const isMidAircraft = model.maxPassengers >= 18 || model.rangeNm >= 1200 || model.maxCargoLb >= 7000;
+  const durationRange: [number, number] = isLargeAircraft
+    ? listingType === "new" ? [14, 34] : [9, 24]
+    : isMidAircraft
+      ? listingType === "new" ? [9, 22] : [5, 16]
+      : listingType === "new" ? [6, 16] : [3, 10];
+  let days = randomBetween(`${seed}|sale_days`, durationRange[0], durationRange[1]);
+
+  if (listingType === "used" && state.conditionValue >= 0.9) {
+    days *= 0.82;
+  } else if (state.conditionValue <= 0.6) {
+    days *= 1.24;
+  }
+
+  if (model.marketRolePool.includes("cargo")) {
+    days *= 0.96;
+  }
+
+  return Math.max(2.5, Math.round(days * 10) / 10);
+}
+
+function listingLifecycle(
+  generatedAtUtc: string,
+  model: AircraftModelRecord,
+  listingType: "new" | "used",
+  state: SeededAirframeState,
+  ageProfile: "initial" | "replacement",
+  seed: string,
+): { listedAtUtc: string; availableUntilUtc: string } {
+  const durationDays = saleDurationDays(model, listingType, state, seed);
+  const elapsedRatio = ageProfile === "initial"
+    ? randomBetween(`${seed}|elapsed_ratio`, 0.18, 0.82)
+    : randomBetween(`${seed}|elapsed_ratio`, 0.05, 0.35);
+  const durationMs = durationDays * 24 * 60 * 60 * 1000;
+  const elapsedMs = durationMs * elapsedRatio;
+  const listedAtUtc = new Date(new Date(generatedAtUtc).getTime() - elapsedMs).toISOString();
+  const availableUntilUtc = new Date(new Date(listedAtUtc).getTime() + durationMs).toISOString();
+
+  return {
+    listedAtUtc,
+    availableUntilUtc,
+  };
+}
+
 export function generateAircraftMarket(params: GenerateAircraftMarketParams): GeneratedAircraftMarket {
-  const countProfile = listingCountProfile(params.companyContext.companyPhase);
+  const countProfile = listingCountProfile(params.targetCount);
   const generatedAtUtc = params.companyContext.currentTimeUtc;
-  const expiresAtUtc = addUtcDays(generatedAtUtc, 7);
+  const expiresAtUtc = addUtcDays(generatedAtUtc, 3650);
   const windowSeed = makeSeed(
     params.companyContext.saveId,
     params.companyContext.companyId,
@@ -530,6 +571,7 @@ export function generateAircraftMarket(params: GenerateAircraftMarketParams): Ge
   const offers: GeneratedAircraftOfferInput[] = [];
   const controlledListingCap = Math.floor(countProfile.totalCount * 0.25);
   let controlledListingCount = 0;
+  const ageProfile = params.ageProfile ?? "replacement";
 
   for (let index = 0; index < countProfile.totalCount; index += 1) {
     const listingType: "new" | "used" = index < countProfile.newCount ? "new" : "used";
@@ -558,6 +600,7 @@ export function generateAircraftMarket(params: GenerateAircraftMarketParams): Ge
     }
 
     const state = seededAirframeState(offerSeed, model, listingType);
+    const lifecycle = listingLifecycle(generatedAtUtc, model, listingType, state, ageProfile, offerSeed);
     const askingPurchasePriceAmount = roundCurrency(model.marketValueUsd * state.priceMultiplier);
     const financeTerms = buildFinanceTerms(model, askingPurchasePriceAmount, params, state, offerSeed);
     const leaseTerms = buildLeaseTerms(model, state, params, offerSeed);
@@ -589,6 +632,8 @@ export function generateAircraftMarket(params: GenerateAircraftMarketParams): Ge
       leaseTerms,
       explanationMetadata: explainOffer(model, selectedAirport, params.homeBaseAirport, state, params),
       generatedSeed: offerSeed,
+      listedAtUtc: lifecycle.listedAtUtc,
+      availableUntilUtc: lifecycle.availableUntilUtc,
     });
 
     duplicateCounts.set(model.modelId, (duplicateCounts.get(model.modelId) ?? 0) + 1);

@@ -1,3 +1,8 @@
+/*
+ * Builds shell summaries and tab payloads from backend state for the browser-rendered save shell.
+ * This file is the central adapter between raw backend queries and the smaller UI payload contracts.
+ */
+
 import type { FlightLineBackend } from "../application/backend-service.js";
 import { loadActiveCompanyContext, type CompanyContext } from "../application/queries/company-state.js";
 import { loadCompanyContracts, type CompanyContractsView } from "../application/queries/company-contracts.js";

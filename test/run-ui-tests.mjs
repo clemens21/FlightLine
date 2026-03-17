@@ -1,3 +1,8 @@
+/*
+ * Runs the browser-based UI suites after preparing the dist assets they depend on.
+ * Keeping UI tests behind a dedicated runner makes it easier to separate browser failures from unit and HTTP failures.
+ */
+
 import { resolve } from "node:path";
 import { syncDistSaveSchema } from "./helpers/dist-assets.mjs";
 

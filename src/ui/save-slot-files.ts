@@ -1,3 +1,8 @@
+/*
+ * Manages filesystem-level save slot discovery, validation, and deletion.
+ * The launcher and save-management flows use these helpers instead of dealing with raw save paths directly.
+ */
+
 import { access, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 

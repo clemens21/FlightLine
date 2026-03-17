@@ -1,3 +1,8 @@
+/*
+ * Opens the airport reference database and exposes lookup helpers for geography, runway, and timezone data.
+ * Many simulation calculations depend on these lookups instead of duplicating airport facts in each save.
+ */
+
 import { stat } from "node:fs/promises";
 
 import type { AirportId } from "../../domain/common/primitives.js";

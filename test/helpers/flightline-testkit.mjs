@@ -1,3 +1,8 @@
+/*
+ * Provides reusable backend test helpers for save creation, fleet setup, staffing setup, board refreshes, and schedule commits.
+ * Most tests use this kit to keep scenario setup compact and consistent.
+ */
+
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

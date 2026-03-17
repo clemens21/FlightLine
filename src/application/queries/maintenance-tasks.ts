@@ -1,3 +1,8 @@
+/*
+ * Builds the maintenance tasks read model from persisted save data and reference lookups when needed.
+ * These query modules intentionally stay read-only so the UI and tests can ask for consistent snapshots without triggering side effects.
+ */
+
 import type { SaveId, UtcIsoString } from "../../domain/common/primitives.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import { loadActiveCompanyContext } from "./company-state.js";

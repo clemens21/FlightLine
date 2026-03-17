@@ -1,3 +1,8 @@
+/*
+ * Declares the domain types for save runtime so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
 import type { CompanyId, JsonObject, SaveId, UtcIsoString } from "../common/primitives.js";
 
 export type DifficultyProfile = "relaxed" | "standard" | "challenging";

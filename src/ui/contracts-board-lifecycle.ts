@@ -1,3 +1,8 @@
+/*
+ * Keeps the contract board valid and refreshed for UI consumers.
+ * It decides when the persisted board can be reused and when the backend needs to regenerate market offers.
+ */
+
 import type { FlightLineBackend } from "../application/backend-service.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
 import type { ContractBoardView } from "../application/queries/contract-board.js";

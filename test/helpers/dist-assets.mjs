@@ -1,3 +1,8 @@
+/*
+ * Keeps test-time dist assets usable when the workspace is in a partially built or partially broken state.
+ * The direct test runners call this helper before imports so schema files and temporary dist hotfixes are available.
+ */
+
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 

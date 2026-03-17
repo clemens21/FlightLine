@@ -1,3 +1,8 @@
+/*
+ * Binds a saved route plan to an aircraft by drafting the corresponding schedule.
+ * This is the UI-facing seam between commercial planning and dispatch execution.
+ */
+
 import type { FlightLineBackend, ScheduleDraftLegPayload } from "../index.js";
 import { loadRoutePlanState, markRoutePlanItemsScheduled } from "./route-plan-state.js";
 

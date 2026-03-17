@@ -1,4 +1,9 @@
-﻿import type { AircraftId, CurrencyAmount, UtcIsoString } from "../common/primitives.js";
+/*
+ * Declares the domain types for maintenance so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
+import type { AircraftId, CurrencyAmount, UtcIsoString } from "../common/primitives.js";
 
 export interface MaintenanceProgramState {
   aircraftId: AircraftId;

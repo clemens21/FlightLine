@@ -1,4 +1,9 @@
-﻿import type { AirportId, CompanyContractId, CompanyId, ContractOfferId, CurrencyAmount, JsonObject, UtcIsoString } from "../common/primitives.js";
+/*
+ * Declares the domain types for contracts so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
+import type { AirportId, CompanyContractId, CompanyId, ContractOfferId, CurrencyAmount, JsonObject, UtcIsoString } from "../common/primitives.js";
 
 export type CompanyContractState =
   | "accepted"
