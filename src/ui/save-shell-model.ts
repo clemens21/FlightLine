@@ -16,6 +16,7 @@ export const saveTabs = [
 ] as const;
 
 export type SavePageTab = (typeof saveTabs)[number]["id"];
+export type NotificationLevel = "routine" | "important";
 
 export interface FlashState {
   notice?: string | undefined;
@@ -63,4 +64,5 @@ export interface SaveActionResponse {
   tab?: SaveTabPayload | undefined;
   message?: string | undefined;
   error?: string | undefined;
+  notificationLevel?: NotificationLevel | undefined;
 }

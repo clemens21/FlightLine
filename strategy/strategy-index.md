@@ -36,6 +36,17 @@ Read order:
 28. `airport-derived-tags-plan.md`
 29. `time-and-calendar.md`
 
+## Recommended Current UI Docs
+
+For the current implemented shell and UX direction, start here:
+
+- `ui-information-architecture.md`
+- `screen-blueprints.md`
+- `wireframe-review.md`
+- `time-and-calendar.md`
+- `aircraft-market-model.md`
+- `aircraft-acquisition.md`
+
 Wireframes:
 
 - `../wireframes/index.md`
@@ -68,6 +79,7 @@ FlightLine should begin as an OnAir-style airline management sim, then different
 - Design a modern UI that handles dense operational data in both light and dark mode.
 - Define the pre-wireframe UX layer so flows, statuses, and screen purpose are stable before visual design work starts.
 - Use the first-pass wireframes to identify where the current strategy docs are still too vague.
+- Keep the strategy docs aligned with the live contracts planner, rolling aircraft market, settings shell, and clock/calendar behavior.
 - Define the generation systems and airport-data pipeline that will keep the simulation full of plausible choices.
 - Keep the airport strategy aligned with the actual multi-source local database, not just the original design assumptions.
 - Lock the aircraft reference model before turning the starter roster into real game data.

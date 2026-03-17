@@ -1,6 +1,8 @@
 /*
  * Builds the clock and calendar payload from company time, schedules, contracts, maintenance, and recurring obligations.
  * This is the server-side source of truth for everything shown in the shell clock popover.
+ * It intentionally stays informational: this file projects upcoming events into a clean calendar/agenda shape, while
+ * the authoritative state still lives in the underlying schedule, contract, maintenance, and finance tables.
  */
 
 import type { FlightLineBackend } from "../application/backend-service.js";
@@ -34,7 +36,7 @@ interface LocalTimeParts {
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Clock payload construction only loads the date span needed for the visible 6x7 calendar grid.
+// Builds the full clock popover payload for the currently visible calendar month plus the selected day's agenda.
 export async function loadClockPanelPayload(
   backend: FlightLineBackend,
   saveId: string,
@@ -127,6 +129,7 @@ export async function loadClockPanelPayload(
 }
 
 // Local-anchor helpers convert home-base local calendar actions back into UTC timestamps for simulation commands.
+// Converts a local calendar day and clock time into the UTC anchor used by the simulation backend.
 export function resolveCalendarAnchorUtc(localDate: string, localTime: string, timeZone: string): string {
   const { year, month, day } = parseLocalDateParts(localDate);
   const { hour, minute } = parseLocalTimeParts(localTime);
@@ -145,6 +148,7 @@ export function resolveCalendarAnchorUtc(localDate: string, localTime: string, t
   return new Date(guessUtcMs).toISOString();
 }
 
+// Guards calendar jump actions so the UI only offers "simulate to" anchors that still lie in the future.
 export function canAdvanceToLocalAnchor(currentTimeUtc: string, localDate: string, localTime: string, timeZone: string): boolean {
   if (!isValidLocalDate(localDate)) {
     return false;

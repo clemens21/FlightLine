@@ -35,7 +35,7 @@ try {
     const startedAtUtc = await createCompanySave(backend, saveId, {
       startedAtUtc: "2026-03-16T13:00:00.000Z",
       displayName,
-      startingCashAmount: 6_500_000,
+      startingCashAmount: 500_000_000,
     });
 
     await acquireAircraft(backend, saveId, startedAtUtc, {
@@ -218,6 +218,25 @@ try {
   await page.waitForFunction(() => document.querySelectorAll(".aircraft-row-button").length === 1);
   assert.equal(await page.locator(".aircraft-row-button").count(), 1);
   assert.equal((await page.locator(".aircraft-detail-panel").textContent())?.includes("N20CUI"), true);
+
+  await clickUi(page.locator("[data-aircraft-workspace='market']"));
+  await page.waitForFunction(() => document.querySelector("[data-aircraft-workspace='market']")?.getAttribute("aria-selected") === "true");
+  const initialMarketRows = await page.locator("[data-market-select]").count();
+  assert.ok(initialMarketRows > 0);
+  const marketDetailPanel = page.locator(".aircraft-detail-panel");
+  const selectedOfferId = await marketDetailPanel.locator("[data-market-review='owned']").first().getAttribute("data-market-review-offer");
+  assert.ok(selectedOfferId);
+  await clickUi(marketDetailPanel.locator("[data-market-review='owned']").first());
+  await page.waitForFunction(() => document.querySelector(".market-review-card") !== null);
+  await clickUi(marketDetailPanel.getByRole("button", { name: "Confirm purchase" }));
+  await page.waitForFunction(() => {
+    const marketTab = document.querySelector("[data-aircraft-workspace='market']");
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    return marketTab?.getAttribute("aria-selected") === "true" && flashText.includes("Acquired");
+  });
+  assert.equal(await page.locator("[data-aircraft-workspace='market']").getAttribute("aria-selected"), "true");
+  assert.equal(await page.locator(`[data-market-select='${selectedOfferId}']`).count(), 0);
+  assert.ok((await page.locator("[data-market-select]").count()) >= initialMarketRows);
 
   await clickUi(page.locator("[data-clock-menu] summary"));
   await page.waitForFunction(() => document.querySelectorAll("[data-clock-day]").length === 42);

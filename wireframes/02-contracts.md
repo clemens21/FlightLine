@@ -2,14 +2,14 @@
 
 ## Screen Goal
 
-Answer: `which work is worth taking, and which aircraft can profitably and safely do it?`
+Answer: `which work is worth taking, and how should I chain it into a viable route plan?`
 
 ## Primary User Flow
 
-- review available and accepted contracts
+- review available, accepted/active, and closed contracts
 - compare fit, margin, and deadline risk
-- inspect a selected opportunity in detail
-- accept or plan the best work
+- inspect a selected opportunity in route-map context
+- plan, batch-accept, or accept the best work
 
 ## Viewport
 
@@ -20,59 +20,48 @@ Answer: `which work is worth taking, and which aircraft can profitably and safel
 
 ```text
 +------------------------------------------------------------------------------------------------------------------+
-| FlightLine | Dashboard | Contracts | Dispatch | Fleet | Staffing | Wed Jun 17 08:20 MDT | -15m +1h +4h | $412k |
+| FlightLine | Dashboard | Contracts | Aircraft | Staffing | Dispatch | Clock | Settings | Cash $412k            |
 | Alerts: [ATR due soon] [King Air crew tight] [2 opportunities]                                                   |
 +------------------------------------------------------------------------------------------------------------------+
-| Filters: [All] [Cargo] [Passenger] [Today] [High Margin] [Aircraft: Any v] [Region: Rocky Mountain West v]     |
-| Sort: [Best Fit v] [Compare 0]                                                                                   |
+| View: [Available] [Accepted / Active] [Closed]                                                                   |
+| Filters: [Search] [Departure] [Destination] [Payload] [Fit] [Payout] [Passengers] [Cargo lb] [Match endpoint] |
+| Sort: [Best Fit v]                                                                                               |
 +------------------------------------------------------------------------------------------------------------------+
-| Contract Table                                                                 | Selected Contract: C-244         |
+| Contract Board                                                                 | Route Map + Planner              |
 |--------------------------------------------------------------------------------+----------------------------------|
-| ID    Route            Type      Payout   Est Margin   Fit      Risk   State   | KGJT -> KSLC                    |
-| C-244 KGJT -> KSLC     Cargo     15,400   High         ATR      Medium Available| Cargo haul, 3,700 lb            |
-| C-241 KEGE -> KAPA     Passenger 22,500   High         King Air High   Available| Deadline: 20:30 today           |
-| C-245 KCOS -> KGJT     Passenger  7,200   Medium       Caravan  Low    Available| Best aircraft: FL-842           |
-| C-248 KRKS -> KSLC     Cargo      4,400   Low          Caravan  Low    Available| Reposition: low                 |
-| C-203 KSLC -> KGJT     Cargo     18,200   High         ATR      Medium Accepted | Staffing: covered               |
-| C-089 KGJT -> KCOS     Utility    5,100   Medium       Caravan  Low    Accepted | Warning: uses maintenance margin|
-|--------------------------------------------------------------------------------+----------------------------------|
-|                                                                                | Why it is attractive             |
-|                                                                                | - strong ATR fit                 |
-|                                                                                | - good profit per hour           |
-|                                                                                | - pairs with accepted cargo work |
-|                                                                                |                                  |
-|                                                                                | Why it is risky                  |
-|                                                                                | - ATR due soon for maintenance   |
-|                                                                                | - downtime window gets tighter   |
-|                                                                                |                                  |
-|                                                                                | Fit by aircraft                  |
-|                                                                                | FL-842 ATR 42F    Strong         |
-|                                                                                | FL-201 Caravan    Poor           |
-|                                                                                | FL-305 King Air   Invalid        |
+| Route                   Fit      Payload  Distance  Hours Left  Due    Payout  | [Pinned route map]              |
+| KGJT -> KSLC            Strong   3,700 lb 209 nm    6h 20m      20:30  15,400  | Selected route overlays         |
+| KEGE -> KAPA            Strong   8 pax    108 nm    9h 10m      23:20  22,500  |                                  |
+| KCOS -> KGJT            Medium   7 pax    172 nm    4h 50m      18:00   7,200  | Route Planner                    |
+| KRKS -> KSLC            Low      2,100 lb 165 nm    7h 00m      21:10   4,400  | 1. KGJT -> KSLC accepted         |
+| ...                                                                            | 2. KSLC -> KGJT candidate        |
+|--------------------------------------------------------------------------------+| 3. KGJT -> KCOS stale           |
 |                                                                                |                                  |
 |                                                                                | Actions                          |
-|                                                                                | [Accept] [Shortlist] [Plan ATR]  |
+|                                                                                | [Add to plan] [Accept]          |
+|                                                                                | [Review planned offers]         |
 +------------------------------------------------------------------------------------------------------------------+
-| Compare Tray                                                                                                     |
-| empty by default; expands when 2+ contracts are selected for side-by-side comparison                             |
+| Table scroll remains inside the board. Map and planner stay pinned while browsing.                               |
 +------------------------------------------------------------------------------------------------------------------+
 ```
 
 ## Information Hierarchy Notes
 
-- The table is the primary surface; the detail panel explains the selected row.
-- Fit and margin should be visible before opening the detail panel.
+- The table is the primary surface; the route map and planner explain the selected row in context.
+- Fit and margin should be visible before opening any deeper detail.
 - Accepted work and available work should coexist, but visually separate enough to prevent confusion.
+- The planner should support chained decisions without bloating the main board.
 
 ## Key Interactions
 
-- row select updates right detail panel
-- compare checkbox opens bottom compare tray
-- clicking selected aircraft fit chip deep-links into dispatch with contract preloaded
+- row select updates the pinned route map and planner context
+- add-to-plan stages work in the planner rail
+- review planned offers batch-accepts in planner order
+- clicking selected aircraft fit or draft action deep-links into dispatch with route-plan context
 - filters should be fast and non-modal
 
 ## Wireframe Tensions
 
 - There is a real risk of turning the screen into a spreadsheet without decision support.
-- The selected contract panel has to explain profit and risk in plain language, not just numbers.
+- The planner rail has to feel like a staging area, not a second table.
 - Accepted and available contract states need stronger visual separation than simple labels.

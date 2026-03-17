@@ -1,6 +1,8 @@
 /*
  * Browser controller for the contracts tab inside the save shell.
  * It owns filter state, board tabs, planner actions, map focus, and the client-side refresh loop for contracts data.
+ * The browser here is intentionally rich because the contracts board behaves more like a workstation than a form page:
+ * selection, planner staging, filtering, map context, and in-place acceptance all stay client-side for responsiveness.
  */
 
 import type {
@@ -11,7 +13,7 @@ import type {
   ContractsViewOffer,
   ContractsViewPayload,
 } from "../contracts-view-model.js";
-import type { ShellSummaryPayload } from "../save-shell-model.js";
+import type { NotificationLevel, ShellSummaryPayload } from "../save-shell-model.js";
 
 interface FilterState {
   searchText: string;
@@ -55,7 +57,7 @@ interface ContractsUiState {
   sortDirection: SortDirection;
   selectedOfferId: string | null;
   selectedCompanyContractId: string | null;
-  message: { tone: "notice" | "error"; text: string } | null;
+  message: { tone: "notice" | "error"; text: string; notificationLevel?: NotificationLevel | undefined } | null;
   map: MapState;
 }
 
@@ -85,7 +87,7 @@ export interface MountContractsTabOptions {
   plannerClearUrl: string;
   plannerAcceptUrl: string;
   onShellUpdate?: (shell: ShellSummaryPayload) => void;
-  onMessage?: (message: { tone: "notice" | "error"; text: string } | null) => void;
+  onMessage?: (message: { tone: "notice" | "error"; text: string; notificationLevel?: NotificationLevel | undefined } | null) => void;
 }
 
 export interface ContractsTabController {
@@ -564,6 +566,7 @@ export function mountContractsTab(
         payload?: ContractsViewPayload;
         shell?: ShellSummaryPayload;
         error?: string;
+        notificationLevel?: NotificationLevel;
       };
 
       if (!response.ok || !result.success || !result.payload || !result.shell) {
@@ -581,6 +584,7 @@ export function mountContractsTab(
       state.message = {
         tone: "notice",
         text: result.message ?? "Contract accepted.",
+        notificationLevel: result.notificationLevel,
       };
 
       if (!getFilteredOffers(state).some((offer) => offer.contractOfferId === state.selectedOfferId)) {
@@ -632,6 +636,7 @@ export function mountContractsTab(
         payload?: ContractsViewPayload;
         shell?: ShellSummaryPayload;
         error?: string;
+        notificationLevel?: NotificationLevel;
       };
 
       if (!response.ok || !result.success || !result.payload || !result.shell) {
@@ -648,6 +653,7 @@ export function mountContractsTab(
       state.message = {
         tone: "notice",
         text: result.message ?? "Contract cancelled.",
+        notificationLevel: result.notificationLevel,
       };
 
       ensureActiveTabSelection(state);
@@ -696,6 +702,7 @@ export function mountContractsTab(
         payload?: ContractsViewPayload;
         shell?: ShellSummaryPayload;
         error?: string;
+        notificationLevel?: NotificationLevel;
       };
 
       if (!response.ok || !result.success || !result.payload || !result.shell) {
@@ -713,6 +720,7 @@ export function mountContractsTab(
       state.message = {
         tone: "notice",
         text: result.message ?? "Route plan updated.",
+        notificationLevel: result.notificationLevel,
       };
       ensureActiveTabSelection(state);
       focusSelectedRoute(state);
@@ -764,7 +772,6 @@ export function mountContractsTab(
             <span class="pill">${escapeHtml(String(closedCount))} closed</span>
           </div>
         </div>
-        ${state.message ? `<div class="flash ${state.message.tone === "error" ? "error" : "notice"}">${escapeHtml(state.message.text)}</div>` : ""}
         <div class="contracts-grid">
           <section class="panel contracts-main-panel">
             <div class="panel-head contracts-main-head">

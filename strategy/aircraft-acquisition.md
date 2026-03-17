@@ -28,9 +28,9 @@ This is what makes one acquisition smart and another reckless.
 
 The MVP should support three acquisition paths:
 
-- direct purchase
-- financing
-- operating lease
+- buy
+- loan
+- lease
 
 These should be presented as different deal structures around aircraft offers, not as disconnected systems.
 
@@ -50,7 +50,7 @@ Tradeoffs:
 - best long-term margin if the aircraft is well utilized
 - greatest exposure if the aircraft turns out to be a poor fit
 
-### Financing
+### Loan
 
 Best for:
 
@@ -65,7 +65,7 @@ Tradeoffs:
 
 This is often the most strategically interesting middle ground.
 
-### Operating Lease
+### Lease
 
 Best for:
 
@@ -109,21 +109,14 @@ The player should not need to open outside calculators to understand a deal.
 
 ## Recommended Market Model
 
-Use a curated rotating market rather than a full freeform global aircraft marketplace in MVP.
+Use a large rolling live market rather than a player-refreshable board or a static catalog.
 
 Benefits:
 
-- easier to balance
-- clearer progression pacing
-- more legible choice sets
-- simpler onboarding for new players
-
-The market can still feel alive through:
-
-- periodic offer refreshes
-- quality differences between offers
-- reputation- or finance-gated terms
-- regional delivery and availability differences later
+- feels like a real world market instead of a shop
+- supports browsing across many aircraft classes
+- lets hidden listing churn create urgency without hard gating
+- keeps the player's decision centered on fit, financing, and operational burden
 
 ## Delivery And Induction
 
@@ -201,15 +194,29 @@ Avoid these acquisition traps in the design:
 
 ## UI Implications
 
-The game needs a dedicated acquisition surface, whether that is a Fleet Market screen or a strong acquisition workflow inside Fleet.
+The game needs a dedicated acquisition surface inside the `Aircraft > Market` workspace.
 
 That surface should support:
 
-- filtering by mission role
-- side-by-side comparison
-- buy versus finance versus lease comparison
-- projected weekly cost and utilization targets
+- airport and distance filtering
+- selected-listing detail
+- buy versus loan versus lease comparison
+- a second-step confirmation surface for loan and lease terms
 - staffing impact preview
 - airport access preview
 
 This is a major opportunity to make the genre feel more modern and more strategically readable.
+
+## First-Pass UX Standard
+
+The market listing itself should stay compact.
+
+Only after the player selects an aircraft should the detail pane expose:
+
+- the image and role summary
+- the listed airport and distance from home base
+- condition and maintenance context
+- `Buy`, `Loan`, and `Lease`
+- confirm or term selection for loan and lease
+
+This keeps browsing and commitment as two distinct jobs.

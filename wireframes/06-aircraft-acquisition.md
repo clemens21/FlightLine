@@ -2,14 +2,14 @@
 
 ## Screen Goal
 
-Answer: `which aircraft offer should I take, under what payment structure, and what new capability or burden does it create?`
+Answer: `which aircraft offer should I take, under what ownership structure, and what new capability or burden does it create?`
 
 ## Primary User Flow
 
 - browse the current aircraft market
-- filter by mission role, budget, or acquisition type
-- compare shortlisted offers
-- choose buy, finance, or lease terms
+- filter by search, condition, or location radius
+- inspect one selected listing
+- choose buy, loan, or lease terms
 - confirm the deal with full staffing and utilization context
 
 ## Viewport
@@ -21,24 +21,26 @@ Answer: `which aircraft offer should I take, under what payment structure, and w
 
 ```text
 +------------------------------------------------------------------------------------------------------------------+
-| FlightLine | Dashboard | Contracts | Dispatch | Fleet | Staffing | Wed Jun 17 08:20 MDT | -15m +1h +4h | $412k |
+| FlightLine | Dashboard | Contracts | Aircraft | Staffing | Dispatch | Clock | Settings | Cash $412k            |
 | Alerts: [ATR due soon] [King Air crew tight] [2 opportunities]                                                   |
 +------------------------------------------------------------------------------------------------------------------+
-| Acquisition Filters: [All roles] [Cargo] [Passenger] [Utility] [Buy] [Finance] [Lease] [Budget <= $500k]      |
+| Market Filters: [Search] [Condition] [Location radius]                                                           |
 | Sort: [Best strategic fit v]                                                                                    |
 +------------------------------------------------------------------------------------------------------------------+
 | Market Table                                                                    | Selected Offer: Saab 340A(F)   |
 |---------------------------------------------------------------------------------+--------------------------------|
-| Type         Role        Access     Best path  Upfront   Weekly cost  Fit       | Role: regional cargo          |
-| Saab 340A(F) Cargo       medium     Finance    148,000   12,100       Strong    | Unlocks stronger cargo growth |
-| PC-12        Utility     strong     Buy        385,000    2,900       Medium    | Better than Caravan, flexible |
-| Citation CJ2 Premium pax limited    Lease       61,000   15,800       Medium    | Strong charter, high risk     |
-| Twin Otter   Rugged util excellent  Lease       44,000    8,900       Medium    | Remote field specialist       |
+| Type         Airport   Condition  Best path  Upfront   Monthly cost  Fit        | [small aircraft image]         |
+| Saab 340A(F) KABQ      Fair       Loan       148,000   12,100        Strong     | Saab 340A(F)                  |
+| PC-12        KASE      Excellent  Buy        385,000    2,900        Medium     | KABQ | Albuquerque            |
+| Citation CJ2 KSDL      Excellent  Lease       61,000   15,800        Medium     | Unlocks stronger cargo growth |
+| Twin Otter   PAKT      Rough      Lease       44,000    8,900        Medium     |                                |
 |---------------------------------------------------------------------------------+--------------------------------|
-|                                                                                 | Deal structure comparison      |
-|                                                                                 | Buy:      upfront too high     |
-|                                                                                 | Finance:  strong match         |
-|                                                                                 | Lease:    viable, weaker long  |
+|                                                                                 | [Buy] [Loan] [Lease]           |
+|                                                                                 |                                |
+|                                                                                 | Purchase terms / Loan terms    |
+|                                                                                 | / Lease terms                  |
+|                                                                                 | compact term options           |
+|                                                                                 | confirm selected structure     |
 |                                                                                 |                                |
 |                                                                                 | Strategic effect               |
 |                                                                                 | - improves cargo depth         |
@@ -51,11 +53,7 @@ Answer: `which aircraft offer should I take, under what payment structure, and w
 |                                                                                 | - no cabin crew impact         |
 |                                                                                 |                                |
 |                                                                                 | Actions                        |
-|                                                                                 | [Compare] [Finance this]       |
-|                                                                                 | [Lease instead]                |
-+------------------------------------------------------------------------------------------------------------------+
-| Bottom Compare / Commitment Bar                                                                                  |
-| Cash after financing down payment: $264,000   New weekly obligations: +$12,100   Risk: Medium   [Commit Deal] |
+|                                                                                 | [Confirm deal]                 |
 +------------------------------------------------------------------------------------------------------------------+
 ```
 
@@ -64,16 +62,17 @@ Answer: `which aircraft offer should I take, under what payment structure, and w
 - The market table is the scan surface; the right panel explains whether the selected offer is actually smart.
 - Payment structure comparison must be visible without leaving the screen.
 - Staffing impact belongs near the commitment action so acquisition never feels disconnected from labor.
+- Buy, loan, and lease detail should stay out of the table and inside the selected pane.
 
 ## Key Interactions
 
 - table row select updates the offer detail panel
-- compare mode should allow 2 to 3 aircraft side by side
-- changing buy, finance, or lease should update cash and weekly obligation previews instantly
+- changing buy, loan, or lease should update cash and payment previews instantly
 - blocked or risky deal structures should explain why, not just disable the button
+- completing a deal should keep the player on Market unless they deliberately move to Fleet
 
 ## Wireframe Tensions
 
 - This screen can become an accounting screen if utilization and mission fit are not emphasized enough.
-- Compare mode will matter a lot because acquisition is a high-stakes decision.
+- The selected pane has to stay compact enough that the list remains easy to scan.
 - The screen needs a strong distinction between `interesting` and `actually justified for this company right now`.

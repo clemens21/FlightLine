@@ -24,8 +24,9 @@ Every major screen should answer three questions fast:
 The first-pass wireframes clarified a few product-wide rules:
 
 - Dashboard is a routing surface, not a mini-app.
-- Contracts must separate `available`, `accepted`, and `assigned` states clearly.
+- Contracts must separate `available`, `accepted/active`, and `closed` states clearly.
 - Dispatch is single-aircraft-first in MVP.
+- Aircraft is one workspace with separate `Fleet` and `Market` jobs inside it.
 - Overview screens and acquisition screens are different jobs and should stay separate.
 - A transaction flow should always preview both cost and newly unlocked capability.
 
@@ -49,7 +50,7 @@ Primary actions:
 - jump to recommended contract
 - jump to staffing shortage
 - jump to maintenance issue
-- advance time
+- open clock and calendar
 
 Required states:
 
@@ -70,18 +71,18 @@ Primary decision:
 
 Top information hierarchy:
 
-1. clear state grouping or tabs for `available`, `accepted`, and `assigned`
+1. clear state grouping or tabs for `available`, `accepted/active`, and `closed`
 2. contract table with fast filtering and sorting
 3. estimated net profit and fit visibility in-row
-4. selected contract explanation panel
-5. compare tray for shortlist decisions
+4. route map pinned beside the board
+5. route planner rail for chaining work and batch acceptance
 
 Primary actions:
 
 - accept contract
-- shortlist contract
-- open detailed comparison
-- pre-plan dispatch with selected aircraft
+- add to route plan
+- review and accept planned offers
+- pre-plan dispatch with selected aircraft or accepted chain
 
 Required states:
 
@@ -89,8 +90,35 @@ Required states:
 - thin contract market
 - all attractive contracts blocked by capacity
 - no matching work for selected aircraft
+- route plan contains stale or not-yet-accepted work
 
-## 3. Fleet View
+## 3. Aircraft Workspace
+
+Primary decision:
+
+- am I evaluating current fleet posture or acquiring another aircraft?
+
+Top information hierarchy:
+
+1. clear `Fleet` and `Market` sub-tabs
+2. active workspace list surface on the left
+3. selected-aircraft pane on the right
+4. acquisition or operational actions near the selected item
+5. stable shell context with cash and clock available globally
+
+Primary actions:
+
+- switch between `Fleet` and `Market`
+- select aircraft or listing
+- route into dispatch or acquisition flow
+
+Required states:
+
+- empty fleet, market-first startup
+- established operator, fleet-first workflow
+- no currently selected item
+
+## 4. Fleet View
 
 Primary decision:
 
@@ -101,7 +129,7 @@ Top information hierarchy:
 1. fleet table or comparison view
 2. operational state and location
 3. condition and maintenance state
-4. utilization and financial performance
+4. ownership and utilization context
 5. next recommended action per aircraft
 
 Primary actions:
@@ -109,7 +137,7 @@ Primary actions:
 - open aircraft detail
 - dispatch aircraft
 - schedule maintenance
-- open aircraft acquisition flow
+- open aircraft market
 
 Required states:
 
@@ -122,35 +150,35 @@ Design rule:
 
 - Fleet is for cross-aircraft comparison; Aircraft Detail is for one-airframe understanding
 
-## 4. Aircraft Detail
+## 5. Aircraft Market
 
 Primary decision:
 
-- what this specific airframe should do next
+- which live listing is worth taking, and on what terms
 
 Top information hierarchy:
 
-1. current operational state
-2. assignment queue and next event
-3. condition and maintenance timeline
-4. recent financial performance
-5. staffing requirement and coverage
+1. large rolling market list
+2. selected-listing pane with image, location, and condition
+3. `Buy`, `Loan`, and `Lease` actions at the top of the selected pane
+4. compact second-step term confirmation for loan and lease
+5. why-this-listing-matters summary tied to current company state
 
 Primary actions:
 
-- assign contract
-- reposition
-- schedule maintenance
-- review replacement or comparison
+- filter by search, condition, and location radius
+- open `Buy`, `Loan`, or `Lease`
+- confirm the chosen acquisition structure
+- move back to Fleet without losing context
 
 Required states:
 
-- ready aircraft
-- aircraft on watch
-- aircraft in service
-- aircraft blocked by staffing or qualification
+- strong near-fit listing
+- risky but viable listing
+- listings that exceed current staffing or capital comfort
+- no strong matches under current filters
 
-## 5. Staffing Overview
+## 6. Staffing Overview
 
 Primary decision:
 
@@ -181,7 +209,7 @@ Design rule:
 
 - this screen diagnoses problems; it does not carry the full transaction flow itself
 
-## 6. Dispatch Board
+## 7. Dispatch Board
 
 Primary decision:
 
@@ -201,6 +229,7 @@ Primary actions:
 - reorder leg
 - insert reposition
 - add maintenance block
+- draft from accepted-ready route plan
 - commit schedule
 
 Required states:
@@ -214,7 +243,7 @@ Design rule:
 
 - MVP dispatch remains single-aircraft-first; do not optimize for network-wide planning yet
 
-## 7. Maintenance View
+## 8. Maintenance View
 
 Primary decision:
 
@@ -242,7 +271,7 @@ Required states:
 - overloaded maintenance queue
 - AOG disruption
 
-## 8. Finance View
+## 9. Finance View
 
 Primary decision:
 
@@ -270,7 +299,7 @@ Required states:
 - debt or lease pressure
 - operationally busy but unprofitable
 
-## 9. World View
+## 10. World View
 
 Primary decision:
 
@@ -297,34 +326,6 @@ Required states:
 - expanding regional network
 - idle aircraft in poor locations
 - attractive underserved area
-
-## 10. Aircraft Acquisition Surface
-
-Primary decision:
-
-- which aircraft offer and payment structure to commit to
-
-Top information hierarchy:
-
-1. aircraft offers table or compare set
-2. role and mission fit
-3. buy versus finance versus lease comparison
-4. staffing and qualification impact
-5. utilization and payment justification
-
-Primary actions:
-
-- compare selected offers
-- commit purchase
-- commit financing
-- commit lease
-
-Required states:
-
-- no suitable offers
-- good growth offer
-- risky but high-upside offer
-- blocked by financing or staffing
 
 ## 11. Staffing Acquisition Surface
 
@@ -360,10 +361,9 @@ The top-level shell must always expose:
 
 - company identity
 - current time
-- top alerts
-- quick time controls
 - current cash
-- quick path to the highest-priority issue
+- quick path into clock/calendar
+- settings with theme and activity controls
 
 ## Cross-Screen Behavior
 
@@ -372,6 +372,7 @@ The top-level shell must always expose:
 - Alerts should deep-link into the appropriate recovery workflow.
 - Time controls should remain visible from most screens.
 - Overview screens should open transaction screens with context preserved.
+- Activity log access should stay available from Settings instead of occupying a top-level nav tab.
 
 ## Wireframe Readiness Checklist
 

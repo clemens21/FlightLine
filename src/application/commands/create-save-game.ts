@@ -18,6 +18,7 @@ interface ExistingSaveRow extends Record<string, unknown> {
   save_id: string;
 }
 
+// Creates the save-game root row and records the immutable world/reference snapshot versions for that world.
 export async function handleCreateSaveGame(
   command: CreateSaveGameCommand,
   dependencies: CreateSaveGameDependencies,

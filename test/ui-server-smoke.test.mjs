@@ -228,12 +228,33 @@ try {
   assert.equal(aircraftTab.contentHtml.includes("data-aircraft-tab-host"), true);
   assert.ok(aircraftTab.aircraftPayload);
   assert.equal(aircraftTab.aircraftPayload.aircraft.length, 2);
+  assert.ok(aircraftTab.aircraftPayload.marketWorkspace);
+  assert.ok(aircraftTab.aircraftPayload.marketWorkspace.offers.length > 0);
 
   const constrainedEntry = aircraftTab.aircraftPayload.aircraft.find((aircraft) => aircraft.registration === "N20CHT");
   assert.ok(constrainedEntry);
   assert.equal(constrainedEntry.operationalState, "grounded");
   assert.equal(constrainedEntry.maintenanceState, "aog");
   assert.equal(constrainedEntry.riskBand, "critical");
+
+  const purchasableOffer = aircraftTab.aircraftPayload.marketWorkspace.offers.find((offer) => offer.buyOption?.isAffordable);
+  assert.ok(purchasableOffer);
+
+  const acquireOfferResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/acquire-aircraft-offer`, {
+    tab: "aircraft",
+    aircraftOfferId: purchasableOffer.aircraftOfferId,
+    ownershipType: "owned",
+    upfrontPaymentAmount: purchasableOffer.buyOption.upfrontPaymentAmount,
+  });
+  assert.equal(acquireOfferResult.response.ok, true);
+  assert.equal(acquireOfferResult.payload.success, true);
+  assert.equal(acquireOfferResult.payload.tab.tabId, "aircraft");
+  assert.ok(acquireOfferResult.payload.tab.aircraftPayload);
+  assert.equal(acquireOfferResult.payload.tab.aircraftPayload.aircraft.length, 3);
+  assert.equal(
+    acquireOfferResult.payload.tab.aircraftPayload.marketWorkspace.offers.some((offer) => offer.aircraftOfferId === purchasableOffer.aircraftOfferId),
+    false,
+  );
 
   const contractsTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/contracts`);
   assert.equal(contractsTab.tabId, "contracts");
@@ -293,8 +314,8 @@ try {
   assert.ok(acquireResult.payload.tab);
   assert.equal(acquireResult.payload.tab.tabId, "aircraft");
   assert.ok(acquireResult.payload.tab.aircraftPayload);
-  assert.equal(acquireResult.payload.tab.aircraftPayload.aircraft.length, 3);
-  assert.equal(acquireResult.payload.tab.shell.tabCounts.aircraft, "1/3");
+  assert.equal(acquireResult.payload.tab.aircraftPayload.aircraft.length, 4);
+  assert.equal(acquireResult.payload.tab.shell.tabCounts.aircraft, "2/4");
 } finally {
   await Promise.allSettled([
     server?.stop(),

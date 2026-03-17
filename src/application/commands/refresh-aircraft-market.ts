@@ -17,6 +17,7 @@ interface RefreshAircraftMarketDependencies {
   aircraftReference: AircraftReferenceRepository;
 }
 
+// Bridges the command layer to the aircraft-market reconciler so UI and time systems can trigger market churn uniformly.
 export async function handleRefreshAircraftMarket(
   command: RefreshAircraftMarketCommand,
   dependencies: RefreshAircraftMarketDependencies,

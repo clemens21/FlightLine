@@ -1,12 +1,15 @@
 /*
  * Browser controller for the main save shell once a save is open.
  * It hydrates shell chrome, swaps tabs, coordinates settings and clock menus, and delegates tab-specific behavior to smaller clients.
+ * This is the traffic controller for the in-save UI: it owns shell hydration, tab caching, action submission,
+ * notifications, settings, and the live sim-clock loop that keeps time-driven screens current.
  */
 
 import { mountAircraftTab, type AircraftTabController } from "./aircraft-tab-client.js";
 import { mountContractsTab, type ContractsTabController } from "./contracts-tab-client.js";
 import type { ClockPanelPayload, ClockRateMode } from "../clock-calendar-model.js";
 import type {
+  NotificationLevel,
   SaveBootstrapPayload,
   SavePageTab,
   SaveTabPayload,
@@ -20,6 +23,7 @@ interface ActionResponse {
   clock?: ClockPanelPayload;
   message?: string;
   error?: string;
+  notificationLevel?: NotificationLevel;
 }
 
 interface ClockPayloadResponse {
@@ -40,6 +44,15 @@ interface ShellConfig {
   initialTab: SavePageTab;
 }
 
+type ActivityPopupMode = "all" | "important_only";
+type ThemeName = "light" | "dark" | "forest";
+
+interface FlashMessage {
+  tone: "notice" | "error";
+  text: string;
+  notificationLevel?: NotificationLevel | undefined;
+}
+
 // Module bootstrap is intentionally thin: parse inline config and hand control to the mounted controller.
 const appRoot = document.querySelector<HTMLElement>("[data-save-shell-app]");
 const clockRateModes: ClockRateMode[] = ["paused", "1x", "4x", "10x", "60x"];
@@ -49,6 +62,11 @@ const clockRateLabels: Record<ClockRateMode, string> = {
   "4x": "4x",
   "10x": "10x",
   "60x": "60x",
+};
+const themeLabels: Record<ThemeName, string> = {
+  light: "Light",
+  dark: "Dark Blue",
+  forest: "Dark Green",
 };
 
 console.info("[save-shell] module loaded", { hasAppRoot: Boolean(appRoot) });
@@ -94,6 +112,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const settingsMenuRaw = root.querySelector<HTMLDetailsElement>("[data-settings-menu]");
   const settingsThemeButtonRaw = root.querySelector<HTMLButtonElement>("[data-settings-theme]");
   const settingsThemeLabelRaw = root.querySelector<HTMLElement>("[data-settings-theme-label]");
+  const settingsPopupLabelRaw = root.querySelector<HTMLElement>("[data-settings-popup-label]");
+  const settingsPopupButtonRaw = root.querySelector<HTMLButtonElement>("[data-settings-popup-mode-toggle]");
   const clockMenuRaw = root.querySelector<HTMLDetailsElement>("[data-clock-menu]");
   const clockLabelRaw = root.querySelector<HTMLElement>("[data-clock-label]");
   const clockRateRaw = root.querySelector<HTMLElement>("[data-clock-rate]");
@@ -116,6 +136,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     || !settingsMenuRaw
     || !settingsThemeButtonRaw
     || !settingsThemeLabelRaw
+    || !settingsPopupLabelRaw
+    || !settingsPopupButtonRaw
     || !clockMenuRaw
     || !clockLabelRaw
     || !clockRateRaw
@@ -140,6 +162,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const settingsMenu: HTMLDetailsElement = settingsMenuRaw;
   const settingsThemeButton: HTMLButtonElement = settingsThemeButtonRaw;
   const settingsThemeLabel: HTMLElement = settingsThemeLabelRaw;
+  const settingsPopupLabel: HTMLElement = settingsPopupLabelRaw;
+  const settingsPopupButton: HTMLButtonElement = settingsPopupButtonRaw;
   const clockMenu: HTMLDetailsElement = clockMenuRaw;
   const clockLabel: HTMLElement = clockLabelRaw;
   const clockRateNode: HTMLElement = clockRateRaw;
@@ -159,6 +183,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   let clockAccumulatedSimMs = 0;
   let lastClockWallMs = Date.now();
   let clockTimerHandle: number | null = null;
+  let flashTimerHandle: number | null = null;
+  let activityPopupMode: ActivityPopupMode = restoreActivityPopupMode();
 
   const tabLabels: Array<[SavePageTab, string]> = [
     ["dashboard", "Overview"],
@@ -166,16 +192,20 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     ["aircraft", "Aircraft"],
     ["staffing", "Staff"],
     ["dispatch", "Dispatch"],
-    ["activity", "Activity"],
   ];
 
   loaderTitleNode.textContent = `Opening ${config.saveId}`;
 
   // Top-bar helpers keep the chrome synchronized as theme, shell, and clock data change independently.
   function syncSettingsMenuTheme(): void {
-    const isDark = document.body.dataset.theme === "dark";
-    settingsThemeLabel.textContent = isDark ? "Dark" : "Light";
-    settingsThemeButton.textContent = isDark ? "Switch to light theme" : "Switch to dark theme";
+    const theme = normalizeThemeName(document.body.dataset.theme);
+    settingsThemeLabel.textContent = themeLabels[theme];
+    settingsThemeButton.textContent = `Theme: ${themeLabels[theme]}`;
+  }
+
+  function syncActivityPopupMode(): void {
+    settingsPopupLabel.textContent = activityPopupMode === "important_only" ? "Important only" : "All activity";
+    settingsPopupButton.textContent = `Activity popups: ${activityPopupMode === "important_only" ? "Important only" : "All activity"}`;
   }
 
   function syncClockTrigger(): void {
@@ -195,6 +225,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   }
 
   syncSettingsMenuTheme();
+  syncActivityPopupMode();
   syncClockTrigger();
   window.addEventListener("flightline:theme-changed", () => {
     syncSettingsMenuTheme();
@@ -226,6 +257,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     loaderNode.hidden = true;
   }
 
+  // Paints the shared shell chrome from the latest summary payload without touching tab-specific content.
   function renderShellChrome(summary: ShellSummaryPayload): void {
     console.info("[save-shell] render chrome", { title: summary.title, tabId: activeTab });
     shell = summary;
@@ -244,13 +276,46 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     syncClockTrigger();
   }
 
-  function showFlash(message: { tone: "notice" | "error"; text: string } | null): void {
+  function clearFlashTimer(): void {
+    if (flashTimerHandle !== null) {
+      window.clearTimeout(flashTimerHandle);
+      flashTimerHandle = null;
+    }
+  }
+
+  function shouldDisplayFlash(message: FlashMessage): boolean {
+    if (message.tone === "error") {
+      return true;
+    }
+
+    if (activityPopupMode === "all") {
+      return true;
+    }
+
+    return (message.notificationLevel ?? "routine") === "important";
+  }
+
+  function showFlash(message: FlashMessage | null): void {
+    clearFlashTimer();
+
     if (!message) {
       flashNode.innerHTML = "";
       return;
     }
 
+    if (!shouldDisplayFlash(message)) {
+      flashNode.innerHTML = "";
+      return;
+    }
+
     flashNode.innerHTML = `<div class="flash ${message.tone === "error" ? "error" : "notice"}">${escapeHtml(message.text)}</div>`;
+
+    if (message.tone === "notice") {
+      flashTimerHandle = window.setTimeout(() => {
+        flashTimerHandle = null;
+        flashNode.innerHTML = "";
+      }, 5000);
+    }
   }
 
   // Clock helpers own the popover UI and the lightweight wall-clock-driven simulation ticker.
@@ -415,7 +480,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       }
       if (result.message) {
         setClockMode("paused");
-        showFlash({ tone: "notice", text: result.message });
+        showFlash({ tone: "notice", text: result.message, notificationLevel: result.notificationLevel });
       }
     } catch (error) {
       setClockMode("paused");
@@ -535,6 +600,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   }
 
   // Tab loading uses a small in-memory cache until a mutation invalidates it.
+  // Loads one tab payload, preferring the in-memory cache until a mutation invalidates it.
   async function loadTab(tabId: SavePageTab, force = false): Promise<SaveTabPayload> {
     activeTab = tabId;
     if (shell) {
@@ -582,7 +648,29 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       event.preventDefault();
       themeWindow.toggleTheme?.();
       syncSettingsMenuTheme();
-      settingsMenu.open = false;
+      return;
+    }
+
+    const popupModeButton = target.closest<HTMLButtonElement>("[data-settings-popup-mode-toggle]");
+    if (popupModeButton) {
+      event.preventDefault();
+      const nextMode = activityPopupMode === "all" ? "important_only" : "all";
+      activityPopupMode = nextMode;
+      persistActivityPopupMode(nextMode);
+      syncActivityPopupMode();
+      showFlash(null);
+      return;
+    }
+
+    const openActivityButton = target.closest<HTMLButtonElement>("[data-settings-open-activity]");
+    if (openActivityButton) {
+      event.preventDefault();
+      void loadTab("activity").catch((error) => {
+        showFlash({
+          tone: "error",
+          text: error instanceof Error ? error.message : "Could not load the activity log.",
+        });
+      });
       return;
     }
 
@@ -627,6 +715,10 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
             tab: activeTab,
           }));
 
+          if (result.success) {
+            clockDateActionOpen = false;
+          }
+
           renderShellChrome(result.shell);
           applyClockPayload(result.clock);
           if (result.tab) {
@@ -638,13 +730,9 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
             await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
           }
 
-          if (result.success) {
-            clockDateActionOpen = false;
-          }
-
           showFlash(result.success
             ? result.message
-              ? { tone: "notice", text: result.message }
+              ? { tone: "notice", text: result.message, notificationLevel: result.notificationLevel }
               : null
             : { tone: "error", text: result.error ?? "Could not advance to the selected morning." });
         } catch (error) {
@@ -720,6 +808,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     });
   });
 
+  // Handles any form that opts into JSON action responses, then refreshes shell/tab state in place.
   root.addEventListener("submit", (event: SubmitEvent) => {
     const form = event.target instanceof HTMLFormElement ? event.target : null;
     if (!form || !form.matches("[data-api-form]")) {
@@ -765,7 +854,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
         showFlash(
           result.success
             ? result.message
-              ? { tone: "notice", text: result.message }
+              ? { tone: "notice", text: result.message, notificationLevel: result.notificationLevel }
               : null
             : { tone: "error", text: result.error ?? "Action failed." },
         );
@@ -809,6 +898,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       window.clearInterval(clockTimerHandle);
       clockTimerHandle = null;
     }
+    clearFlashTimer();
   });
 }
 
@@ -903,6 +993,23 @@ function restoreClockRate(saveId: string): ClockRateMode {
 
 function persistClockRate(saveId: string, mode: ClockRateMode): void {
   localStorage.setItem(`flightline-clock-rate:${encodeURIComponent(saveId)}`, mode);
+}
+
+function restoreActivityPopupMode(): ActivityPopupMode {
+  try {
+    const raw = localStorage.getItem("flightline-activity-popups");
+    return raw === "important_only" ? "important_only" : "all";
+  } catch {
+    return "all";
+  }
+}
+
+function persistActivityPopupMode(mode: ActivityPopupMode): void {
+  localStorage.setItem("flightline-activity-popups", mode);
+}
+
+function normalizeThemeName(rawTheme: string | undefined): ThemeName {
+  return rawTheme === "forest" || rawTheme === "dark" ? rawTheme : "light";
 }
 
 function rateMultiplier(mode: ClockRateMode): number {

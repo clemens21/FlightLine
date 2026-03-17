@@ -33,7 +33,7 @@ Examples:
 
 - compare contracts for the same aircraft
 - compare aircraft for the same contract
-- compare buy versus finance versus lease options
+- compare buy versus loan versus lease options
 - compare hire versus contract versus outsource staffing options
 - compare dispatch now versus maintain now
 
@@ -70,9 +70,9 @@ Both themes need:
 The first-pass wireframes added a few constraints that should now be treated as architectural decisions:
 
 - Dashboard is a routing screen, not a mini version of the app.
-- Contracts need stronger visual separation between `available`, `accepted`, and `assigned` work.
+- Contracts need stronger visual separation between `available`, `accepted/active`, and `closed` work.
 - Dispatch is single-aircraft-first in MVP.
-- Fleet and Aircraft Detail are separate jobs and should not be merged casually.
+- Aircraft should split `Fleet` and `Market` into separate jobs inside one workspace.
 - Staffing Overview and Staffing Acquisition are different screens with different UX goals.
 - Aircraft Acquisition must keep mission fit, payment structure, and staffing impact visible together.
 
@@ -82,19 +82,17 @@ Primary navigation for MVP:
 
 - Dashboard
 - Contracts
-- Dispatch
-- Fleet
+- Aircraft
 - Staffing
-- Finance
-- World
+- Dispatch
 
 Persistent top-level shell should also include:
 
-- current company summary
+- save slot and company identity
+- compact cash summary
 - current game time
-- active alerts
-- quick time controls
-- global search or quick-jump later
+- settings access
+- activity log access through settings
 
 ## Transactional Surface Rule
 
@@ -102,8 +100,8 @@ Not every important action deserves a top-level nav item.
 
 These should exist as dedicated transactional surfaces reached from overview screens:
 
-- Aircraft Acquisition
-- Staffing Acquisition
+- Aircraft Market
+- Staffing activation flow
 - later, Maintenance Transaction Flow
 
 That keeps navigation stable while still allowing serious task depth.
@@ -122,7 +120,7 @@ Should show:
 - cash and short-term pressure
 - top alerts and blockers
 - today or current-period timeline highlights
-- compact fleet, staffing, and market summaries
+- quick routes into contracts, aircraft, staffing, and dispatch
 
 Should not try to show:
 
@@ -138,13 +136,13 @@ Purpose:
 
 Should show:
 
-- visible separation between available, accepted, and assigned work
+- visible separation between available, accepted/active, and closed work
 - contract list with sorting and filters
-- selected contract detail panel
-- estimated margin
-- fit score for selected aircraft or fleet
+- route map pinned beside the board
+- route planner in the same side rail
+- fit score for current fleet/company
 - deadline pressure
-- compare tray for shortlist decisions
+- planner-guidance context for chaining work
 
 ### Dispatch Board
 
@@ -160,40 +158,52 @@ Should show:
 - reposition legs clearly separated from revenue legs
 - estimated profit and risk for the schedule
 - staffing and qualification checks inline
+- route-plan handoff for accepted-ready contract chains
 
 Design rule:
 
 - network-scale scheduling is a later screen problem, not an MVP dispatch problem
 
+### Aircraft Workspace
+
+Purpose:
+
+- manage owned aircraft and acquisition from one top-level workspace
+
+Should show:
+
+- internal `Fleet` and `Market` sub-tabs
+- `Fleet` for owned-aircraft comparison and detail
+- `Market` for acquisition browsing and deal confirmation
+
 ### Fleet View
 
 Purpose:
 
-- compare aircraft across the fleet and decide where attention goes next
+- compare owned aircraft and decide where attention goes next
 
 Should show:
 
-- aircraft table or rows with state, condition, and location
-- utilization metrics
-- financial burden by aircraft
-- maintenance outlook
-- quick links to dispatch, service, or acquisition actions
+- table of owned aircraft with location, ownership, condition, mission profile, and next milestone
+- selected-aircraft brief on the right
+- local versus network crew-readiness context
+- maintenance and assignment context
+- why-this-aircraft-matters summary
 
-### Aircraft Detail
+### Aircraft Market
 
 Purpose:
 
-- inspect a single airframe deeply
+- browse live aircraft listings and commit to one acquisition path
 
 Should show:
 
-- current status and location
-- assignment queue
-- financial performance history
-- condition and maintenance trend
-- hours, cycles, and service history
-- staffing requirements for operation
-- recommended next actions
+- large rolling listing table
+- selected listing pane
+- location radius filtering
+- condition and maintenance context
+- `Buy`, `Loan`, and `Lease`
+- compact second-step deal confirmation for loan and lease term choices
 
 ### Staffing Overview
 
@@ -223,20 +233,6 @@ Should show:
 - unlocked capability preview
 - activation timing and limitations
 
-### Aircraft Acquisition
-
-Purpose:
-
-- compare aircraft offers and commit a payment structure
-
-Should show:
-
-- filtered aircraft offers table
-- selected offer explanation panel
-- buy versus finance versus lease comparison
-- staffing and qualification impact
-- utilization and obligation preview
-
 ### Maintenance View
 
 Purpose:
@@ -257,6 +253,31 @@ Should show:
 Purpose:
 
 - explain where money is made and lost
+
+## Shell Utilities
+
+Two low-frequency surfaces should stay in the shell, not the main nav:
+
+- `Clock / Calendar`
+- `Settings`
+
+### Clock / Calendar
+
+The clock is a clickable top-right control that opens:
+
+- simulation rate controls
+- calendar grid
+- selected-day agenda
+- selected-day simulate action with milestone warnings
+
+### Settings
+
+Settings should hold:
+
+- theme switching
+- activity popup mode
+- activity log access
+- back-to-saves style shell actions
 
 Should show:
 

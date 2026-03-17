@@ -270,6 +270,7 @@ try {
     return nextLabel !== "" && nextLabel !== previousLabel;
   }, beforeAnchorAdvance, { timeout: 15_000 });
   await page.waitForFunction(() => !document.querySelector("[data-clock-day-action-close]"));
+  assert.equal(await page.locator("[data-clock-day-action-close]").count(), 0);
   const afterAnchorAdvance = await page.locator("[data-clock-label]").textContent();
   assert.notEqual(afterAnchorAdvance, beforeAnchorAdvance);
   assert.ok(afterAnchorAdvance?.includes("Mar 17, 2026"));

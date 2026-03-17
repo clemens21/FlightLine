@@ -1,6 +1,8 @@
 /*
  * Builds the server-side contracts payload by combining company work, market offers, route planning, and airport metadata.
  * The contracts client consumes this model as its single snapshot of commercial state.
+ * This is where offer rows stop being raw contracts data and become player-facing board entries with fit buckets,
+ * route labels, planner overlays, and the extra fields needed for fast client-side filtering and sorting.
  */
 
 import type { JsonObject } from "../domain/common/primitives.js";
@@ -331,6 +333,7 @@ function buildRoutePlanView(
   };
 }
 
+// Turns raw contract, fleet, staffing, and route-plan state into the player-facing contracts workspace payload.
 export function buildContractsViewPayload(
   saveId: string,
   companyContext: CompanyContext,
@@ -366,6 +369,7 @@ export function buildContractsViewPayload(
   };
 }
 
+// Loads and assembles the current contracts workspace in one backend round-trip, including board lifecycle reconciliation.
 export async function loadContractsViewPayload(
   backend: FlightLineBackend,
   airportReference: AirportReferenceRepository,
