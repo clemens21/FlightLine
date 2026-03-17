@@ -6,11 +6,14 @@
 import {
   applyAircraftFleetViewState,
   applyAircraftMarketViewState,
+  type AircraftDealStructure,
   type AircraftFleetViewState,
+  type AircraftMarketDealOptionView,
   type AircraftMarketOfferView,
   type AircraftMarketSort,
   type AircraftMarketSortDirection,
   type AircraftMarketSortKey,
+  type AircraftMarketViewState,
   type AircraftMarketWorkspacePayload,
   type AircraftTabAircraftView,
   type AircraftTabPayload,
@@ -27,17 +30,39 @@ export interface AircraftTabController {
 
 const workspaceStoragePrefix = "flightline:aircraft-workspace:";
 
+interface AcquisitionReviewState {
+  offerId: string;
+  ownershipType: AircraftDealStructure;
+  selectedOptionId: string;
+}
+
 // The client keeps only ephemeral interaction state; expensive simulation shaping already happened on the server.
 export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload): AircraftTabController {
   let workspaceTab = loadStoredWorkspace(payload.saveId) ?? payload.defaultWorkspaceTab;
+  storeWorkspace(payload.saveId, workspaceTab);
   let fleetFilters: AircraftTableFilters = payload.fleetWorkspace.defaultFilters;
   let fleetSort: AircraftTableSort = payload.fleetWorkspace.defaultSort;
   let selectedAircraftId = payload.fleetWorkspace.aircraft[0]?.aircraftId;
   let marketFilters = payload.marketWorkspace.defaultFilters;
   let marketSort = payload.marketWorkspace.defaultSort;
   let selectedOfferId = payload.marketWorkspace.defaultSelectedOfferId;
+  let acquisitionReview: AcquisitionReviewState | null = null;
+  let fleetListScrollTop = 0;
+  let marketListScrollTop = 0;
+
+  function captureScrollState(): void {
+    const fleetList = host.querySelector<HTMLElement>("[data-aircraft-scroll='fleet-list']");
+    const marketList = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
+    if (fleetList) {
+      fleetListScrollTop = fleetList.scrollTop;
+    }
+    if (marketList) {
+      marketListScrollTop = marketList.scrollTop;
+    }
+  }
 
   function render(): void {
+    captureScrollState();
     const fleetViewState = applyAircraftFleetViewState(payload.fleetWorkspace, {
       filters: fleetFilters,
       sort: fleetSort,
@@ -51,7 +76,16 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
 
     selectedAircraftId = fleetViewState.selectedAircraftId;
     selectedOfferId = marketViewState.selectedOfferId;
-    host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState);
+    acquisitionReview = normalizeAcquisitionReview(acquisitionReview, marketViewState);
+    host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview);
+    const fleetList = host.querySelector<HTMLElement>("[data-aircraft-scroll='fleet-list']");
+    const marketList = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
+    if (fleetList) {
+      fleetList.scrollTop = fleetListScrollTop;
+    }
+    if (marketList) {
+      marketList.scrollTop = marketListScrollTop;
+    }
   }
 
   function handleClick(event: MouseEvent): void {
@@ -68,6 +102,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
         return;
       }
       workspaceTab = nextWorkspace;
+      acquisitionReview = null;
       storeWorkspace(payload.saveId, workspaceTab);
       render();
       return;
@@ -85,6 +120,48 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     if (selectOfferRow && !target.closest("form")) {
       event.preventDefault();
       selectedOfferId = selectOfferRow.dataset.marketSelect ?? selectedOfferId;
+      acquisitionReview = null;
+      render();
+      return;
+    }
+
+    const reviewButton = target.closest<HTMLElement>("[data-market-review]");
+    if (reviewButton) {
+      event.preventDefault();
+      const ownershipType = reviewButton.dataset.marketReview as AircraftDealStructure | undefined;
+      const offerId = reviewButton.dataset.marketReviewOffer ?? selectedOfferId;
+      if (!ownershipType || !offerId) {
+        return;
+      }
+      const offer = payload.marketWorkspace.offers.find((entry) => entry.aircraftOfferId === offerId);
+      const options = offer ? optionsForDeal(offer, ownershipType) : [];
+      if (!offer || options.length === 0) {
+        return;
+      }
+      selectedOfferId = offerId;
+      acquisitionReview = {
+        offerId,
+        ownershipType,
+        selectedOptionId: defaultOptionIdForDeal(offer, ownershipType) ?? options[0]!.optionId,
+      };
+      render();
+      return;
+    }
+
+    const reviewOptionButton = target.closest<HTMLElement>("[data-market-review-option]");
+    if (reviewOptionButton && acquisitionReview) {
+      event.preventDefault();
+      acquisitionReview = {
+        ...acquisitionReview,
+        selectedOptionId: reviewOptionButton.dataset.marketReviewOption ?? acquisitionReview.selectedOptionId,
+      };
+      render();
+      return;
+    }
+
+    if (target.closest("[data-market-review-back]")) {
+      event.preventDefault();
+      acquisitionReview = null;
       render();
       return;
     }
@@ -177,13 +254,9 @@ function renderAircraftTab(
   workspaceTab: AircraftWorkspaceTab,
   fleetViewState: AircraftFleetViewState,
   marketViewState: ReturnType<typeof applyAircraftMarketViewState>,
+  reviewState: AcquisitionReviewState | null,
 ): string {
-  const activeWorkspace = workspaceTab === "market" ? payload.marketWorkspace : payload.fleetWorkspace;
-
   return `
-    <section class="aircraft-summary-grid">
-      ${activeWorkspace.summaryCards.map(renderSummaryCard).join("")}
-    </section>
     <section class="panel">
       <div class="panel-head">
         <h3>Aircraft Workspace</h3>
@@ -207,14 +280,10 @@ function renderAircraftTab(
       <div class="panel-body aircraft-workspace-body">
         ${workspaceTab === "fleet"
           ? renderFleetWorkspace(payload, fleetViewState)
-          : renderMarketWorkspace(payload, marketViewState)}
+          : renderMarketWorkspace(payload, marketViewState, reviewState)}
       </div>
     </section>
   `;
-}
-
-function renderSummaryCard(card: AircraftTabPayload["fleetWorkspace"]["summaryCards"][number]): string {
-  return `<article class="context-card ${card.tone}"><div class="eyebrow">${escapeHtml(card.label)}</div><strong>${escapeHtml(card.value)}</strong><span class="muted">${escapeHtml(card.detail)}</span></article>`;
 }
 
 // Fleet workspace emphasizes triage: filters, sortable table, and a single selected-aircraft detail rail.
@@ -266,7 +335,15 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
 }
 
 // Market workspace mirrors the fleet layout so acquisition research feels like the same tool, not a separate screen.
-function renderMarketWorkspace(payload: AircraftTabPayload, viewState: ReturnType<typeof applyAircraftMarketViewState>): string {
+function renderMarketWorkspace(
+  payload: AircraftTabPayload,
+  viewState: ReturnType<typeof applyAircraftMarketViewState>,
+  reviewState: AcquisitionReviewState | null,
+): string {
+  const selectedListingTitle = viewState.selectedOffer
+    ? viewState.selectedOffer.modelDisplayName
+    : "Selected Listing";
+
   return `
     <div class="aircraft-workbench">
       <section class="panel aircraft-market-panel">
@@ -280,18 +357,22 @@ function renderMarketWorkspace(payload: AircraftTabPayload, viewState: ReturnTyp
         </div>
         <div class="panel-body aircraft-fleet-body">
           <div class="aircraft-toolbar market-toolbar">
-            <label>Search<input type="text" value="${escapeHtml(viewState.filters.searchText)}" data-market-filter="searchText" placeholder="Model, role, airport" /></label>
-            <label>Role<select data-market-filter="rolePool">${renderOptions(viewState.filters.rolePool, [["all", "All roles"], ...payload.marketWorkspace.filterOptions.rolePools.map((value) => [value, humanize(value)] as [string, string])])}</select></label>
-            <label>Condition<select data-market-filter="conditionBand">${renderOptions(viewState.filters.conditionBand, [["all", "All bands"], ...payload.marketWorkspace.filterOptions.conditionBands.map((value) => [value, humanize(value)] as [string, string])])}</select></label>
-            <label>Airport<input type="text" value="${escapeHtml(viewState.filters.locationAirportText)}" data-market-filter="locationAirportText" placeholder="Airport code or name" /></label>
-            <label>Max nm<input type="number" min="0" step="25" value="${escapeHtml(viewState.filters.maxDistanceNm)}" data-market-filter="maxDistanceNm" /></label>
+            <label>Search<input type="text" value="${escapeHtml(viewState.filters.searchText)}" data-market-filter="searchText" placeholder="Model or airport" /></label>
+            <label>Condition<select data-market-filter="conditionBand">${renderOptions(viewState.filters.conditionBand, [["all", "All conditions"], ...payload.marketWorkspace.filterOptions.conditionBands.map((value) => [value, marketConditionLabel(value)] as [string, string])])}</select></label>
+            <div class="range-field aircraft-location-range">
+              <span>Location radius</span>
+              <div class="range-inputs">
+                <input type="text" value="${escapeHtml(viewState.filters.locationAirportText)}" data-market-filter="locationAirportText" placeholder="Airport code or name" />
+                <input type="number" min="0" step="25" value="${escapeHtml(viewState.filters.maxDistanceNm)}" data-market-filter="maxDistanceNm" placeholder="Max nm" />
+              </div>
+            </div>
           </div>
           ${renderMarketTable(viewState)}
         </div>
       </section>
       <section class="panel aircraft-detail-panel">
-        <div class="panel-head"><h3>Selected Listing</h3></div>
-        <div class="panel-body aircraft-detail-body">${renderMarketDetail(payload.saveId, viewState.selectedOffer)}</div>
+        <div class="panel-head"><h3>${escapeHtml(selectedListingTitle)}</h3></div>
+        <div class="panel-body aircraft-detail-body">${renderMarketDetail(payload.saveId, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState)}</div>
       </section>
     </div>
   `;
@@ -304,7 +385,7 @@ function renderFleetTable(viewState: AircraftFleetViewState): string {
   }
 
   return `
-    <div class="table-wrap aircraft-table-wrap">
+    <div class="table-wrap aircraft-table-wrap" data-aircraft-scroll="fleet-list">
       <table>
         <thead>
           <tr>
@@ -331,7 +412,7 @@ function renderMarketTable(viewState: ReturnType<typeof applyAircraftMarketViewS
   }
 
   return `
-    <div class="table-wrap aircraft-table-wrap">
+    <div class="table-wrap aircraft-table-wrap" data-aircraft-scroll="market-list">
       <table>
         <thead>
           <tr>
@@ -439,10 +520,17 @@ function renderAircraftDetail(aircraft: AircraftTabAircraftView | null): string 
   `;
 }
 
-function renderMarketDetail(saveId: string, offer: AircraftMarketOfferView | null): string {
+function renderMarketDetail(
+  saveId: string,
+  currentCashAmount: number,
+  offer: AircraftMarketOfferView | null,
+  reviewState: AcquisitionReviewState | null,
+): string {
   if (!offer) {
     return `<div class="empty-state">No aircraft listings match the current filters.</div>`;
   }
+
+  const activeReview = reviewState?.offerId === offer.aircraftOfferId ? reviewState : null;
 
   return `
     <div class="aircraft-detail-stack">
@@ -452,58 +540,205 @@ function renderMarketDetail(saveId: string, offer: AircraftMarketOfferView | nul
           <strong>${escapeHtml(offer.modelDisplayName)} | ${escapeHtml(offer.registration)}</strong>
           <span class="muted">${escapeHtml(offer.location.code)} | ${escapeHtml(offer.location.primaryLabel)} | ${escapeHtml(offer.displayName)}</span>
         </div>
-        <div class="pill-row">
-          ${renderBadge(offer.conditionBand)}
-          ${renderBadge(offer.maintenanceState)}
-          ${renderBadge(offer.listingType)}
-          ${renderBadge(offer.msfs2024Status)}
+        <figure class="aircraft-hero-image">
+          <img
+            src="${escapeHtml(offer.imageAssetPath)}"
+            alt="${escapeHtml(offer.modelDisplayName)}"
+            loading="lazy"
+            onerror="this.onerror=null;this.src='/assets/aircraft-images/fallback.svg';"
+          />
+        </figure>
+      </section>
+      ${activeReview
+        ? renderDealReview(saveId, currentCashAmount, offer, activeReview)
+        : `<section class="summary-list market-deals">
+            ${renderDealCard(offer, offer.buyOption, "Buy")}
+            ${renderDealCard(offer, cheapestOption(offer.financeOptions), "Loan")}
+            ${renderDealCard(offer, cheapestOption(offer.leaseOptions), "Lease")}
+          </section>`}
+      <section class="aircraft-facts-card">
+        <div class="eyebrow">Listing brief</div>
+        <div class="aircraft-facts-list">
+          ${renderFactRow(
+            "Location",
+            `${offer.location.code} | ${offer.location.primaryLabel}`,
+            offer.location.secondaryLabel ?? "Aircraft stays at the listed airport after acquisition.",
+          )}
+          ${renderFactRow(
+            "Home distance",
+            `${formatNumber(offer.distanceFromHomeBaseNm)} nm`,
+            "Useful for ferry cost and reposition planning.",
+          )}
+          ${renderFactRow(
+            "Capability",
+            envelopeLabel(offer.maxPassengers, offer.maxCargoLb, offer.rangeNm),
+            accessLabel(offer.minimumRunwayFt, offer.minimumAirportSize),
+          )}
+          ${renderFactRow(
+            "Maintenance",
+            `${formatPercent(offer.conditionValue)} condition | ${formatHours(offer.hoursToService)} to service`,
+            `${formatNumber(offer.airframeHoursTotal)} hrs | ${formatNumber(offer.airframeCyclesTotal)} cycles | ${formatHours(offer.hoursSinceInspection)} since inspection`,
+          )}
+          ${renderFactRow(
+            "Support",
+            humanize(offer.requiredGroundServiceLevel),
+            `${humanize(offer.gateRequirement)} | ${humanize(offer.cargoLoadingType)}`,
+          )}
+          ${renderFactRow(
+            "MSFS",
+            humanize(offer.msfs2024Status),
+            offer.msfs2024UserNote ?? "Availability is tracked separately from game eligibility.",
+          )}
+          ${renderFactListRow("Fit", offer.fitReasons)}
+          ${renderFactListRow("Watchouts", offer.riskReasons)}
         </div>
       </section>
-      <section class="summary-list">
-        <article class="summary-item compact"><div class="eyebrow">Airport</div><strong>${escapeHtml(offer.location.code)} | ${escapeHtml(offer.location.primaryLabel)}</strong><span class="muted">${escapeHtml(offer.location.secondaryLabel ?? "Listed away from the home base.")}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Distance from home</div><strong>${escapeHtml(formatNumber(offer.distanceFromHomeBaseNm))} nm</strong><span class="muted">Aircraft stays at the listed airport after acquisition.</span></article>
-      </section>
-      <section class="summary-list">
-        <article class="summary-item compact"><div class="eyebrow">Capability</div><strong>${escapeHtml(envelopeLabel(offer.maxPassengers, offer.maxCargoLb, offer.rangeNm))}</strong><span class="muted">${escapeHtml(accessLabel(offer.minimumRunwayFt, offer.minimumAirportSize))}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Maintenance</div><strong>${escapeHtml(formatPercent(offer.conditionValue))} condition | ${escapeHtml(formatHours(offer.hoursToService))} to service</strong><span class="muted">${escapeHtml(formatNumber(offer.airframeHoursTotal))} hrs | ${escapeHtml(formatNumber(offer.airframeCyclesTotal))} cycles</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Support profile</div><strong>${escapeHtml(humanize(offer.requiredGroundServiceLevel))}</strong><span class="muted">${escapeHtml(humanize(offer.gateRequirement))} | ${escapeHtml(humanize(offer.cargoLoadingType))}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">MSFS</div><strong>${escapeHtml(humanize(offer.msfs2024Status))}</strong><span class="muted">${escapeHtml(offer.msfs2024UserNote ?? "Availability is tracked separately from game eligibility.")}</span></article>
-      </section>
-      ${renderReasonsSection("Why it fits", offer.fitReasons)}
-      ${renderReasonsSection("Why it is risky", offer.riskReasons)}
-      <section class="summary-list market-deals">
-        ${renderDealCard(saveId, offer, "owned", "Buy", offer.askingPurchasePriceAmount, undefined, undefined, offer.canBuyNow)}
-        ${renderDealCard(saveId, offer, "financed", "Loan", offer.financeTerms.upfrontPaymentAmount, offer.financeTerms.recurringPaymentAmount, offer.financeTerms.termMonths, offer.canLoanNow)}
-        ${renderDealCard(saveId, offer, "leased", "Lease", offer.leaseTerms.upfrontPaymentAmount, offer.leaseTerms.recurringPaymentAmount, offer.leaseTerms.termMonths, offer.canLeaseNow)}
-      </section>
+    </div>
+  `;
+}
+
+function renderFactRow(label: string, value: string, detail: string): string {
+  return `
+    <div class="aircraft-fact-row">
+      <div class="eyebrow">${escapeHtml(label)}</div>
+      <div class="aircraft-fact-copy">
+        <strong>${escapeHtml(value)}</strong>
+        <span class="muted">${escapeHtml(detail)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderFactListRow(label: string, reasons: string[]): string {
+  if (reasons.length === 0) {
+    return "";
+  }
+
+  return `
+    <div class="aircraft-fact-row">
+      <div class="eyebrow">${escapeHtml(label)}</div>
+      <div class="aircraft-fact-copy">
+        <ul class="aircraft-fact-list">
+          ${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
+        </ul>
+      </div>
     </div>
   `;
 }
 
 // Deal cards post directly back into the shell action API using whichever listing is currently selected.
 function renderDealCard(
-  saveId: string,
   offer: AircraftMarketOfferView,
-  ownershipType: "owned" | "financed" | "leased",
+  option: AircraftMarketDealOptionView | null,
   label: string,
-  upfrontPaymentAmount: number,
-  recurringPaymentAmount: number | undefined,
-  termMonths: number | undefined,
-  affordable: boolean,
 ): string {
+  if (!option) {
+    return "";
+  }
+
   return `
-    <article class="summary-item compact">
+    <article class="summary-item compact market-deal-card">
       <div class="eyebrow">${escapeHtml(label)}</div>
-      <strong>${escapeHtml(formatMoney(upfrontPaymentAmount))} upfront</strong>
-      <span class="muted">${recurringPaymentAmount !== undefined ? `${formatMoney(recurringPaymentAmount)} / mo` : "No recurring burden"}${termMonths ? ` | ${termMonths} mo term` : ""}</span>
-      <form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/acquire-aircraft-offer" class="actions" data-api-form>
+      <strong>${escapeHtml(formatMoney(option.upfrontPaymentAmount))} upfront</strong>
+      <span class="muted">${option.recurringPaymentAmount !== undefined ? `${formatMoney(option.recurringPaymentAmount)} / month` : "No recurring burden"}${option.termMonths ? ` | ${option.termMonths} months` : ""}</span>
+      <button
+        type="button"
+        data-market-review="${escapeHtml(option.ownershipType)}"
+        data-market-review-offer="${escapeHtml(offer.aircraftOfferId)}"
+      >${escapeHtml(label)}</button>
+      ${option.isAffordable ? "" : `<span class="muted">Insufficient cash for the required upfront payment.</span>`}
+    </article>
+  `;
+}
+
+function renderDealReview(
+  saveId: string,
+  currentCashAmount: number,
+  offer: AircraftMarketOfferView,
+  reviewState: AcquisitionReviewState,
+): string {
+  const options = optionsForDeal(offer, reviewState.ownershipType);
+  const selectedOption = options.find((option) => option.optionId === reviewState.selectedOptionId) ?? options[0] ?? null;
+
+  if (!selectedOption) {
+    return "";
+  }
+
+  const reviewLabel = reviewState.ownershipType === "owned"
+    ? "Purchase terms"
+    : reviewState.ownershipType === "financed"
+      ? "Loan terms"
+      : "Lease terms";
+  const pendingLabel = reviewState.ownershipType === "owned"
+    ? "Purchasing aircraft..."
+    : reviewState.ownershipType === "financed"
+      ? "Finalizing loan..."
+      : "Finalizing lease...";
+  const cashAfterUpfrontAmount = currentCashAmount - selectedOption.upfrontPaymentAmount;
+
+  return `
+    <section class="aircraft-facts-card market-review-card">
+      <div class="market-review-header">
+        <div class="meta-stack">
+          <div class="eyebrow">${escapeHtml(reviewLabel)}</div>
+          <strong>${escapeHtml(offer.modelDisplayName)}</strong>
+          <span class="muted">${escapeHtml(offer.location.code)} | ${escapeHtml(offer.location.primaryLabel)} | ${escapeHtml(offer.registration)}</span>
+        </div>
+        <button type="button" class="button-secondary" data-market-review-back>Back</button>
+      </div>
+      ${options.length > 1
+        ? `<div class="market-option-list">
+            ${options.map((option) => renderDealOptionButton(option, option.optionId === selectedOption.optionId)).join("")}
+          </div>`
+        : ""}
+      <div class="summary-list market-review-summary">
+        <article class="summary-item compact">
+          <div class="eyebrow">Selected terms</div>
+          <strong>${escapeHtml(selectedOption.label)}</strong>
+          <span class="muted">${escapeHtml(selectedOption.detail)}</span>
+        </article>
+        <article class="summary-item compact">
+          <div class="eyebrow">Upfront</div>
+          <strong>${escapeHtml(formatMoney(selectedOption.upfrontPaymentAmount))}</strong>
+          <span class="muted">Cash after upfront: ${escapeHtml(formatMoney(cashAfterUpfrontAmount))}</span>
+        </article>
+        <article class="summary-item compact">
+          <div class="eyebrow">Recurring</div>
+          <strong>${selectedOption.recurringPaymentAmount !== undefined ? escapeHtml(formatMoney(selectedOption.recurringPaymentAmount)) : "None"}</strong>
+          <span class="muted">${selectedOption.termMonths ? `${selectedOption.termMonths} months` : "No recurring agreement"}${selectedOption.paymentCadence ? ` | ${escapeHtml(selectedOption.paymentCadence)}` : ""}</span>
+        </article>
+      </div>
+      <form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/acquire-aircraft-offer" class="market-confirm-form" data-api-form>
         <input type="hidden" name="tab" value="aircraft" />
         <input type="hidden" name="aircraftOfferId" value="${escapeHtml(offer.aircraftOfferId)}" />
-        <input type="hidden" name="ownershipType" value="${escapeHtml(ownershipType)}" />
-        <button type="submit" ${affordable ? "" : "disabled"} data-pending-label="Acquiring aircraft...">${escapeHtml(label)}</button>
+        <input type="hidden" name="ownershipType" value="${escapeHtml(reviewState.ownershipType)}" />
+        <input type="hidden" name="upfrontPaymentAmount" value="${escapeHtml(String(selectedOption.upfrontPaymentAmount))}" />
+        ${selectedOption.recurringPaymentAmount !== undefined ? `<input type="hidden" name="recurringPaymentAmount" value="${escapeHtml(String(selectedOption.recurringPaymentAmount))}" />` : ""}
+        ${selectedOption.termMonths !== undefined ? `<input type="hidden" name="termMonths" value="${escapeHtml(String(selectedOption.termMonths))}" />` : ""}
+        ${selectedOption.rateBandOrApr !== undefined ? `<input type="hidden" name="rateBandOrApr" value="${escapeHtml(String(selectedOption.rateBandOrApr))}" />` : ""}
+        ${selectedOption.paymentCadence ? `<input type="hidden" name="paymentCadence" value="${escapeHtml(selectedOption.paymentCadence)}" />` : ""}
+        <button type="submit" ${selectedOption.isAffordable ? "" : "disabled"} data-pending-label="${escapeHtml(pendingLabel)}">Confirm ${escapeHtml(reviewState.ownershipType === "owned" ? "purchase" : reviewState.ownershipType === "financed" ? "loan" : "lease")}</button>
+        ${selectedOption.isAffordable
+          ? `<span class="muted">This aircraft will remain at ${escapeHtml(offer.location.code)} after acquisition.</span>`
+          : `<span class="muted">Insufficient cash for the required upfront payment.</span>`}
       </form>
-      ${affordable ? "" : `<span class="muted">Insufficient cash for the required upfront payment.</span>`}
-    </article>
+    </section>
+  `;
+}
+
+function renderDealOptionButton(option: AircraftMarketDealOptionView, selected: boolean): string {
+  return `
+    <button
+      type="button"
+      class="market-option-button ${selected ? "current" : ""}"
+      data-market-review-option="${escapeHtml(option.optionId)}"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
+      <span class="market-option-title">${escapeHtml(option.label)}</span>
+      <span class="market-option-copy">${escapeHtml(formatMoney(option.upfrontPaymentAmount))} upfront</span>
+      <span class="market-option-copy">${option.recurringPaymentAmount !== undefined ? `${escapeHtml(formatMoney(option.recurringPaymentAmount))} / month` : "No recurring payment"}</span>
+      ${option.detail ? `<span class="market-option-copy">${escapeHtml(option.detail)}</span>` : ""}
+    </button>
   `;
 }
 
@@ -524,6 +759,79 @@ function renderLocationCell(location: { code: string; primaryLabel: string }): s
   return `<div class="meta-stack"><span class="route">${escapeHtml(location.code)}</span><span class="muted">${escapeHtml(location.primaryLabel)}</span></div>`;
 }
 
+function normalizeAcquisitionReview(
+  reviewState: AcquisitionReviewState | null,
+  marketViewState: AircraftMarketViewState,
+): AcquisitionReviewState | null {
+  if (!reviewState) {
+    return null;
+  }
+
+  const offer = marketViewState.visibleOffers.find((entry) => entry.aircraftOfferId === reviewState.offerId);
+  if (!offer) {
+    return null;
+  }
+
+  const options = optionsForDeal(offer, reviewState.ownershipType);
+  if (options.length === 0) {
+    return null;
+  }
+
+  const selectedOption = options.find((option) => option.optionId === reviewState.selectedOptionId) ?? options[0];
+  if (!selectedOption) {
+    return null;
+  }
+  return {
+    offerId: reviewState.offerId,
+    ownershipType: reviewState.ownershipType,
+    selectedOptionId: selectedOption.optionId,
+  };
+}
+
+function defaultOptionIdForDeal(
+  offer: AircraftMarketOfferView,
+  ownershipType: AircraftDealStructure,
+): string | null {
+  if (ownershipType === "owned") {
+    return offer.buyOption.optionId;
+  }
+
+  const targetTermMonths = ownershipType === "financed" ? offer.financeTerms.termMonths : offer.leaseTerms.termMonths;
+  const options = optionsForDeal(offer, ownershipType);
+  return options.find((option) => option.termMonths === targetTermMonths)?.optionId ?? options[0]?.optionId ?? null;
+}
+
+function optionsForDeal(
+  offer: AircraftMarketOfferView,
+  ownershipType: AircraftDealStructure,
+): AircraftMarketDealOptionView[] {
+  switch (ownershipType) {
+    case "owned":
+      return [offer.buyOption];
+    case "financed":
+      return offer.financeOptions;
+    case "leased":
+      return offer.leaseOptions;
+  }
+}
+
+function cheapestOption(options: AircraftMarketDealOptionView[]): AircraftMarketDealOptionView | null {
+  if (options.length === 0) {
+    return null;
+  }
+
+  return options
+    .slice()
+    .sort((left, right) => {
+      const leftRecurring = left.recurringPaymentAmount ?? Number.POSITIVE_INFINITY;
+      const rightRecurring = right.recurringPaymentAmount ?? Number.POSITIVE_INFINITY;
+      if (leftRecurring !== rightRecurring) {
+        return leftRecurring - rightRecurring;
+      }
+      return left.upfrontPaymentAmount - right.upfrontPaymentAmount;
+    })[0] ?? null;
+}
+
 function renderOptions(currentValue: string, options: Array<[string, string]>): string {
   return options
     .map(([value, label]) => `<option value="${escapeHtml(value)}" ${value === currentValue ? "selected" : ""}>${escapeHtml(label)}</option>`)
@@ -531,7 +839,7 @@ function renderOptions(currentValue: string, options: Array<[string, string]>): 
 }
 
 function renderBadge(label: string): string {
-  return `<span class="badge ${badgeClass(label)}">${escapeHtml(humanize(label))}</span>`;
+  return `<span class="badge ${badgeClass(label)}">${escapeHtml(labelForUi(label))}</span>`;
 }
 
 function badgeClass(value: string): string {
@@ -626,6 +934,29 @@ function paymentWindowLabel(aircraft: AircraftTabAircraftView): string {
 
 function humanize(value: string): string {
   return value.replaceAll("_", " ");
+}
+
+function labelForUi(value: string): string {
+  if (value === "watch") {
+    return "Attention";
+  }
+
+  return humanize(value);
+}
+
+function marketConditionLabel(value: string): string {
+  switch (value) {
+    case "new":
+      return "New";
+    case "excellent":
+      return "Excellent";
+    case "fair":
+      return "Fair";
+    case "rough":
+      return "Rough";
+    default:
+      return labelForUi(value);
+  }
 }
 
 function formatDate(value: string): string {

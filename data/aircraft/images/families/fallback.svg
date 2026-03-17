@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Aircraft image unavailable</title>
+  <desc id="desc">Fallback illustration used when no cached aircraft photo is available.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#142533"/>
+      <stop offset="100%" stop-color="#0b1722"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6fc9d4"/>
+      <stop offset="100%" stop-color="#8be6ee"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" rx="32" fill="url(#bg)"/>
+  <g opacity="0.14" stroke="#6fc9d4" stroke-width="2">
+    <path d="M0 120h1200"/>
+    <path d="M0 240h1200"/>
+    <path d="M0 360h1200"/>
+    <path d="M0 480h1200"/>
+    <path d="M200 0v675"/>
+    <path d="M400 0v675"/>
+    <path d="M600 0v675"/>
+    <path d="M800 0v675"/>
+    <path d="M1000 0v675"/>
+  </g>
+  <g transform="translate(160 180)">
+    <path fill="url(#accent)" d="M628 101c-37 0-120 8-176 18l-138 25-132-81c-18-11-41-14-62-7L31 83c-18 5-24 28-11 42l98 105-67 12-55-27c-10-5-22 0-27 10l-12 25c-5 11-1 24 10 29l61 31c10 5 22 7 34 5l124-22 133 132c14 14 38 14 52-1l18-18c8-8 12-20 10-32l-20-114 119-21 62 83c10 13 28 18 43 12l56-21c18-7 24-29 12-44l-70-87 84-15c24-4 43-22 49-46l8-30c4-16-8-32-24-32z"/>
+    <circle cx="784" cy="96" r="18" fill="#c6f3f8" opacity="0.85"/>
+  </g>
+  <g transform="translate(92 84)">
+    <text x="0" y="0" fill="#8fa6b7" font-family="Aptos, Segoe UI, sans-serif" font-size="18" letter-spacing="4">FLIGHTLINE</text>
+    <text x="0" y="44" fill="#edf3f7" font-family="Aptos, Segoe UI, sans-serif" font-size="42" font-weight="700">Aircraft photo not cached yet</text>
+    <text x="0" y="78" fill="#8fa6b7" font-family="Aptos, Segoe UI, sans-serif" font-size="22">The app will fall back to this illustration when no local family image is available.</text>
+  </g>
+</svg>

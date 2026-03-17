@@ -12,6 +12,7 @@ import type { AircraftScheduleView, ScheduleLegView } from "../application/queri
 import type { StaffingStateView } from "../application/queries/staffing-state.js";
 import type { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository, AirportRecord } from "../infrastructure/reference/airport-reference.js";
+import { aircraftImageAssetPathForModel } from "./aircraft-image-sources.js";
 
 export type AircraftWorkspaceTab = "fleet" | "market";
 export type AircraftOperationalState = "available" | "scheduled" | "maintenance" | "grounded";
@@ -26,9 +27,10 @@ export type AircraftTableRiskFilter = "all" | "healthy" | "watch" | "critical";
 export type AircraftTableStaffingFilter = "all" | "covered" | "tight" | "uncovered";
 export type AircraftTableSortKey = "attention" | "tail" | "location" | "state" | "condition" | "staffing" | "range" | "payload" | "obligation";
 export type AircraftTableSortDirection = "asc" | "desc";
-export type AircraftMarketConditionBand = "new" | "excellent" | "healthy" | "watch" | "rough";
+export type AircraftMarketConditionBand = "new" | "excellent" | "fair" | "rough";
 export type AircraftMarketSortKey = "asking_price" | "monthly_burden" | "condition" | "range" | "passengers" | "cargo" | "distance";
 export type AircraftMarketSortDirection = "asc" | "desc";
+export type AircraftDealStructure = "owned" | "financed" | "leased";
 
 export interface AircraftTabSummaryCard {
   label: string;
@@ -126,6 +128,7 @@ export interface AircraftFleetViewState {
 export interface AircraftMarketOfferView {
   aircraftOfferId: string;
   aircraftModelId: string;
+  aircraftFamilyId: string;
   activeCabinLayoutId: string | undefined;
   activeCabinLayoutDisplayName: string | undefined;
   activeCabinSeats: number | undefined;
@@ -139,6 +142,7 @@ export interface AircraftMarketOfferView {
   marketRolePool: string;
   currentAirportId: string;
   location: AircraftTabLocationView;
+  imageAssetPath: string;
   distanceFromHomeBaseNm: number;
   conditionValue: number;
   conditionBand: AircraftMarketConditionBand;
@@ -152,6 +156,9 @@ export interface AircraftMarketOfferView {
   askingPurchasePriceAmount: number;
   financeTerms: AircraftOfferTermsView;
   leaseTerms: AircraftOfferTermsView;
+  buyOption: AircraftMarketDealOptionView;
+  financeOptions: AircraftMarketDealOptionView[];
+  leaseOptions: AircraftMarketDealOptionView[];
   lowestRecurringBurdenAmount: number;
   rangeNm: number;
   maxPassengers: number;
@@ -172,9 +179,16 @@ export interface AircraftMarketOfferView {
   offerStatus: string;
 }
 
+export interface AircraftMarketDealOptionView extends AircraftOfferTermsView {
+  optionId: string;
+  ownershipType: AircraftDealStructure;
+  label: string;
+  detail: string;
+  isAffordable: boolean;
+}
+
 export interface AircraftMarketFilters {
   searchText: string;
-  rolePool: string;
   conditionBand: string;
   locationAirportText: string;
   maxDistanceNm: string;
@@ -199,7 +213,6 @@ export interface AircraftMarketWorkspacePayload {
   homeBaseAirportId: string;
   homeBaseLocation: AircraftTabLocationView;
   filterOptions: {
-    rolePools: string[];
     conditionBands: AircraftMarketConditionBand[];
   };
 }
@@ -262,7 +275,6 @@ const defaultFleetSort: AircraftTableSort = {
 
 const defaultMarketFilters: AircraftMarketFilters = {
   searchText: "",
-  rolePool: "all",
   conditionBand: "all",
   locationAirportText: "",
   maxDistanceNm: "0",
@@ -553,7 +565,6 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
       homeBaseAirportId: companyContext.homeBaseAirportId,
       homeBaseLocation: describeAirport(params.airportReference, companyContext.homeBaseAirportId),
       filterOptions: {
-        rolePools: [],
         conditionBands: [],
       },
     };
@@ -575,10 +586,14 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
       const distanceFromHomeBaseNm = homeBaseAirport && currentAirport ? haversineDistanceNm(homeBaseAirport, currentAirport) : 0;
       const fitReasons = toStringArray(offer.explanationMetadata.fit_reasons);
       const riskReasons = toStringArray(offer.explanationMetadata.risk_reasons);
+      const buyOption = buildBuyDealOption(offer, companyContext.currentCashAmount);
+      const financeOptions = buildFinanceDealOptions(offer, model, companyContext.currentCashAmount);
+      const leaseOptions = buildLeaseDealOptions(offer, model, companyContext.currentCashAmount);
 
       return {
         aircraftOfferId: offer.aircraftOfferId,
         aircraftModelId: offer.aircraftModelId,
+        aircraftFamilyId: model.familyId,
         activeCabinLayoutId: offer.activeCabinLayoutId,
         activeCabinLayoutDisplayName: layout?.displayName,
         activeCabinSeats: layout?.totalSeats,
@@ -592,6 +607,7 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
         marketRolePool: model.marketRolePool,
         currentAirportId: offer.currentAirportId,
         location,
+        imageAssetPath: aircraftImageAssetPathForModel(offer.aircraftModelId),
         distanceFromHomeBaseNm,
         conditionValue: offer.conditionValue,
         conditionBand: mapMarketConditionBand(offer.listingType, offer.conditionBandInput, offer.conditionValue),
@@ -605,9 +621,12 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
         askingPurchasePriceAmount: offer.askingPurchasePriceAmount,
         financeTerms: offer.financeTerms,
         leaseTerms: offer.leaseTerms,
+        buyOption,
+        financeOptions,
+        leaseOptions,
         lowestRecurringBurdenAmount: Math.min(
-          offer.financeTerms.recurringPaymentAmount ?? Number.POSITIVE_INFINITY,
-          offer.leaseTerms.recurringPaymentAmount ?? Number.POSITIVE_INFINITY,
+          ...financeOptions.map((option) => option.recurringPaymentAmount ?? Number.POSITIVE_INFINITY),
+          ...leaseOptions.map((option) => option.recurringPaymentAmount ?? Number.POSITIVE_INFINITY),
         ),
         rangeNm: model.rangeNm,
         maxPassengers: layout?.totalSeats ?? model.maxPassengers,
@@ -622,9 +641,9 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
         msfs2024UserNote: model.msfs2024UserNote,
         fitReasons,
         riskReasons,
-        canBuyNow: companyContext.currentCashAmount >= offer.askingPurchasePriceAmount,
-        canLoanNow: companyContext.currentCashAmount >= offer.financeTerms.upfrontPaymentAmount,
-        canLeaseNow: companyContext.currentCashAmount >= offer.leaseTerms.upfrontPaymentAmount,
+        canBuyNow: buyOption.isAffordable,
+        canLoanNow: financeOptions.some((option) => option.isAffordable),
+        canLeaseNow: leaseOptions.some((option) => option.isAffordable),
         offerStatus: offer.offerStatus,
       };
     });
@@ -643,10 +662,114 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
     homeBaseAirportId: companyContext.homeBaseAirportId,
     homeBaseLocation,
     filterOptions: {
-      rolePools: [...new Set(offers.map((offer) => offer.marketRolePool))].sort((left, right) => left.localeCompare(right, "en-US")),
       conditionBands: [...new Set(offers.map((offer) => offer.conditionBand))] as AircraftMarketConditionBand[],
     },
   };
+}
+
+function buildBuyDealOption(
+  offer: AircraftMarketView["offers"][number],
+  currentCashAmount: number,
+): AircraftMarketDealOptionView {
+  return {
+    optionId: `${offer.aircraftOfferId}:buy`,
+    ownershipType: "owned",
+    label: "Outright purchase",
+    detail: "Full payment today with no recurring aircraft obligation.",
+    upfrontPaymentAmount: offer.askingPurchasePriceAmount,
+    isAffordable: currentCashAmount >= offer.askingPurchasePriceAmount,
+  };
+}
+
+function buildFinanceDealOptions(
+  offer: AircraftMarketView["offers"][number],
+  model: {
+    maxPassengers: number;
+    maxCargoLb: number;
+    rangeNm: number;
+    marketValueUsd: number;
+  },
+  currentCashAmount: number,
+): AircraftMarketDealOptionView[] {
+  const baseTermMonths = clampNumber(offer.financeTerms.termMonths ?? 120, 48, 180);
+  const baseApr = Math.max(0, offer.financeTerms.rateBandOrApr ?? 7);
+  const paymentCadence = offer.financeTerms.paymentCadence ?? "monthly";
+  const baseQuotedDepositRate = clampNumber(
+    offer.askingPurchasePriceAmount > 0 ? offer.financeTerms.upfrontPaymentAmount / offer.askingPurchasePriceAmount : 0.15,
+    0.12,
+    0.35,
+  );
+  const minimumDepositRate = minimumFinanceDepositRate(offer.conditionBandInput, offer.conditionValue);
+  const baseDepositRate = Math.max(baseQuotedDepositRate, minimumDepositRate);
+  const termOptions = buildFinanceTermOptions(baseTermMonths, model, offer.conditionValue);
+
+  return termOptions.map((termMonths) => {
+    const termDeltaYears = (termMonths - baseTermMonths) / 12;
+    const apr = clampNumber(baseApr + termDeltaYears * 0.18, 4.9, 16.5);
+    const depositRate = clampNumber(
+      baseDepositRate + (termMonths > baseTermMonths ? termDeltaYears * 0.0125 : 0),
+      minimumDepositRate,
+      0.4,
+    );
+    const upfrontPaymentAmount = roundCurrency(offer.askingPurchasePriceAmount * depositRate);
+    const principalAmount = Math.max(0, offer.askingPurchasePriceAmount - upfrontPaymentAmount);
+    const recurringPaymentAmount = roundCurrency(
+      calculateRecurringPayment(principalAmount, apr, termMonths, paymentCadence),
+    );
+
+    return {
+      optionId: `${offer.aircraftOfferId}:loan:${termMonths}`,
+      ownershipType: "financed",
+      label: `${termMonths} month loan`,
+      detail: `${formatPercentValue(apr, 1)} APR | ${formatPercentValue(depositRate * 100, 0)} down`,
+      upfrontPaymentAmount,
+      recurringPaymentAmount,
+      paymentCadence,
+      termMonths,
+      rateBandOrApr: apr,
+      isAffordable: currentCashAmount >= upfrontPaymentAmount,
+    };
+  });
+}
+
+function buildLeaseDealOptions(
+  offer: AircraftMarketView["offers"][number],
+  model: {
+    maxPassengers: number;
+    maxCargoLb: number;
+    rangeNm: number;
+  },
+  currentCashAmount: number,
+): AircraftMarketDealOptionView[] {
+  const baseTermMonths = clampNumber(offer.leaseTerms.termMonths ?? 24, 12, 60);
+  const baseRecurringPaymentAmount = Math.max(0, offer.leaseTerms.recurringPaymentAmount ?? 0);
+  const paymentCadence = offer.leaseTerms.paymentCadence ?? "monthly";
+  const baseDepositMonths = clampNumber(
+    baseRecurringPaymentAmount > 0 ? offer.leaseTerms.upfrontPaymentAmount / baseRecurringPaymentAmount : 1,
+    1,
+    3,
+  );
+  const termOptions = buildLeaseTermOptions(baseTermMonths, model);
+
+  return termOptions.map((termMonths) => {
+    const termRatio = baseTermMonths / termMonths;
+    const recurringPaymentAmount = roundCurrency(
+      baseRecurringPaymentAmount * clampNumber(Math.pow(termRatio, 0.28), 0.82, 1.22),
+    );
+    const upfrontPaymentAmount = roundCurrency(recurringPaymentAmount * baseDepositMonths);
+
+    return {
+      optionId: `${offer.aircraftOfferId}:lease:${termMonths}`,
+      ownershipType: "leased",
+      label: `${termMonths} month lease`,
+      detail: "",
+      upfrontPaymentAmount,
+      recurringPaymentAmount,
+      paymentCadence,
+      termMonths,
+      isAffordable: currentCashAmount >= upfrontPaymentAmount,
+    };
+  });
 }
 
 // Summary cards compress the heavier payloads into the top-line signals shown above each workspace.
@@ -770,6 +893,77 @@ function describeAirport(airportReference: AirportReferenceRepository, airportId
   };
 }
 
+function buildFinanceTermOptions(
+  baseTermMonths: number,
+  model: {
+    maxPassengers: number;
+    maxCargoLb: number;
+    rangeNm: number;
+    marketValueUsd: number;
+  },
+  conditionValue: number,
+): number[] {
+  const candidateTerms = isLargeAircraftModel(model)
+    ? [84, 120, 144, 180]
+    : conditionValue < 0.6
+      ? [60, 84, 96, 120]
+      : [60, 84, 120, 180];
+
+  return prioritizeTermsAroundBase(uniqueSortedNumbers(candidateTerms), baseTermMonths, 4);
+}
+
+function buildLeaseTermOptions(
+  baseTermMonths: number,
+  model: {
+    maxPassengers: number;
+    maxCargoLb: number;
+    rangeNm: number;
+  },
+): number[] {
+  const candidateTerms = isLargeAircraftModel(model)
+    ? [24, 36, 48, 60]
+    : [12, 24, 36, 48];
+
+  return prioritizeTermsAroundBase(uniqueSortedNumbers(candidateTerms), baseTermMonths, 4);
+}
+
+function prioritizeTermsAroundBase(values: number[], baseValue: number, maxCount: number): number[] {
+  return values
+    .slice()
+    .sort((left, right) => {
+      const leftDistance = Math.abs(left - baseValue);
+      const rightDistance = Math.abs(right - baseValue);
+      if (leftDistance !== rightDistance) {
+        return leftDistance - rightDistance;
+      }
+      return left - right;
+    })
+    .slice(0, maxCount)
+    .sort((left, right) => left - right);
+}
+
+function isLargeAircraftModel(model: {
+  maxPassengers: number;
+  maxCargoLb: number;
+  rangeNm: number;
+  marketValueUsd?: number;
+}): boolean {
+  return model.maxPassengers >= 30
+    || model.maxCargoLb >= 10000
+    || model.rangeNm >= 2200
+    || (model.marketValueUsd ?? 0) >= 8_000_000;
+}
+
+function minimumFinanceDepositRate(conditionBandInput: string, conditionValue: number): number {
+  if (conditionBandInput === "poor" || conditionValue < 0.6) {
+    return 0.22;
+  }
+  if (conditionBandInput === "fair" || conditionValue < 0.75) {
+    return 0.18;
+  }
+  return 0.15;
+}
+
 // Client-side sorting and filtering are pure so the browser can recompute instantly after every interaction.
 function matchesFleetFilters(aircraft: AircraftTabAircraftView, filters: AircraftTableFilters): boolean {
   if (filters.readiness === "ready" && !aircraft.isReadyForNewWork) {
@@ -868,11 +1062,7 @@ function matchesMarketFilters(
     }
   }
 
-  if (filters.rolePool !== "all" && offer.marketRolePool !== filters.rolePool) {
-    return false;
-  }
-
-  if (filters.conditionBand !== "all" && offer.conditionBand !== filters.conditionBand) {
+  if (!matchesMarketConditionFilter(offer.conditionBand, filters.conditionBand)) {
     return false;
   }
 
@@ -902,6 +1092,14 @@ function matchesMarketFilters(
   }
 
   return true;
+}
+
+function matchesMarketConditionFilter(conditionBand: AircraftMarketConditionBand, filterValue: string): boolean {
+  if (filterValue === "all") {
+    return true;
+  }
+
+  return conditionBand === filterValue;
 }
 
 function resolveMarketAnchorLocation(
@@ -977,7 +1175,7 @@ function parseMaxDistanceNm(value: string): number {
 
 function compareMarketOffers(left: AircraftMarketOfferView, right: AircraftMarketOfferView, sort: AircraftMarketSort): number {
   const direction = sort.direction === "asc" ? 1 : -1;
-  const conditionRank = { new: 4, excellent: 3, healthy: 2, watch: 1, rough: 0 } satisfies Record<AircraftMarketConditionBand, number>;
+  const conditionRank = { new: 3, excellent: 2, fair: 1, rough: 0 } satisfies Record<AircraftMarketConditionBand, number>;
 
   let comparison = 0;
   switch (sort.key) {
@@ -1024,20 +1222,17 @@ function mapMarketConditionBand(
     case "excellent":
       return "excellent";
     case "good":
-      return "healthy";
+      return "fair";
     case "fair":
-      return "watch";
+      return "fair";
     case "poor":
       return "rough";
     default:
       if (conditionValue >= 0.9) {
         return "excellent";
       }
-      if (conditionValue >= 0.75) {
-        return "healthy";
-      }
       if (conditionValue >= 0.6) {
-        return "watch";
+        return "fair";
       }
       return "rough";
     }
@@ -1584,6 +1779,47 @@ function haversineDistanceNm(origin: AirportRecord, destination: AirportRecord):
   const a = Math.sin(deltaLatitude / 2) ** 2 + Math.cos(latitudeOne) * Math.cos(latitudeTwo) * Math.sin(deltaLongitude / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return earthRadiusNm * c;
+}
+
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function roundCurrency(value: number): number {
+  return Math.round(value);
+}
+
+function uniqueSortedNumbers(values: number[]): number[] {
+  return [...new Set(values)].sort((left, right) => left - right);
+}
+
+function calculateRecurringPayment(
+  principalAmount: number,
+  annualRatePercent: number,
+  termMonths: number,
+  cadence: "weekly" | "monthly",
+): number {
+  const periods = cadence === "monthly" ? termMonths : Math.max(1, Math.round((termMonths * 52) / 12));
+  if (periods <= 0 || principalAmount <= 0) {
+    return 0;
+  }
+
+  const ratePerPeriod = cadence === "monthly"
+    ? annualRatePercent / 100 / 12
+    : annualRatePercent / 100 / 52;
+
+  if (ratePerPeriod <= 0) {
+    return principalAmount / periods;
+  }
+
+  return (principalAmount * ratePerPeriod) / (1 - Math.pow(1 + ratePerPeriod, periods * -1));
+}
+
+function formatPercentValue(value: number, digits: number): string {
+  return `${new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value)}%`;
 }
 
 function formatMoney(amount: number): string {

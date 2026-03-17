@@ -19,6 +19,7 @@ import { bindRoutePlanToAircraft } from "./route-plan-dispatch.js";
 import { addAcceptedContractToRoutePlan, addCandidateOfferToRoutePlan, clearRoutePlan, removeRoutePlanItem, reorderRoutePlanItem, } from "./route-plan-state.js";
 import { renderSaveOpeningPage } from "./save-opening-page.js";
 import { renderIncrementalSavePage } from "./save-shell-page.js";
+import { resolveAircraftImageAsset } from "./aircraft-image-cache.js";
 // Process-wide resources are initialized once because every request shares the same backend and the same reference catalogs.
 const port = Number.parseInt(process.env.PORT ?? "4321", 10);
 const turnaroundMinutes = 45;
@@ -30,6 +31,7 @@ const aircraftDatabasePath = resolve(process.cwd(), "data", "aircraft", "flightl
 const openSaveClientAssetUrl = new URL("./public/open-save-client.js", import.meta.url);
 const saveShellClientAssetUrl = new URL("./public/save-shell-client.js", import.meta.url);
 const uiBrowserModuleAssetUrls = new Map<string, URL>([
+    ["aircraft-image-sources", new URL("./aircraft-image-sources.js", import.meta.url)],
     ["aircraft-tab-model", new URL("./aircraft-tab-model.js", import.meta.url)],
     ["clock-calendar-model", new URL("./clock-calendar-model.js", import.meta.url)],
     ["contracts-view-model", new URL("./contracts-view-model.js", import.meta.url)],
@@ -258,6 +260,30 @@ function commandId(prefix) {
 }
 function registrationFor(prefix) {
     return `${prefix}${Math.floor(100 + Math.random() * 900)}`;
+}
+function parseOptionalIntegerFormValue(rawValue) {
+    if (!rawValue) {
+        return undefined;
+    }
+    const parsedValue = Number.parseInt(String(rawValue), 10);
+    return Number.isFinite(parsedValue) ? parsedValue : undefined;
+}
+function parseOptionalCurrencyFormValue(rawValue) {
+    if (!rawValue) {
+        return undefined;
+    }
+    const parsedValue = Number.parseFloat(String(rawValue));
+    return Number.isFinite(parsedValue) ? Math.round(parsedValue) : undefined;
+}
+function parseOptionalFloatFormValue(rawValue) {
+    if (!rawValue) {
+        return undefined;
+    }
+    const parsedValue = Number.parseFloat(String(rawValue));
+    return Number.isFinite(parsedValue) ? parsedValue : undefined;
+}
+function parseOptionalCadenceFormValue(rawValue) {
+    return rawValue === "weekly" || rawValue === "monthly" ? rawValue : undefined;
 }
 // Route helpers centralize URL building so links, redirects, and client fallbacks stay aligned.
 function saveRoute(saveId, options = {}) {
@@ -1948,6 +1974,8 @@ async function handleRequest(request, response) {
     const clockMatch = pathname.match(/^\/api\/save\/([^/]+)\/clock(?:\/([^/]+))?$/);
     const actionApiMatch = pathname.match(/^\/api\/save\/([^/]+)\/actions\/([^/]+)$/);
     const openSaveMatch = pathname.match(/^\/open-save\/([^/]+)$/);
+    const aircraftModelImageMatch = pathname.match(/^\/assets\/aircraft-images\/model\/([^/]+)$/);
+    const aircraftImageMatch = pathname.match(/^\/assets\/aircraft-images\/([^/]+)$/);
     if (request.method === "GET" && pathname === "/assets/save-shell-client.js") {
         const assetSource = await readFile(saveShellClientAssetUrl, "utf8");
         response.writeHead(200, {
@@ -1982,6 +2010,25 @@ async function handleRequest(request, response) {
             "cache-control": "no-store",
         });
         response.end(assetSource);
+        return;
+    }
+    if (request.method === "GET" && aircraftModelImageMatch) {
+        const modelId = decodeURIComponent(aircraftModelImageMatch[1] ?? "");
+        const resolved = await resolveAircraftImageAsset(modelId, aircraftReference.findModel(modelId));
+        response.writeHead(200, {
+            "content-type": resolved.contentType,
+            "cache-control": resolved.cacheControl,
+        });
+        response.end(await readFile(resolved.filePath));
+        return;
+    }
+    if (request.method === "GET" && aircraftImageMatch) {
+        const resolved = await resolveAircraftImageAsset(aircraftImageMatch[1] ?? "");
+        response.writeHead(200, {
+            "content-type": resolved.contentType,
+            "cache-control": resolved.cacheControl,
+        });
+        response.end(await readFile(resolved.filePath));
         return;
     }
     const uiBrowserModuleMatch = pathname.match(/^\/([a-z0-9-]+)\.js$/i);
@@ -2381,6 +2428,12 @@ async function handleAcquireAircraftOfferApi(response, saveId, form) {
         return;
     }
     const model = aircraftReference.findModel(offer.aircraftModelId);
+    const dealLabel = ownershipType === "financed" ? "loan" : ownershipType === "leased" ? "lease" : "purchase";
+    const termMonths = parseOptionalIntegerFormValue(form.get("termMonths"));
+    const upfrontPaymentAmount = parseOptionalCurrencyFormValue(form.get("upfrontPaymentAmount"));
+    const recurringPaymentAmount = parseOptionalCurrencyFormValue(form.get("recurringPaymentAmount"));
+    const rateBandOrApr = parseOptionalFloatFormValue(form.get("rateBandOrApr"));
+    const paymentCadence = parseOptionalCadenceFormValue(form.get("paymentCadence"));
     const result = await backend.dispatch({
         commandId: commandId("cmd_aircraft_offer_acquire_api"),
         saveId,
@@ -2395,10 +2448,15 @@ async function handleAcquireAircraftOfferApi(response, saveId, form) {
             registration: offer.registration,
             displayName: offer.displayName,
             sourceOfferId: offer.aircraftOfferId,
+            upfrontPaymentAmount,
+            recurringPaymentAmount,
+            paymentCadence,
+            termMonths,
+            rateBandOrApr,
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Acquired ${model?.displayName ?? offer.displayName} at ${offer.currentAirportId} via ${ownershipType === "financed" ? "loan" : ownershipType}.` }
+        ? { success: true, message: `Acquired ${model?.displayName ?? offer.displayName} at ${offer.currentAirportId} via ${dealLabel}${termMonths ? ` (${termMonths} mo)` : ""}.` }
         : { success: false, error: result.hardBlockers[0] ?? "Could not acquire that aircraft listing." });
 }
 async function handleAddStaffingApi(response, saveId, form) {
