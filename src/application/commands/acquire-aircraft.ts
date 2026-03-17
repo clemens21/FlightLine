@@ -167,6 +167,52 @@ function parseTermsJson(rawValue: string, acquiredAtUtc: string): AcquisitionTer
   };
 }
 
+function deriveMarketOfferTerms(
+  command: AcquireAircraftCommand,
+  marketOffer: MarketOfferRow,
+  acquiredAtUtc: string,
+): AcquisitionTerms {
+  if (command.payload.ownershipType === "owned") {
+    return {
+      upfrontPaymentAmount: marketOffer.askingPurchasePriceAmount,
+      recurringPaymentAmount: null,
+      paymentCadence: null,
+      termMonths: null,
+      endAtUtc: null,
+      rateBandOrApr: null,
+    };
+  }
+
+  const baseTerms = parseTermsJson(
+    command.payload.ownershipType === "financed" ? marketOffer.financeTermsJson : marketOffer.leaseTermsJson,
+    acquiredAtUtc,
+  );
+
+  const hasOverride =
+    command.payload.upfrontPaymentAmount !== undefined
+    || command.payload.recurringPaymentAmount !== undefined
+    || command.payload.paymentCadence !== undefined
+    || command.payload.termMonths !== undefined
+    || command.payload.rateBandOrApr !== undefined;
+
+  if (!hasOverride) {
+    return baseTerms;
+  }
+
+  const termMonths = command.payload.termMonths ?? baseTerms.termMonths ?? null;
+
+  return {
+    upfrontPaymentAmount: Math.round(command.payload.upfrontPaymentAmount ?? baseTerms.upfrontPaymentAmount),
+    recurringPaymentAmount: command.payload.recurringPaymentAmount !== undefined
+      ? Math.round(command.payload.recurringPaymentAmount)
+      : baseTerms.recurringPaymentAmount ?? null,
+    paymentCadence: command.payload.paymentCadence ?? baseTerms.paymentCadence ?? null,
+    termMonths,
+    endAtUtc: termMonths ? addUtcMonths(acquiredAtUtc, termMonths) : null,
+    rateBandOrApr: command.payload.rateBandOrApr ?? baseTerms.rateBandOrApr ?? null,
+  };
+}
+
 export async function handleAcquireAircraft(
   command: AcquireAircraftCommand,
   dependencies: AcquireAircraftDependencies,
@@ -313,18 +359,7 @@ export async function handleAcquireAircraft(
   const acquiredAtUtc = companyContext?.currentTimeUtc ?? command.issuedAtUtc;
   const acquisitionTerms = aircraftModel
     ? marketOffer
-      ? command.payload.ownershipType === "owned"
-        ? {
-            upfrontPaymentAmount: marketOffer.askingPurchasePriceAmount,
-            recurringPaymentAmount: null,
-            paymentCadence: null,
-            termMonths: null,
-            endAtUtc: null,
-            rateBandOrApr: null,
-          }
-        : command.payload.ownershipType === "financed"
-          ? parseTermsJson(marketOffer.financeTermsJson, acquiredAtUtc)
-          : parseTermsJson(marketOffer.leaseTermsJson, acquiredAtUtc)
+      ? deriveMarketOfferTerms(command, marketOffer, acquiredAtUtc)
       : deriveAcquisitionTerms(command, aircraftModel, acquiredAtUtc)
     : null;
 

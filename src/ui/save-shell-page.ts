@@ -915,6 +915,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
+    .market-toolbar {
+      grid-template-columns: minmax(0, 1.1fr) minmax(180px, .55fr) minmax(0, 1.35fr);
+    }
+    .aircraft-location-range .range-inputs {
+      grid-template-columns: minmax(0, 1fr) 120px;
+    }
     .aircraft-row { cursor: pointer; }
     .aircraft-row.selected td {
       background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
@@ -944,14 +950,152 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-detail-stack {
       display: grid;
-      gap: 18px;
+      gap: 14px;
     }
     .aircraft-detail-hero {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 172px;
       align-items: start;
-      justify-content: space-between;
       gap: 16px;
-      flex-wrap: wrap;
+    }
+    .aircraft-hero-image {
+      margin: 0;
+      width: 172px;
+      justify-self: end;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .aircraft-hero-image img {
+      display: block;
+      width: 100%;
+      height: 108px;
+      object-fit: cover;
+      background: color-mix(in srgb, var(--panel-strong) 88%, #0d1822);
+    }
+    .aircraft-facts-card {
+      display: grid;
+      gap: 8px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+    }
+    .aircraft-facts-list {
+      display: grid;
+    }
+    .aircraft-fact-row {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr);
+      gap: 12px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .aircraft-fact-row:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .aircraft-fact-row:last-child {
+      padding-bottom: 0;
+    }
+    .aircraft-fact-copy {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+    .aircraft-fact-copy strong {
+      display: block;
+      font-size: 14px;
+      line-height: 1.35;
+      margin: 0;
+    }
+    .aircraft-fact-copy .muted {
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .aircraft-fact-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 4px;
+      color: var(--muted);
+    }
+    .market-deals {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: start;
+    }
+    .market-deal-card {
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+    .market-deal-card button {
+      width: 100%;
+      justify-content: center;
+    }
+    .market-deal-card strong {
+      font-size: 16px;
+      margin: 0;
+    }
+    .market-deal-card .actions {
+      margin-top: 4px;
+    }
+    .market-review-card {
+      gap: 14px;
+    }
+    .market-review-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+    .market-option-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .market-option-button,
+    body[data-theme="dark"] .market-option-button {
+      appearance: none;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: var(--panel-strong);
+      color: var(--text);
+      display: grid;
+      gap: 3px;
+      text-align: left;
+      box-shadow: none;
+    }
+    .market-option-button.current,
+    body[data-theme="dark"] .market-option-button.current {
+      border-color: rgba(111,201,212,.45);
+      background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel-strong));
+      color: var(--text);
+    }
+    .market-option-title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .market-option-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .market-review-summary {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .market-confirm-form {
+      display: grid;
+      gap: 10px;
+      justify-items: start;
+    }
+    .market-confirm-form button {
+      width: 100%;
+      justify-content: center;
     }
     .aircraft-why-list {
       margin: 8px 0 0;
@@ -973,14 +1117,29 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .aircraft-workbench,
       .aircraft-summary-grid,
       .aircraft-toolbar,
+      .market-deals,
+      .market-review-summary,
       .contracts-grid,
       .contracts-side-column {
         grid-template-columns: 1fr;
         height: auto;
       }
+      .market-option-list {
+        grid-template-columns: 1fr;
+      }
       .aircraft-tab-main,
       .aircraft-side-column {
         height: auto;
+      }
+      .aircraft-fact-row {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+      .aircraft-detail-hero {
+        grid-template-columns: 1fr;
+      }
+      .aircraft-hero-image {
+        justify-self: start;
       }
     }
   </style>
