@@ -286,7 +286,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       : `<div class="clock-warning-list">${simTo0600.warningEvents.slice(0, 4).map((event) => `<article class="clock-warning-item ${event.severity}"><div class="clock-agenda-head"><strong>${escapeHtml(event.title)}</strong><span class="pill">${escapeHtml(event.localTimeLabel)}</span></div><div class="muted">${escapeHtml(event.subtitle)}</div></article>`).join("")}${simTo0600.warningCount > 4 ? `<div class="muted">${escapeHtml(String(simTo0600.warningCount - 4))} more milestone${simTo0600.warningCount - 4 === 1 ? "" : "s"} would also be passed.</div>` : ``}</div>`;
 
     const dayActionCard = clockDateActionOpen
-      ? `<section class="clock-day-popover"><div class="clock-day-popover-head"><div><div class="eyebrow">Selected date</div><strong>${escapeHtml(clockPayload.selectedDateLabel)}</strong></div><button type="button" class="button-secondary compact" data-clock-day-action-close="1">Close</button></div>${simTo0600.warningCount > 0 ? `<div class="clock-day-warning"><strong>Warning:</strong> simulating to the selected morning would pass ${escapeHtml(String(simTo0600.warningCount))} milestone${simTo0600.warningCount === 1 ? "" : "s"}.</div>` : ``}${warningList}<div class="clock-day-popover-actions"><button type="button" class="button-secondary" data-clock-sim-0600="${escapeHtml(simTo0600.localDate)}" ${simTo0600.enabled ? "" : "disabled"}>${escapeHtml(simTo0600.label)}</button>${simTo0600.enabled ? `<span class="muted">Advance to the morning anchor for the selected day.</span>` : `<span class="muted">The selected morning anchor on this day has already passed.</span>`}</div></section>`
+        ? `<section class="clock-day-popover"><div class="clock-day-popover-head"><div><div class="eyebrow">Selected date</div><strong>${escapeHtml(clockPayload.selectedDateLabel)}</strong></div><button type="button" class="button-secondary compact" data-clock-day-action-close="1">Close</button></div>${simTo0600.warningCount > 0 ? `<div class="clock-day-warning"><strong>Warning:</strong> simulating to the selected morning would pass ${escapeHtml(String(simTo0600.warningCount))} milestone${simTo0600.warningCount === 1 ? "" : "s"}.</div>` : ``}${warningList}<div class="clock-day-popover-actions"><button type="button" class="button-secondary" data-clock-sim-anchor-date="${escapeHtml(simTo0600.localDate)}" ${simTo0600.enabled ? "" : "disabled"}>${escapeHtml(simTo0600.label)}</button>${simTo0600.enabled ? `<span class="muted">Advance to the morning anchor for the selected day.</span>` : `<span class="muted">The selected morning anchor on this day has already passed.</span>`}</div></section>`
       : ``;
 
     clockPanel.innerHTML = `
@@ -613,10 +613,10 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       renderClockPanel();
       return;
     }
-    const clockAnchorButton = target.closest<HTMLButtonElement>("[data-clock-sim-0600]");
+    const clockAnchorButton = target.closest<HTMLButtonElement>("[data-clock-sim-anchor-date]");
     if (clockAnchorButton) {
       event.preventDefault();
-      const localDate = clockAnchorButton.dataset.clockSim0600 ?? "";
+      const localDate = clockAnchorButton.getAttribute("data-clock-sim-anchor-date") ?? "";
       const originalLabel = clockAnchorButton.textContent ?? "Sim to selected morning";
       clockAnchorButton.disabled = true;
       clockAnchorButton.textContent = "Simulating...";

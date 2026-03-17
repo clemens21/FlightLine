@@ -250,7 +250,7 @@ try {
 
   await clickUi(page.locator("[data-clock-day='2026-03-16']"));
   await page.waitForFunction(() => document.querySelector("[data-clock-day-action-close]"));
-  assert.equal(await page.locator("[data-clock-sim-0600]").isDisabled(), true);
+  assert.equal(await page.locator("[data-clock-sim-anchor-date]").isDisabled(), true);
   assert.ok((await page.locator("[data-clock-panel]").textContent())?.includes("already passed"));
   await clickUi(page.locator("[data-clock-day-action-close]"));
   await page.waitForFunction(() => !document.querySelector("[data-clock-day-action-close]"));
@@ -261,10 +261,18 @@ try {
   assert.ok(futureActionText?.includes("Warning:"));
   assert.ok(futureActionText?.includes("Maintenance Start"));
   assert.ok((await page.locator(".clock-warning-item").count()) >= 1);
-  assert.equal(await page.locator("[data-clock-sim-0600]").isDisabled(), false);
+  assert.equal(await page.locator("[data-clock-sim-anchor-date]").isDisabled(), false);
   assert.ok((await page.locator("[data-clock-panel]").textContent())?.includes("Tue, March 17, 2026"));
-  await clickUi(page.locator("[data-clock-day-action-close]"));
+  const beforeAnchorAdvance = await page.locator("[data-clock-label]").textContent();
+  await clickUi(page.locator("[data-clock-sim-anchor-date]"));
+  await page.waitForFunction((previousLabel) => {
+    const nextLabel = document.querySelector("[data-clock-label]")?.textContent ?? "";
+    return nextLabel !== "" && nextLabel !== previousLabel;
+  }, beforeAnchorAdvance, { timeout: 15_000 });
   await page.waitForFunction(() => !document.querySelector("[data-clock-day-action-close]"));
+  const afterAnchorAdvance = await page.locator("[data-clock-label]").textContent();
+  assert.notEqual(afterAnchorAdvance, beforeAnchorAdvance);
+  assert.ok(afterAnchorAdvance?.includes("Mar 17, 2026"));
 
   const preTickLabel = await page.locator("[data-clock-label]").textContent();
   await clickUi(page.locator("[data-clock-rate-mode='60x']"));
