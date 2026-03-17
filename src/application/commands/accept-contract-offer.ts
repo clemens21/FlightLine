@@ -48,6 +48,7 @@ function describeAcceptedContract(
   return `${originAirportId} -> ${destinationAirportId} ${volumeType} contract (${payload})`;
 }
 
+// Accepts one live contract offer and turns it into a persisted company contract without regenerating the rest of the board.
 export async function handleAcceptContractOffer(
   command: AcceptContractOfferCommand,
   dependencies: AcceptContractOfferDependencies,

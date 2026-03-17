@@ -36,6 +36,28 @@ const displayName = `UI Shell ${seededSaveId}`;
 let server = null;
 let browser = null;
 
+function themeLabel(theme) {
+  switch (theme) {
+    case "dark":
+      return "Dark Blue";
+    case "forest":
+      return "Dark Green";
+    default:
+      return "Light";
+  }
+}
+
+function nextTheme(theme) {
+  switch (theme) {
+    case "light":
+      return "dark";
+    case "dark":
+      return "forest";
+    default:
+      return "light";
+  }
+}
+
 function launcherSaveRow(page, saveId) {
   return page.locator(".launcher-save-row").filter({ hasText: saveId }).first();
 }
@@ -118,7 +140,7 @@ try {
   assert.equal(await launcherSaveRow(page, seededSaveId).count(), 1);
 
   const launcherTheme = await readTheme(page);
-  const toggledLauncherTheme = launcherTheme === "dark" ? "light" : "dark";
+  const toggledLauncherTheme = nextTheme(launcherTheme);
   await clickUi(page.locator(".theme-toggle"));
   await waitForTheme(page, toggledLauncherTheme);
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -146,23 +168,35 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-clock-menu]")?.open !== true);
 
   await clickUi(page.locator("[data-settings-menu] summary"));
-  const settingsThemeLabel = toggledLauncherTheme === "dark" ? "Dark" : "Light";
+  const settingsThemeLabel = themeLabel(toggledLauncherTheme);
   await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, settingsThemeLabel);
   assert.equal((await page.locator("[data-settings-menu]").textContent())?.includes(launcherSaveId), true);
 
-  const shellTheme = toggledLauncherTheme === "dark" ? "light" : "dark";
-  const shellThemeLabel = shellTheme === "dark" ? "Dark" : "Light";
+  const shellTheme = nextTheme(toggledLauncherTheme);
+  const shellThemeLabel = themeLabel(shellTheme);
   await clickUi(page.locator("[data-settings-theme]"));
   await waitForTheme(page, shellTheme);
   await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, shellThemeLabel);
+  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
 
-  await clickUi(page.locator("[data-settings-menu] summary"));
+  const thirdTheme = nextTheme(shellTheme);
+  const thirdThemeLabel = themeLabel(thirdTheme);
+  await clickUi(page.locator("[data-settings-theme]"));
+  await waitForTheme(page, thirdTheme);
+  await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, thirdThemeLabel);
+  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
+
+  await clickUi(page.locator("[data-settings-popup-mode-toggle]"));
+  await page.waitForFunction(() => document.querySelector("[data-settings-popup-label]")?.textContent === "Important only");
+  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
+  assert.equal(await page.evaluate(() => localStorage.getItem("flightline-activity-popups")), "important_only");
+
   await Promise.all([
     page.waitForURL((url) => url.pathname === "/"),
     clickUi(page.locator("[data-settings-menu] a[href='/']")),
   ]);
   await waitForLauncher(page);
-  assert.equal(await readTheme(page), shellTheme);
+  assert.equal(await readTheme(page), thirdTheme);
   assert.equal(await launcherSaveRow(page, launcherSaveId).count(), 1);
   assert.equal(await launcherSaveRow(page, deleteSaveId).count(), 1);
 
@@ -214,11 +248,11 @@ try {
   await waitForCompanyClock(page);
   const initialClockLabel = await page.locator("[data-clock-label]").textContent();
   await clickUi(page.getByRole("button", { name: "Advance 12h" }));
-  await page.waitForFunction(() => document.querySelector("[data-shell-flash]")?.textContent?.includes("Advanced time to"));
   await page.waitForFunction((previousLabel) => {
     const nextLabel = document.querySelector("[data-clock-label]")?.textContent;
     return Boolean(nextLabel) && nextLabel !== "Loading..." && nextLabel !== previousLabel;
   }, initialClockLabel);
+  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
   assert.equal(await page.locator(".panel").filter({ hasText: "Control Tower" }).count(), 1);
 
   await clickUi(page.locator("[data-shell-tab='contracts']"));
@@ -275,8 +309,10 @@ try {
   await page.locator("select[name='fitBucket']").selectOption("all");
   await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
 
+  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
   await clickUi(page.locator("[data-plan-add-offer]").first());
   await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("1 item | endpoint"));
+  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
 
   const endpointMatchCount = await page.locator("[data-select-offer-row].matches-endpoint").count();
   await page.locator("input[name='matchPlannerEndpoint']").check();
@@ -291,10 +327,17 @@ try {
   await page.locator("[data-plan-review-select]").first().check();
   await clickUi(page.locator("[data-plan-accept-selected]"));
   await page.waitForFunction(() => document.body.innerText.includes("Accepted 1 planned offer"));
+  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").includes("Accepted 1 planned offer"));
 
   await clickUi(page.locator("[data-board-tab='active']"));
   await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
   assert.ok((await page.locator("[data-select-company-contract-row]").count()) >= 1);
+
+  await clickUi(page.locator("[data-settings-menu] summary"));
+  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
+  await clickUi(page.locator("[data-settings-open-activity]"));
+  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
+  await page.waitForFunction(() => new URL(window.location.href).searchParams.get("tab") === "activity");
 
   await clickUi(page.locator("[data-shell-tab='dashboard']"));
   await page.waitForFunction(() => document.body.innerText.includes("Execution Queue"));

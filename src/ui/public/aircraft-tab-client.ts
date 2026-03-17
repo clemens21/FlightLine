@@ -1,6 +1,8 @@
 /*
  * Browser controller for the aircraft tab inside the save shell.
  * It manages client-side selection, filtering, sorting, and detail-panel updates for the fleet command view.
+ * The guiding split is: this file owns transient UI state only, while `aircraft-tab-model.ts` owns the expensive
+ * simulation-derived shaping. If you need to change what the player sees conceptually, start in the model file first.
  */
 
 import {
@@ -36,7 +38,8 @@ interface AcquisitionReviewState {
   selectedOptionId: string;
 }
 
-// The client keeps only ephemeral interaction state; expensive simulation shaping already happened on the server.
+// Mounts the aircraft workspace controller and keeps only short-lived UI state such as selected rows and filter choices.
+// All expensive fleet/market shaping is already done server-side in `aircraft-tab-model.ts`.
 export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload): AircraftTabController {
   let workspaceTab = loadStoredWorkspace(payload.saveId) ?? payload.defaultWorkspaceTab;
   storeWorkspace(payload.saveId, workspaceTab);
@@ -248,7 +251,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   };
 }
 
-// Rendering branches between owned fleet and live market workspaces but keeps the same overall workbench layout.
+// Chooses between the Fleet and Market workspaces while preserving the shared aircraft workbench layout.
 function renderAircraftTab(
   payload: AircraftTabPayload,
   workspaceTab: AircraftWorkspaceTab,
@@ -292,6 +295,10 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
     return `<div class="empty-state">No aircraft in the fleet yet. Switch to <strong>Market</strong> to acquire the first airframe.</div>`;
   }
 
+  const selectedAircraftTitle = viewState.selectedAircraft
+    ? `${viewState.selectedAircraft.registration} | ${viewState.selectedAircraft.modelDisplayName}`
+    : "Selected Aircraft";
+
   return `
     <div class="aircraft-workbench">
       <section class="panel aircraft-fleet-panel">
@@ -327,7 +334,7 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
         </div>
       </section>
       <section class="panel aircraft-detail-panel">
-        <div class="panel-head"><h3>Selected Aircraft</h3></div>
+        <div class="panel-head"><h3>${escapeHtml(selectedAircraftTitle)}</h3></div>
         <div class="panel-body aircraft-detail-body">${renderAircraftDetail(viewState.selectedAircraft)}</div>
       </section>
     </div>
@@ -378,7 +385,7 @@ function renderMarketWorkspace(
   `;
 }
 
-// Tables stay as plain HTML so row selection and server-posted acquisition forms keep working without a framework.
+// Renders the fleet table view, leaving selection and sorting to the lightweight browser controller.
 function renderFleetTable(viewState: AircraftFleetViewState): string {
   if (viewState.visibleAircraft.length === 0) {
     return `<div class="empty-state">No aircraft match the current filters. <button type="button" class="button-link button-secondary" data-aircraft-clear-filters="1">Clear filters</button></div>`;
@@ -391,11 +398,10 @@ function renderFleetTable(viewState: AircraftFleetViewState): string {
           <tr>
             <th class="sortable">${renderFleetSortButton(viewState.sort, "tail", "Aircraft")}</th>
             <th class="sortable">${renderFleetSortButton(viewState.sort, "location", "Location")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "state", "State")}</th>
+            <th class="sortable">${renderFleetSortButton(viewState.sort, "state", "Ownership")}</th>
             <th class="sortable">${renderFleetSortButton(viewState.sort, "condition", "Condition")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "staffing", "Staffing")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "payload", "Growth Fit")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "attention", "Next Event")}</th>
+            <th class="sortable">${renderFleetSortButton(viewState.sort, "payload", "Mission Profile")}</th>
+            <th class="sortable">${renderFleetSortButton(viewState.sort, "attention", "Next Milestone")}</th>
           </tr>
         </thead>
         <tbody>
@@ -406,6 +412,7 @@ function renderFleetTable(viewState: AircraftFleetViewState): string {
   `;
 }
 
+// Renders the aircraft market table while keeping rows simple enough for cheap full rerenders on every interaction.
 function renderMarketTable(viewState: ReturnType<typeof applyAircraftMarketViewState>): string {
   if (viewState.visibleOffers.length === 0) {
     return `<div class="empty-state">No aircraft listings match the current market filters. <button type="button" class="button-link button-secondary" data-market-clear-filters="1">Clear filters</button></div>`;
@@ -457,9 +464,8 @@ function renderAircraftRow(aircraft: AircraftTabAircraftView, selectedAircraftId
         </button>
       </td>
       <td>${renderLocationCell(aircraft.location)}</td>
-      <td><div class="meta-stack">${renderBadge(aircraft.operationalState)}<span class="muted">${escapeHtml(aircraft.ownershipType.replaceAll("_", " "))}</span></div></td>
-      <td><div class="meta-stack"><div class="pill-row">${renderBadge(aircraft.conditionBand)}${renderBadge(aircraft.maintenanceState)}</div><span class="muted">${formatPercent(aircraft.conditionValue)} condition | ${formatHours(aircraft.hoursToService)} to service</span></div></td>
-      <td><div class="meta-stack">${renderBadge(aircraft.staffingFlag)}<span class="muted">${escapeHtml(laborModelLabel(aircraft))}</span></div></td>
+      <td><div class="meta-stack">${renderBadge(aircraft.ownershipType)}<span class="muted">${escapeHtml(labelForUi(aircraft.operationalState))}</span></div></td>
+      <td><div class="meta-stack"><div class="pill-row">${renderBadge(aircraft.conditionBand)}${renderCriticalMaintenanceBadge(aircraft.maintenanceState)}</div><span class="muted">${formatPercent(aircraft.conditionValue)} condition | ${formatHours(aircraft.hoursToService)} to service</span></div></td>
       <td><div class="meta-stack"><span>${escapeHtml(envelopeLabel(aircraft.maxPassengers, aircraft.maxCargoLb, aircraft.rangeNm))}</span><span class="muted">${escapeHtml(accessLabel(aircraft.minimumRunwayFt, aircraft.minimumAirportSize))}</span></div></td>
       <td><div class="meta-stack"><span>${escapeHtml(aircraft.nextEvent.label)}</span><span class="muted">${escapeHtml(aircraft.nextEvent.detail)}</span></div></td>
     </tr>
@@ -480,11 +486,20 @@ function renderMarketRow(offer: AircraftMarketOfferView, selectedOfferId: string
   `;
 }
 
-// Detail panels expand the selected row into growth fit, labor burden, and maintenance posture.
+// Expands one owned aircraft into an operational brief that answers "what can this airframe do right now?"
 function renderAircraftDetail(aircraft: AircraftTabAircraftView | null): string {
   if (!aircraft) {
     return `<div class="empty-state">No aircraft are visible with the current filters.</div>`;
   }
+
+  const topBadges = [
+    renderBadge(aircraft.operationalState),
+    renderBadge(aircraft.ownershipType),
+    aircraft.maintenanceState === "overdue" || aircraft.maintenanceState === "aog" || aircraft.maintenanceState === "scheduled" || aircraft.maintenanceState === "in_service"
+      ? renderBadge(aircraft.maintenanceState)
+      : "",
+    aircraft.staffingFlag === "uncovered" || aircraft.staffingFlag === "tight" ? renderBadge(aircraft.staffingFlag) : "",
+  ].filter(Boolean).join("");
 
   return `
     <div class="aircraft-detail-stack">
@@ -493,33 +508,70 @@ function renderAircraftDetail(aircraft: AircraftTabAircraftView | null): string 
           <div class="eyebrow">${escapeHtml(aircraft.roleLabel)}</div>
           <strong>${escapeHtml(aircraft.registration)} | ${escapeHtml(aircraft.modelDisplayName)}</strong>
           <span class="muted">${escapeHtml(aircraft.displayName)} | ${escapeHtml(aircraft.location.code)} | ${escapeHtml(aircraft.location.primaryLabel)}</span>
+          ${topBadges ? `<div class="pill-row">${topBadges}</div>` : ""}
         </div>
-        <div class="pill-row">
-          ${renderBadge(aircraft.operationalState)}
-          ${renderBadge(aircraft.conditionBand)}
-          ${renderBadge(aircraft.maintenanceState)}
-          ${renderBadge(aircraft.staffingFlag)}
-          ${renderBadge(aircraft.msfs2024Status)}
+        <figure class="aircraft-hero-image">
+          <img
+            src="${escapeHtml(aircraft.imageAssetPath)}"
+            alt="${escapeHtml(aircraft.modelDisplayName)}"
+            loading="lazy"
+            onerror="this.onerror=null;this.src='/assets/aircraft-images/fallback.svg';"
+          />
+        </figure>
+      </section>
+      <section class="aircraft-facts-card">
+        <div class="eyebrow">Aircraft brief</div>
+        <div class="aircraft-facts-list">
+          ${renderFactRow(
+            "Location",
+            `${aircraft.location.code} | ${aircraft.location.primaryLabel}`,
+            aircraft.location.secondaryLabel ?? "Aircraft is currently positioned at this airport.",
+          )}
+          ${renderFactRow(
+            "Operational status",
+            labelForUi(aircraft.operationalState),
+            aircraft.isReadyForNewWork
+              ? "Ready to take on new flying with no current dispatch blocker."
+              : aircraft.nextEvent.detail,
+          )}
+          ${renderFactRow(
+            "Crew readiness",
+            aircraft.staffingSummary,
+            `${aircraft.staffingDetail} ${laborModelLabel(aircraft)} required.`,
+          )}
+          ${renderFactRow(
+            "Next milestone",
+            aircraft.nextEvent.label,
+            aircraft.nextEvent.detail,
+          )}
+          ${renderFactRow(
+            "Active assignment",
+            aircraft.currentCommitment?.label ?? "No active assignment",
+            aircraft.currentCommitment?.detail ?? "No active schedule or maintenance booking is holding this aircraft right now.",
+          )}
+          ${renderFactRow(
+            "Mission profile",
+            envelopeLabel(aircraft.maxPassengers, aircraft.maxCargoLb, aircraft.rangeNm),
+            accessLabel(aircraft.minimumRunwayFt, aircraft.minimumAirportSize),
+          )}
+          ${renderFactRow(
+            "Ownership plan",
+            ownershipDetailLabel(aircraft),
+            paymentWindowLabel(aircraft),
+          )}
+          ${renderFactRow(
+            "Airframe condition",
+            `${formatPercent(aircraft.conditionValue)} condition | ${formatHours(aircraft.hoursToService)} to service`,
+            `${formatNumber(aircraft.airframeHoursTotal)} hrs | ${formatNumber(aircraft.airframeCyclesTotal)} cycles | ${formatHours(aircraft.hoursSinceInspection)} since inspection`,
+          )}
+          ${renderFactListRow("Why it matters", aircraft.whyItMatters)}
         </div>
-      </section>
-      <section>
-        <div class="eyebrow">Why It Matters</div>
-        <ul class="aircraft-why-list">${aircraft.whyItMatters.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul>
-      </section>
-      <section class="summary-list">
-        <article class="summary-item compact"><div class="eyebrow">Next event</div><strong>${escapeHtml(aircraft.nextEvent.label)}</strong><span class="muted">${escapeHtml(aircraft.nextEvent.detail)}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Current commitment</div><strong>${escapeHtml(aircraft.currentCommitment?.label ?? "Uncommitted")}</strong><span class="muted">${escapeHtml(aircraft.currentCommitment?.detail ?? "No active schedule or maintenance booking is holding this aircraft.")}</span></article>
-      </section>
-      <section class="summary-list">
-        <article class="summary-item compact"><div class="eyebrow">Growth envelope</div><strong>${escapeHtml(envelopeLabel(aircraft.maxPassengers, aircraft.maxCargoLb, aircraft.rangeNm))}</strong><span class="muted">${escapeHtml(accessLabel(aircraft.minimumRunwayFt, aircraft.minimumAirportSize))}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Labor model</div><strong>${escapeHtml(laborModelLabel(aircraft))}</strong><span class="muted">Mechanic group ${escapeHtml(aircraft.mechanicSkillGroup.replaceAll("_", " "))}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Ownership burden</div><strong>${escapeHtml(ownershipDetailLabel(aircraft))}</strong><span class="muted">${escapeHtml(paymentWindowLabel(aircraft))}</span></article>
-        <article class="summary-item compact"><div class="eyebrow">Airframe state</div><strong>${escapeHtml(formatPercent(aircraft.conditionValue))} condition</strong><span class="muted">${escapeHtml(formatNumber(aircraft.airframeHoursTotal))} hrs | ${escapeHtml(formatNumber(aircraft.airframeCyclesTotal))} cycles | ${escapeHtml(formatHours(aircraft.hoursSinceInspection))} since inspection</span></article>
       </section>
     </div>
   `;
 }
 
+// Expands one market listing into acquisition details, terms, and risk/fit context.
 function renderMarketDetail(
   saveId: string,
   currentCashAmount: number,
@@ -842,6 +894,14 @@ function renderBadge(label: string): string {
   return `<span class="badge ${badgeClass(label)}">${escapeHtml(labelForUi(label))}</span>`;
 }
 
+function renderCriticalMaintenanceBadge(maintenanceState: string): string {
+  if (maintenanceState === "due_soon" || maintenanceState === "not_due") {
+    return "";
+  }
+
+  return renderBadge(maintenanceState);
+}
+
 function badgeClass(value: string): string {
   if (["critical", "failed", "blocked", "overdue", "confirmed_unavailable", "uncovered", "aog", "grounded", "rough"].includes(value)) {
     return "danger";
@@ -885,7 +945,7 @@ function fleetSortLabel(key: AircraftTableSortKey): string {
     case "location":
       return "Location";
     case "state":
-      return "State";
+      return "Ownership";
     case "condition":
       return "Condition";
     case "staffing":
@@ -893,12 +953,12 @@ function fleetSortLabel(key: AircraftTableSortKey): string {
     case "range":
       return "Range";
     case "payload":
-      return "Growth Fit";
+      return "Mission Profile";
     case "obligation":
       return "Obligation";
     case "attention":
     default:
-      return "Attention";
+      return "Next Milestone";
   }
 }
 
@@ -917,7 +977,7 @@ function laborModelLabel(aircraft: AircraftTabAircraftView): string {
 
 function ownershipDetailLabel(aircraft: AircraftTabAircraftView): string {
   const obligation = aircraft.recurringPaymentAmount ? ` | ${formatMoney(aircraft.recurringPaymentAmount)}` : "";
-  return `${humanize(aircraft.ownershipType)}${obligation}`;
+  return `${labelForUi(aircraft.ownershipType)}${obligation}`;
 }
 
 function paymentWindowLabel(aircraft: AircraftTabAircraftView): string {
@@ -937,6 +997,9 @@ function humanize(value: string): string {
 }
 
 function labelForUi(value: string): string {
+  if (value === "financed") {
+    return "Loaned";
+  }
   if (value === "watch") {
     return "Attention";
   }

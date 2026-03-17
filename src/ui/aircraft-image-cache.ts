@@ -1,6 +1,8 @@
 /*
  * Lazily caches open-license aircraft family images from Wikimedia-backed sources into local data storage.
  * The UI requests family image URLs from the local server, which fills the cache on first use and serves fallback art on failure.
+ * Model-specific images are attempted first, then family-level assets, then the local fallback. That keeps the UI fast
+ * after the first request while avoiding a hard dependency on any one external image source.
  */
 
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";

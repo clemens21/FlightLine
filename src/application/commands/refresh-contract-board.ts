@@ -23,6 +23,7 @@ interface AircraftLocationRow extends Record<string, unknown> {
   currentAirportId: string;
 }
 
+// Regenerates the current contract market from the company's footprint and replaces only the active commercial board.
 export async function handleRefreshContractBoard(
   command: RefreshContractBoardCommand,
   dependencies: RefreshContractBoardDependencies,

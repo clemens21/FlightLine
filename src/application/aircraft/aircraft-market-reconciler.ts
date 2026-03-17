@@ -1,6 +1,8 @@
 /*
  * Keeps the persisted aircraft market aligned with the latest generated market state.
  * It handles offer reuse, expiration, and refresh behavior so the UI can treat the market as stable save data.
+ * The generator makes candidate listings; this file decides what actually lives in the save by expiring old offers,
+ * preserving unaffected ones, and topping the market back up without reshuffling everything.
  */
 
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
@@ -52,6 +54,7 @@ function marketTargetProfile(totalModelCount: number): MarketTargetProfile {
   };
 }
 
+// Reuses the current active window when possible and self-heals duplicate active windows if earlier runs left stale state behind.
 function loadOrCreateActiveWindow(
   saveDatabase: SqliteFileDatabase,
   companyId: string,
@@ -145,6 +148,7 @@ function addUtcDays(utcIsoString: string, days: number): string {
   return next.toISOString();
 }
 
+// Expires old listings and inserts only the replacement offers needed to keep the rolling market at its target size.
 export function reconcileAircraftMarket(params: {
   saveDatabase: SqliteFileDatabase;
   saveId: string;

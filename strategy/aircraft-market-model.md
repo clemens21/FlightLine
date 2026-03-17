@@ -10,17 +10,16 @@ The market should create strategic decisions about capability, cash pressure, st
 
 The visible market should always contain:
 
-- one or more safe, sensible next steps
-- at least one stretch option
-- meaningful tradeoffs between ownership structures
-- role diversity instead of a single dominant answer
-- enough explanation that the player understands why a deal is attractive or risky
+- a large enough rotating inventory to feel like a live global market
+- one or more sensible near-fit options
+- multiple stretch or out-of-phase aircraft that still help the player think ahead
+- meaningful tradeoffs between `Buy`, `Loan`, and `Lease`
+- enough explanation that the player understands why a listing is attractive or risky
 
 ## Required Inputs
 
 The aircraft market generator should consume:
 
-- company phase
 - reputation tier
 - cash on hand
 - debt load
@@ -29,55 +28,30 @@ The aircraft market generator should consume:
 - current staffing and qualification coverage
 - current airport footprint and access tier
 - current contract board pressure
-- refresh window seed
+- live market seed and listing lifecycle state
 
-## Company Phases
+## Visibility Rules
 
-The market should behave differently depending on company maturity.
+The market should not gate listings behind company phase.
 
-### Startup
+Rules:
 
-Typical state:
+- every aircraft model in the reference DB is eligible to appear
+- the market is rotating, not exhaustive, so not every model is guaranteed visible at once
+- company phase may influence fit notes, weighting, and recommendation quality
+- company phase must not hard-hide aircraft from the player
 
-- one aircraft or no aircraft
-- limited cash buffer
-- outsourced staffing bias
+This preserves the feeling of a real world market instead of a curated starter shop.
 
-Visible market goals:
+## Market Size
 
-- affordable entry aircraft
-- flexible lease-heavy choices
-- one stretch finance option
+The market should feel broad and active, not phase-scaled.
 
-### Growth
+Recommended first-pass behavior:
 
-Typical state:
-
-- two to six aircraft
-- some route identity emerging
-- labor mix becoming meaningful
-
-Visible market goals:
-
-- fleet standardization choices
-- role-expansion choices
-- stronger finance terms
-- selective used-aircraft bargains later
-
-### Established
-
-Typical state:
-
-- larger fleet
-- multiple regions or market lanes
-- more predictable staffing model
-
-Visible market goals:
-
-- specialization choices
-- efficiency upgrades
-- higher-capability aspirational aircraft
-- better direct-purchase and finance options
+- keep a large fixed live inventory rather than a small curated board
+- target enough listings that the player can browse multiple aircraft classes at all times
+- let acquisition fit, affordability, and staffing be the limiting factors, not market visibility
 
 ## Offer Pools
 
@@ -92,59 +66,72 @@ Recommended MVP role pools:
 - regional cargo or combi
 - aspirational step-up aircraft
 
-## Refresh Cadence
+## Listing Lifecycle
 
-Recommended cadence:
+The player should not manually refresh the aircraft market.
 
-- scheduled full market refresh once per week
-- one to two spot offers may appear between weekly refreshes
-- emergency or special offers can be event-driven later
+Instead:
 
-Accepted or reserved offers should not vanish unexpectedly during a player decision flow.
+- each listing gets a hidden time-to-sell
+- listings expire individually
+- replacements appear quietly as simulated time advances
+- unaffected listings remain stable
+
+This makes the market feel like other buyers and sellers are active in the world.
+
+### Hidden Availability
+
+The player should never see the actual timer, but the generator should model relative realism:
+
+- common workhorse aircraft should rotate faster
+- large, niche, rough, or high-complexity aircraft should sit longer
+- new aircraft usually sit longer than common used listings
+- the initial world seed should backdate listings so they already feel partway through their market life
+
+### Churn Driver
+
+Aircraft market churn should be driven by simulated time, not a button.
+
+Rules:
+
+- while the sim clock is paused, the market pauses
+- while the sim clock runs, listings can expire and be replaced
+- explicit `AdvanceTime` should use the same reconciliation path as the live clock
+- opening `Aircraft > Market` should also run a safety reconcile pass
 
 ## Generation Flow
 
-### Step 1: Detect Fleet Gaps
+### Step 1: Keep the market broad
 
-The market should first identify current company gaps such as:
+The market should always contain:
 
-- no reliable passenger aircraft
-- no cargo-capable aircraft
-- no remote-field-capable aircraft
-- no step-up option for current reputation tier
-- too much dependence on one airframe role
+- a wide mix of aircraft classes
+- mostly used listings
+- a smaller share of new aircraft
+- more than one plausible next step
+- several aircraft that are currently unrealistic but strategically informative
 
-### Step 2: Build Target Offer Mix
+### Step 2: Shape but do not over-curate
 
-Recommended visible mix for MVP:
+Selection should still be weighted by:
 
-- one safe near-fit offer
-- one role-diversifying offer
-- one stretch-growth offer
-- one financially conservative offer
-- one niche or situational offer
-
-Small companies can see fewer offers, but they should still represent distinct choices.
-
-### Step 3: Select Models From Pools
-
-Model selection should be weighted by:
-
-- role diversity targets
-- company phase
+- current fleet gaps
 - company footprint and airport access
 - staffing feasibility
-- repetition suppression from recent refreshes
+- repetition suppression from recently expired listings
+- role diversity
 
-### Step 4: Attach Deal Structures
+But these are weighting inputs, not hard gates.
 
-Every selected model should be resolved into one or more deal structures:
+### Step 3: Attach listing state
 
-- direct purchase
-- financing
-- operating lease
+Every selected model should be turned into a specific airframe listing with:
 
-Different models should emphasize different structures based on progression and risk profile.
+- a real airport
+- a seeded condition/wear state
+- a registration
+- a hidden time-to-sell
+- `Buy`, `Loan`, and `Lease` options on the same listing
 
 ## Deal Structure Model
 
@@ -161,7 +148,7 @@ Recommended availability:
 - always possible for lower-tier aircraft if the company has cash
 - less common for stretch aircraft early
 
-### Financing
+### Loan
 
 Should emphasize:
 
@@ -174,7 +161,7 @@ Recommended modifiers:
 - better rates with higher reputation and cleaner balance sheet
 - worse rates when the company is overleveraged
 
-### Operating Lease
+### Lease
 
 Should emphasize:
 
@@ -187,43 +174,46 @@ Recommended role:
 - important in startup and experimentation phases
 - still viable later for niche or temporary growth
 
-## Offer Scoring Rules
+## Pricing And Condition
 
-Each offer should receive an internal attractiveness score, but the curation layer must avoid always surfacing only the mathematically best choice.
+Condition and maintenance state should matter visibly.
 
-Key scoring inputs:
+Expected first-pass bands:
 
-- role fit to current contract board and airport footprint
-- staffing burden
-- runway access profile
-- utilization plausibility
-- payment pressure
-- standardization value versus diversification value
-- progression value
+- `new`
+- `excellent`
+- `fair`
+- `rough`
+
+These should influence:
+
+- asking price
+- loan and lease terms
+- hours/cycles and service state
+- player perception of risk
 
 ## Curation Rules
 
-The final visible market should obey these rules:
+The live market should still obey these rules:
 
-- no duplicate aircraft model shown in more than two structures at once unless the refresh is intentionally focused
-- no single aircraft role should dominate the visible list
-- at least one offer should be realistically purchasable now
-- at least one offer should be aspirational but understandable
-- at least one offer should create a genuine tradeoff against the player's current fleet strategy
+- do not let one aircraft family dominate the visible list
+- keep most listings away from the player's home base so the world feels bigger than the company footprint
+- preserve both reachable and aspirational options
+- avoid regenerating the whole market at once
+- acquiring one aircraft must not reshuffle everything else
 
 ## Player-Facing Metadata
 
 Each offer should expose:
 
 - mission role
+- listed airport
+- condition band and service posture
 - airport access summary
-- expected operating cost band
-- expected utilization target
 - staffing and qualification impact
-- best-fit contract archetypes
-- projected weekly fixed burden
 - why the offer fits the current company
 - why the offer might be risky
+- `Buy`, `Loan`, and `Lease` terms only in the selected-listing pane
 
 ## Market Anti-Exploit Rules
 
@@ -234,6 +224,7 @@ Prevent these outcomes:
 - lease being always correct early and always wrong later
 - fleet standardization being either always optimal or never rewarded
 - niche aircraft never appearing because they lose simple score comparisons
+- market visibility being mistaken for progression itself
 
 ## Output Model
 
@@ -242,22 +233,22 @@ A generated aircraft offer should include:
 - offer id
 - aircraft model id
 - role pool
-- deal structure
-- upfront payment
-- recurring payment terms
 - current location
-- delivery or reposition requirement
+- listing lifecycle timestamps
+- condition and maintenance seed
+- `Buy`, `Loan`, and `Lease` term snapshots
 - staffing impact summary
 - access profile summary
-- projected utilization target
 - explanation metadata
-- refresh window seed
+- market seed
 
 ## MVP Implementation Sequence
 
-1. define aircraft role pools for the starter roster
-2. define company phase rules
-3. implement fleet-gap detector
+1. define listing lifecycle rules and hidden time-to-sell
+2. implement large rolling live inventory
+3. seed partially aged listings on company creation
+4. attach `Buy`, `Loan`, and `Lease` options to each specific listing
+5. reconcile from the sim clock instead of a manual refresh flow
 4. implement offer-mix composer
 5. implement deal-structure pricing rules
 6. add curation and repetition suppression

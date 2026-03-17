@@ -1,6 +1,8 @@
 /*
  * Implements the acquire aircraft command handler for the backend command pipeline.
  * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ * The command turns a market offer plus chosen deal terms into real fleet state: aircraft row, acquisition agreement,
+ * recurring obligations, ledger entries, and the resulting company financial posture.
  */
 
 import type { CommandResult, AcquireAircraftCommand } from "./types.js";

@@ -1,6 +1,8 @@
 /*
  * Implements the commit aircraft schedule command handler for the backend command pipeline.
  * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ * In practice this is the bridge from planning to operations: it validates a draft against dispatch rules, reserves labor,
+ * persists the committed schedule, and creates the timed events that `advance-time` will later execute.
  */
 
 import type { CommandResult, CommitAircraftScheduleCommand } from "./types.js";

@@ -1,6 +1,8 @@
 /*
  * Builds shell summaries and tab payloads from backend state for the browser-rendered save shell.
  * This file is the central adapter between raw backend queries and the smaller UI payload contracts.
+ * The server uses these helpers to keep HTML rendering thin: fetch backend snapshots once, reshape them here,
+ * then hand the browser a stable per-tab payload instead of making the client understand simulation tables.
  */
 
 import type { FlightLineBackend } from "../application/backend-service.js";

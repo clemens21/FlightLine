@@ -26,7 +26,7 @@ Aircraft:
   - excellent airport access
   - low payload and moderate revenue potential
 - `King Air 350`
-  - financed
+  - loaned
   - currently assigned later today
   - strong premium charter fit
   - pilot qualification coverage is tight
@@ -76,7 +76,7 @@ Trigger:
 
 Decision:
 
-- which aircraft offer to take, and under what financing structure
+- which aircraft offer to take, and under what ownership structure
 
 Required information:
 
@@ -89,12 +89,13 @@ Required information:
 
 Steps:
 
-1. Open acquisition surface from Fleet or a dedicated market view.
-2. Filter by mission role, aircraft class, or budget.
-3. Compare shortlisted offers side by side.
-4. Compare buy, finance, and lease terms.
-5. Review staffing and qualification implications.
-6. Confirm acquisition and assign delivery location if needed.
+1. Open `Aircraft > Market`.
+2. Filter by search, condition, or location radius.
+3. Select one live listing and review the right-side detail pane.
+4. Choose `Buy`, `Loan`, or `Lease`.
+5. If needed, compare the term options in the compact confirmation step.
+6. Review staffing, airport, and condition implications.
+7. Confirm acquisition.
 
 Success outcome:
 
@@ -165,20 +166,21 @@ Required information:
 Steps:
 
 1. Open Contracts Board.
-2. Filter by aircraft, region, contract type, or deadline.
-3. Compare opportunities in list and map context.
-4. Inspect one contract in detail.
-5. Accept the contract or shortlist it for later.
+2. Filter by airport, payload, payout, or fit.
+3. Compare opportunities in board and route-map context.
+4. Add promising work to the route planner.
+5. Review and batch-accept planned offers or accept one directly.
 
 Success outcome:
 
-- contract moves into accepted but not yet assigned state
+- contract moves into accepted or active state and, if planned, upgrades inside the route planner
 
 Blocked states:
 
 - no aircraft can realistically serve the contract
 - deadline risk is too high
 - contract appears profitable until reposition or labor cost is considered
+- a planned offer has gone stale before acceptance
 
 ## Flow 4: Build And Validate Schedule
 
@@ -203,7 +205,7 @@ Required information:
 Steps:
 
 1. Open Dispatch Board for an aircraft.
-2. Add a contract or route segment.
+2. Optionally draft from the accepted-ready route plan.
 3. Review generated or manual leg sequence.
 4. Check validation messages inline.
 5. Adjust timing, order, or supporting reposition legs.
@@ -235,14 +237,16 @@ Required information:
 - what flights are scheduled in the selected window
 - what maintenance or staffing issues may emerge
 - what alerts could interrupt advancement
+- what milestones would be crossed by a selected-day morning jump
 
 Steps:
 
-1. Review next events in the top-level shell or dashboard.
-2. Choose a short, medium, or long time jump.
-3. Advance time.
-4. Review interruption or summary output.
-5. Return to dispatch, maintenance, staffing, or finance as needed.
+1. Review next events in the shell clock/calendar or dashboard.
+2. Choose `Pause`, `1x`, `4x`, `10x`, or `60x`, or select a day from the calendar.
+3. If using the selected-day jump, review any milestone warning before committing.
+4. Let time progress or jump to the selected morning.
+5. Review interruption or summary output.
+6. Return to dispatch, maintenance, staffing, or finance as needed.
 
 Success outcome:
 
@@ -252,6 +256,7 @@ Blocked states:
 
 - unresolved critical issue that should prevent advancement
 - player-selected stop condition is reached immediately
+- selected-day jump would pass a milestone the player does not want to skip without warning
 
 ## Flow 6: Resolve Maintenance Or Staffing Disruption
 

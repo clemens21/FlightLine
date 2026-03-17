@@ -92,6 +92,7 @@ export interface FleetStateView {
   leasedCount: number;
 }
 
+// Loads the persisted fleet and enriches each aircraft with reference-model facts needed by the UI and planners.
 export function loadFleetState(
   saveDatabase: SqliteFileDatabase,
   aircraftReference: AircraftReferenceRepository,

@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../dist/index.js";
-import { applyAircraftTabViewState, buildAircraftTabPayload } from "../dist/ui/aircraft-tab-model.js";
+import { applyAircraftMarketViewState, applyAircraftTabViewState, buildAircraftTabPayload } from "../dist/ui/aircraft-tab-model.js";
 import { buildTabPayload } from "../dist/ui/save-shell-fragments.js";
 
 const saveDirectoryPath = await mkdtemp(join(tmpdir(), "flightline-aircraft-tab-"));
@@ -186,6 +186,293 @@ const renderers = {
 };
 
 try {
+  {
+    const marketPayload = {
+      currentTimeUtc: "2026-03-16T12:00:00.000Z",
+      summaryCards: [],
+      generatedAtUtc: "2026-03-16T12:00:00.000Z",
+      expiresAtUtc: undefined,
+      offerWindowId: "market_window_synthetic",
+      currentCashAmount: 12_000_000,
+      homeBaseAirportId: "KDEN",
+      homeBaseLocation: {
+        airportId: "KDEN",
+        code: "KDEN",
+        primaryLabel: "Denver International Airport",
+        secondaryLabel: "US",
+        latitudeDeg: 39.8561,
+        longitudeDeg: -104.6737,
+      },
+      defaultSelectedOfferId: "offer_home_new",
+      defaultFilters: {
+        searchText: "",
+        conditionBand: "all",
+        locationAirportText: "",
+        maxDistanceNm: "0",
+      },
+      defaultSort: {
+        key: "asking_price",
+        direction: "asc",
+      },
+      filterOptions: {
+        conditionBands: ["new", "fair", "rough"],
+      },
+      offers: [
+        {
+          aircraftOfferId: "offer_home_new",
+          aircraftModelId: "cessna_408_skycourier_passenger",
+          aircraftFamilyId: "cessna_408_skycourier",
+          activeCabinLayoutId: undefined,
+          activeCabinLayoutDisplayName: "Passenger cabin",
+          activeCabinSeats: 19,
+          activeCabinCargoCapacityLb: 6200,
+          listingType: "new",
+          registration: "N408SY",
+          displayName: "SkyCourier passenger listing",
+          modelDisplayName: "Cessna 408 SkyCourier Passenger",
+          shortName: "SkyCourier",
+          roleLabel: "Utility passenger",
+          marketRolePool: "utility_passenger",
+          currentAirportId: "KDEN",
+          location: {
+            airportId: "KDEN",
+            code: "KDEN",
+            primaryLabel: "Denver International Airport",
+            secondaryLabel: "US",
+            latitudeDeg: 39.8561,
+            longitudeDeg: -104.6737,
+          },
+          imageAssetPath: "/assets/aircraft-images/fallback.svg",
+          distanceFromHomeBaseNm: 0,
+          conditionValue: 0.99,
+          conditionBand: "new",
+          maintenanceState: "not_due",
+          statusInput: "available",
+          airframeHoursTotal: 12,
+          airframeCyclesTotal: 5,
+          hoursSinceInspection: 3,
+          cyclesSinceInspection: 1,
+          hoursToService: 398,
+          askingPurchasePriceAmount: 5_400_000,
+          financeTerms: {},
+          leaseTerms: {},
+          buyOption: {
+            optionId: "offer_home_new:buy",
+            ownershipType: "owned",
+            label: "Outright purchase",
+            detail: "Full payment today.",
+            upfrontPaymentAmount: 5_400_000,
+            isAffordable: true,
+          },
+          financeOptions: [],
+          leaseOptions: [],
+          lowestRecurringBurdenAmount: 0,
+          rangeNm: 900,
+          maxPassengers: 19,
+          maxCargoLb: 6200,
+          minimumRunwayFt: 3600,
+          minimumAirportSize: 2,
+          gateRequirement: "basic",
+          requiredGroundServiceLevel: "standard",
+          cargoLoadingType: "manual",
+          msfs2024Status: "confirmed_available",
+          msfs2024AvailableForUser: true,
+          msfs2024UserNote: "Available",
+          fitReasons: ["Fits current passenger growth."],
+          riskReasons: [],
+          canBuyNow: true,
+          canLoanNow: true,
+          canLeaseNow: true,
+          offerStatus: "available",
+        },
+        {
+          aircraftOfferId: "offer_near_fair",
+          aircraftModelId: "dehavilland_dhc6_300_twin_otter",
+          aircraftFamilyId: "dehavilland_dhc6_twin_otter",
+          activeCabinLayoutId: undefined,
+          activeCabinLayoutDisplayName: "Utility cabin",
+          activeCabinSeats: 14,
+          activeCabinCargoCapacityLb: 4200,
+          listingType: "used",
+          registration: "N6OTTR",
+          displayName: "Twin Otter utility listing",
+          modelDisplayName: "DHC-6 Twin Otter",
+          shortName: "Twin Otter",
+          roleLabel: "Remote utility",
+          marketRolePool: "rugged_remote_field",
+          currentAirportId: "KCOS",
+          location: {
+            airportId: "KCOS",
+            code: "KCOS",
+            primaryLabel: "Colorado Springs Airport",
+            secondaryLabel: "US",
+            latitudeDeg: 38.8058,
+            longitudeDeg: -104.7008,
+          },
+          imageAssetPath: "/assets/aircraft-images/fallback.svg",
+          distanceFromHomeBaseNm: 62,
+          conditionValue: 0.71,
+          conditionBand: "fair",
+          maintenanceState: "not_due",
+          statusInput: "available",
+          airframeHoursTotal: 4412,
+          airframeCyclesTotal: 2404,
+          hoursSinceInspection: 54,
+          cyclesSinceInspection: 10,
+          hoursToService: 58,
+          askingPurchasePriceAmount: 2_450_000,
+          financeTerms: {},
+          leaseTerms: {},
+          buyOption: {
+            optionId: "offer_near_fair:buy",
+            ownershipType: "owned",
+            label: "Outright purchase",
+            detail: "Full payment today.",
+            upfrontPaymentAmount: 2_450_000,
+            isAffordable: true,
+          },
+          financeOptions: [],
+          leaseOptions: [],
+          lowestRecurringBurdenAmount: 0,
+          rangeNm: 760,
+          maxPassengers: 14,
+          maxCargoLb: 4200,
+          minimumRunwayFt: 2800,
+          minimumAirportSize: 2,
+          gateRequirement: "basic",
+          requiredGroundServiceLevel: "standard",
+          cargoLoadingType: "manual",
+          msfs2024Status: "confirmed_available",
+          msfs2024AvailableForUser: true,
+          msfs2024UserNote: "Available",
+          fitReasons: ["Useful for mountain and short-field work."],
+          riskReasons: ["Needs closer maintenance planning."],
+          canBuyNow: true,
+          canLoanNow: true,
+          canLeaseNow: true,
+          offerStatus: "available",
+        },
+        {
+          aircraftOfferId: "offer_far_rough",
+          aircraftModelId: "atr_72_600f",
+          aircraftFamilyId: "atr_72",
+          activeCabinLayoutId: undefined,
+          activeCabinLayoutDisplayName: "Cargo cabin",
+          activeCabinSeats: 0,
+          activeCabinCargoCapacityLb: 18000,
+          listingType: "used",
+          registration: "N72FAR",
+          displayName: "ATR 72 cargo listing",
+          modelDisplayName: "ATR 72-600F",
+          shortName: "ATR 72F",
+          roleLabel: "Regional cargo",
+          marketRolePool: "regional_cargo_or_combi",
+          currentAirportId: "KABQ",
+          location: {
+            airportId: "KABQ",
+            code: "KABQ",
+            primaryLabel: "Albuquerque International Sunport",
+            secondaryLabel: "US",
+            latitudeDeg: 35.0402,
+            longitudeDeg: -106.609,
+          },
+          imageAssetPath: "/assets/aircraft-images/fallback.svg",
+          distanceFromHomeBaseNm: 299,
+          conditionValue: 0.48,
+          conditionBand: "rough",
+          maintenanceState: "overdue",
+          statusInput: "available",
+          airframeHoursTotal: 12984,
+          airframeCyclesTotal: 9550,
+          hoursSinceInspection: 233,
+          cyclesSinceInspection: 65,
+          hoursToService: -12,
+          askingPurchasePriceAmount: 8_900_000,
+          financeTerms: {},
+          leaseTerms: {},
+          buyOption: {
+            optionId: "offer_far_rough:buy",
+            ownershipType: "owned",
+            label: "Outright purchase",
+            detail: "Full payment today.",
+            upfrontPaymentAmount: 8_900_000,
+            isAffordable: true,
+          },
+          financeOptions: [],
+          leaseOptions: [],
+          lowestRecurringBurdenAmount: 0,
+          rangeNm: 850,
+          maxPassengers: 0,
+          maxCargoLb: 18000,
+          minimumRunwayFt: 4300,
+          minimumAirportSize: 3,
+          gateRequirement: "regional",
+          requiredGroundServiceLevel: "enhanced",
+          cargoLoadingType: "containerized",
+          msfs2024Status: "confirmed_available",
+          msfs2024AvailableForUser: true,
+          msfs2024UserNote: "Available",
+          fitReasons: ["Adds much more cargo lift."],
+          riskReasons: ["Heavy maintenance exposure."],
+          canBuyNow: true,
+          canLoanNow: true,
+          canLeaseNow: true,
+          offerStatus: "available",
+        },
+      ],
+    };
+
+    const exactLocationView = applyAircraftMarketViewState(marketPayload, {
+      filters: {
+        locationAirportText: "KDEN",
+        maxDistanceNm: "0",
+      },
+    });
+    assert.deepEqual(exactLocationView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new"]);
+    assert.equal(exactLocationView.selectedOfferId, "offer_home_new");
+
+    const radiusView = applyAircraftMarketViewState(marketPayload, {
+      filters: {
+        locationAirportText: "KDEN",
+        maxDistanceNm: "100",
+      },
+      sort: {
+        key: "distance",
+        direction: "asc",
+      },
+    });
+    assert.deepEqual(radiusView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new", "offer_near_fair"]);
+
+    const conditionView = applyAircraftMarketViewState(marketPayload, {
+      filters: {
+        conditionBand: "rough",
+      },
+    });
+    assert.deepEqual(conditionView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_far_rough"]);
+    assert.equal(conditionView.selectedOfferId, "offer_far_rough");
+
+    const sortedDistanceView = applyAircraftMarketViewState(marketPayload, {
+      sort: {
+        key: "distance",
+        direction: "desc",
+      },
+    });
+    assert.deepEqual(sortedDistanceView.visibleOffers.map((offer) => offer.aircraftOfferId), [
+      "offer_far_rough",
+      "offer_near_fair",
+      "offer_home_new",
+    ]);
+
+    const searchView = applyAircraftMarketViewState(marketPayload, {
+      filters: {
+        searchText: "SkyCourier",
+      },
+      selectedOfferId: "offer_far_rough",
+    });
+    assert.deepEqual(searchView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new"]);
+    assert.equal(searchView.selectedOfferId, "offer_home_new");
+  }
+
   {
     const saveId = `aircraft_maintenance_${Date.now()}`;
     const startedAtUtc = await createCompanySave(saveId);

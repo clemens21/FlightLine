@@ -1,6 +1,8 @@
 /*
  * Builds aircraft market offers from the company state, reference data, and acquisition heuristics.
  * The generator decides which aircraft appear, how they are configured, and what commercial terms the player sees.
+ * Think of this as the "seller side" of the aircraft market: it chooses inventory mix, listing locations, condition/wear,
+ * and financial snapshots, then hands stable offers to the reconciler and UI.
  */
 
 import type { JsonObject } from "../../domain/common/primitives.js";
@@ -242,6 +244,7 @@ function modelWeight(
   return Math.max(weight, 0.25);
 }
 
+// Chooses one model from the eligible catalog, favoring variety, fit, and gaps without fully hiding out-of-phase aircraft.
 function pickWeightedModel(
   models: AircraftModelRecord[],
   params: GenerateAircraftMarketParams,
@@ -270,6 +273,7 @@ function pickWeightedModel(
   return weighted[weighted.length - 1]?.model ?? models[0]!;
 }
 
+// Chooses a real airport that can physically host the listing and helps the market feel geographically alive.
 function pickCompatibleAirport(
   seed: string,
   model: AircraftModelRecord,
@@ -385,6 +389,7 @@ function seededAirframeState(
   };
 }
 
+// Generates a stable but synthetic registration so each listing feels like a specific airframe rather than a generic catalog entry.
 function buildRegistration(seed: string): string {
   const digits = randomInteger(`${seed}|digits`, 1000, 9999);
   const suffix = String.fromCharCode(
@@ -441,6 +446,7 @@ function explainOffer(
   };
 }
 
+// Produces the default financed acquisition quote for a listing before the UI derives alternate loan term options.
 function buildFinanceTerms(
   model: AircraftModelRecord,
   askingPriceAmount: number,
@@ -466,6 +472,7 @@ function buildFinanceTerms(
   };
 }
 
+// Produces the default lease quote for a listing before the UI derives alternate term options.
 function buildLeaseTerms(
   model: AircraftModelRecord,
   state: SeededAirframeState,
@@ -545,6 +552,7 @@ function listingLifecycle(
   };
 }
 
+// Generates one full candidate aircraft market snapshot that the reconciler can merge into persistent save state.
 export function generateAircraftMarket(params: GenerateAircraftMarketParams): GeneratedAircraftMarket {
   const countProfile = listingCountProfile(params.targetCount);
   const generatedAtUtc = params.companyContext.currentTimeUtc;

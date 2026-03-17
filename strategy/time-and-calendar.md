@@ -20,11 +20,11 @@ FlightLine should support a live simulation clock while a save is open.
 
 Recommended first-pass behavior:
 
-- `1x` is real time: `60` real-world seconds equals `60` simulated seconds.
-- The save starts at `1x` when the player opens the operations shell.
-- The player can switch to `Pause`, `1x`, `4x`, or `12x` from the clock control.
-- Critical interruptions can auto-pause the simulation if the system is configured to do so.
-- When the save is closed, simulation time should stop in v1.
+- the sim clock is minute-based; seconds are not important to the player
+- `1x` is real time at the minute level
+- the player can switch to `Pause`, `1x`, `4x`, `10x`, or `60x` from the clock control
+- critical interruptions can auto-pause the simulation if the system is configured to do so
+- when the save is closed, simulation time should stop in v1
 
 That last point is an intentional recommendation. It keeps the first implementation fair, debuggable, and local-first. Offline progression can be added later as a separate design decision.
 
@@ -47,8 +47,8 @@ The clock should become a clickable top-bar control rather than a passive label.
 
 When closed, it should show:
 
-- current company-local date/time
-- current time rate badge such as `Paused`, `1x`, `4x`, or `12x`
+- current company-local date and time
+- current time-rate badge such as `Pause`, `1x`, `4x`, `10x`, or `60x`
 - a subtle alert indicator if something time-critical is coming up
 
 When opened, it should show a compact popover or sheet with three sections:
@@ -70,7 +70,7 @@ When opened, it should show a compact popover or sheet with three sections:
 - simple calendar grid
 - short agenda list for the selected day or upcoming range
 - event markers grouped by type or severity
-- day-click quick actions such as `Sim to 6:00 AM`
+- day-click popup actions for the selected morning
 
 ## Time-Control Behavior
 
@@ -82,9 +82,9 @@ When opened, it should show a compact popover or sheet with three sections:
 
 `1x` should be the default operating mode.
 
-This is the baseline �live operations� mode.
+This is the baseline "live operations" mode.
 
-### 4x And 12x
+### 4x, 10x, And 60x
 
 These modes should accelerate the same simulation, not switch to a different abstraction.
 
@@ -142,10 +142,12 @@ The calendar should support a small set of direct time shortcuts tied to the sel
 
 Recommended first pass:
 
-- clicking a day selects it and updates the agenda
-- if that day is in the future relative to the current sim clock, show `Sim to 6:00 AM`
-- if the selected day is today and the current sim time is still before `6:00 AM`, also allow `Sim to 6:00 AM`
-- if `6:00 AM` for the selected day is already in the past, the shortcut should be disabled or hidden
+- clicking a day selects it, updates the agenda, and opens a small popup
+- the popup should contain the morning simulate action for that selected day
+- the action should stay hidden or disabled when the selected morning is already in the past
+- if the jump would pass important milestones, the popup should warn the player before they commit
+
+The implementation can still use a `6:00 AM` anchor internally, but the player does not need to see that internal language everywhere in the UI.
 
 This should feel like a lightweight operations shortcut, not a freeform time editor.
 
@@ -188,7 +190,7 @@ The calendar should use the same alert language as the broader product.
 
 The contracts tab remains the market and planning surface.
 
-The calendar�s job is different:
+The calendar's job is different:
 
 - show when accepted work is due
 - show when planned legs are meant to depart or arrive
@@ -217,7 +219,7 @@ It should be a presentation of already-authoritative facts coming from:
 
 ## UI Constraints
 
-The clock/calendar surface should:
+The clock and calendar surface should:
 
 - open quickly
 - never feel like a full-screen workflow by default
@@ -231,11 +233,12 @@ The clock/calendar surface should:
 V1 should include:
 
 - clickable clock control in the shell
-- `Pause`, `1x`, `4x`, `12x`
+- `Pause`, `1x`, `4x`, `10x`, `60x`
 - live time progression while a save is open
 - a simple calendar grid with markers
-- agenda list with due/dep/arr/maintenance items
-- `Sim to 6:00 AM` from a clicked calendar day when that shortcut is valid
+- agenda list with due, departure, arrival, and maintenance items
+- selected-day popup with the morning simulate action when valid
+- warning state when simulating would pass milestones
 - click-through navigation hooks later if not built immediately
 
 V1 should not include:
@@ -250,11 +253,11 @@ V1 should not include:
 
 These are still decision points, not blockers for first implementation:
 
-- Should time continue while the app is unfocused but still open?
-- Should the player be able to choose which airport timezone the clock shows?
-- Should fast-forward offer `next event` and `next departure` shortcuts in v1 or later?
-- Should auto-pause preferences be global settings or save-specific settings?
-- How much of the calendar should be visible directly in the top-bar popover versus a larger dedicated overlay?
+- should time continue while the app is unfocused but still open?
+- should the player be able to choose which airport timezone the clock shows?
+- should fast-forward offer `next event` and `next departure` shortcuts in v1 or later?
+- should auto-pause preferences be global settings or save-specific settings?
+- how much of the calendar should be visible directly in the top-bar popover versus a larger dedicated overlay?
 
 ## Recommendation Summary
 

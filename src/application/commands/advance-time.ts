@@ -1,6 +1,8 @@
 /*
  * Implements the advance time command handler for the backend command pipeline.
  * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ * This file is effectively the simulation heartbeat: it advances company time, resolves due events, settles money movement,
+ * updates contracts and schedules, and triggers any rolling-market maintenance that depends on simulated time.
  */
 
 import type { AdvanceTimeCommand, CommandResult } from "./types.js";

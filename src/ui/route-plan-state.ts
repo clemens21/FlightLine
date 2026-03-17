@@ -1,6 +1,8 @@
 /*
  * Persists and mutates the saved route-plan state used by the contracts planner.
  * Planner add, remove, reorder, and clear operations all flow through this module.
+ * The planner is intentionally "soft" state: it remembers the player's intent without reserving aircraft or labor,
+ * and later modules decide when those planned items become accepted work or real dispatch schedules.
  */
 
 import { createPrefixedId } from "../application/commands/utils.js";

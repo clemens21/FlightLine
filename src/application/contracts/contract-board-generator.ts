@@ -1,6 +1,8 @@
 /*
  * Generates the live contract board from company phase, airport network, aircraft capability, and timing constraints.
  * This is where contract supply is shaped into offers that the player can actually browse and accept.
+ * The important mental model is "broad market first, then fit annotations": it creates a large market, then marks
+ * what is flyable now, what is only strategically interesting, and what is blocked by the current company state.
  */
 
 import type { JsonObject } from "../../domain/common/primitives.js";

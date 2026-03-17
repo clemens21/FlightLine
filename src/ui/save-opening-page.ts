@@ -58,6 +58,20 @@ export function renderSaveOpeningPage(saveId: string, activeTab: SavePageTab, de
       --danger-soft: rgba(239,140,131,.14);
       --shadow: 0 24px 60px rgba(0,0,0,.34);
     }
+    body[data-theme="forest"] {
+      color-scheme: dark;
+      --bg: #0d1512;
+      --bg-alt: radial-gradient(circle at top left, rgba(41,95,74,.28), transparent 34%), linear-gradient(180deg, rgba(13,21,18,.98), rgba(10,17,14,.98));
+      --panel: rgba(18,31,26,.84);
+      --panel-strong: rgba(15,25,22,.96);
+      --text: #eef6f1;
+      --muted: #96aaa0;
+      --line: rgba(238,246,241,.08);
+      --accent: #78d3a7;
+      --danger: #ef8c83;
+      --danger-soft: rgba(239,140,131,.14);
+      --shadow: 0 24px 60px rgba(0,0,0,.34);
+    }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
@@ -85,12 +99,15 @@ export function renderSaveOpeningPage(saveId: string, activeTab: SavePageTab, de
       justify-content: center;
     }
     body[data-theme="dark"] button,
-    body[data-theme="dark"] .button-link {
+    body[data-theme="dark"] .button-link,
+    body[data-theme="forest"] button,
+    body[data-theme="forest"] .button-link {
       color: #091018;
       background: var(--accent);
     }
     .button-secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-    body[data-theme="dark"] .button-secondary { color: var(--text); background: transparent; }
+    body[data-theme="dark"] .button-secondary,
+    body[data-theme="forest"] .button-secondary { color: var(--text); background: transparent; }
     .opening-screen {
       min-height: 100vh;
       display: grid;
@@ -264,9 +281,12 @@ export function renderSaveOpeningPage(saveId: string, activeTab: SavePageTab, de
   <script>
     (() => {
       const key = 'flightline-theme';
+      const themes = ['light', 'dark', 'forest'];
+      const themeSet = new Set(themes);
       const root = document.body;
       const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      const initial = localStorage.getItem(key) || preferred;
+      const stored = localStorage.getItem(key);
+      const initial = stored && themeSet.has(stored) ? stored : preferred;
       root.dataset.theme = initial;
     })();
   </script>

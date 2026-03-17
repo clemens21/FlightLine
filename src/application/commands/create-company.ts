@@ -18,6 +18,7 @@ interface SaveStateRow extends Record<string, unknown> {
   active_company_id: string | null;
 }
 
+// Creates the first company inside a save, including its starting finances, identity, and home-base footprint.
 export async function handleCreateCompany(
   command: CreateCompanyCommand,
   dependencies: CreateCompanyDependencies,

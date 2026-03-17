@@ -1,6 +1,8 @@
 /*
  * Electron main-process entry point for the desktop shell.
  * It creates the browser window, points it at the local UI experience, and owns desktop-only process wiring.
+ * The startup path here is intentionally explicit because desktop boot is one of the easiest places to get "it hangs with no UI";
+ * this file is also where desktop logging and UI-server lifecycle management live.
  */
 
 import { spawn, type ChildProcess } from "node:child_process";

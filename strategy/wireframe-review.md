@@ -20,9 +20,11 @@ It should not become a smaller version of Contracts, Dispatch, Fleet, and Financ
 
 ### Contracts Need Clear State Separation
 
-Available, accepted, assigned, and active work must feel visibly distinct.
+Available, accepted/active, and closed work must feel visibly distinct.
 
 The contracts experience breaks down if those states are mixed into one visually uniform table.
+
+The current product direction also proved that contracts need a pinned route map and a route planner in the same workspace. Browsing, chaining, and batch acceptance belong together.
 
 ### Dispatch Should Be Single-Aircraft-First In MVP
 
@@ -35,12 +37,14 @@ MVP Dispatch should optimize for:
 - visible profitability summary
 - explicit maintenance and staffing tradeoffs
 
-### Fleet And Aircraft Detail Must Stay Distinct
+### Aircraft Works Better As One Workspace
 
-Fleet should be for comparison and management across aircraft.
-Aircraft Detail should be for a deep read on one airframe.
+The current product is cleaner when `Aircraft` stays one top-level destination with two internal jobs:
 
-If that boundary blurs, the product gains complexity without adding clarity.
+- `Fleet` for owned-aircraft comparison and operational posture
+- `Market` for acquisition and deal commitment
+
+That preserves context while still keeping browsing and acquisition distinct.
 
 ### Staffing Needs Two Different Screens
 
@@ -62,13 +66,18 @@ The aircraft acquisition wireframe worked only when the player could see:
 
 Without that, the screen becomes a shop instead of a management decision surface.
 
+The current implementation direction reinforces one more rule: `Buy`, `Loan`, and `Lease` should start from the selected listing, then open a compact second-step term confirmation instead of forcing those details into the market table.
+
 ## Strategy Changes From The Wireframes
 
 - Dashboard should emphasize one recommended next step, not multiple equal calls to action.
 - Contracts should visually separate state groups before the player even opens a detail panel.
+- Contracts should keep the route map pinned while the board scrolls.
+- Route planning should be treated as a first-class staging flow, not a minor table action.
 - Dispatch validation must remain permanently visible during planning.
 - Staffing costs only matter if their operational consequences are visible nearby.
 - Acquisition flows should be treated as transactional workspaces, not buried table actions.
+- Shell-level controls such as Settings, Activity Log, and Clock/Calendar should stay out of the main nav.
 
 ## New UX Rules
 
@@ -76,6 +85,7 @@ Without that, the screen becomes a shop instead of a management decision surface
 - Every transaction flow should preview both cost and unlocked capability.
 - Global shell behavior must stay stable across overview and transaction screens.
 - Right-side detail panels are preferred until a task becomes complex enough to justify a dedicated workspace.
+- Low-frequency shell actions should gather inside Settings instead of consuming permanent top-level space.
 
 ## What Still Needs Wireframing Later
 
@@ -84,7 +94,7 @@ The current set is enough for the core loop, but additional screens will matter 
 - Maintenance transaction flow
 - Finance deep-dive views
 - World or network planning view
-- Aircraft Detail deep-dive view
+- Aircraft Detail deep-dive view beyond the current Fleet selected-pane
 
 ## Next Strategy Areas To Define
 
@@ -94,6 +104,7 @@ The wireframes now make the next modeling needs clearer:
 - aircraft market generation logic
 - staffing market generation logic
 - airport data ingestion and normalization
+- calendar event projection and activity-notification tuning
 
 Those systems will determine whether the wireframed surfaces stay full of interesting choices.
 

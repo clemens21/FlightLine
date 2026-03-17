@@ -1,6 +1,8 @@
 /*
  * Coordinates command dispatch, save-database access, reference repositories, and lifecycle helpers for the whole application.
  * Most higher-level entry points talk to the simulation through this service instead of touching persistence or reference data directly.
+ * Read this file as the application's composition root: it opens save sessions, wires command/query handlers,
+ * and exposes the narrow surface area that the UI/server layer is allowed to call.
  */
 
 import { access, stat } from "node:fs/promises";
@@ -84,7 +86,7 @@ export class FlightLineBackend {
     return new FlightLineBackend(resolvedConfig, airportReference, aircraftReference);
   }
 
-  // The write-side dispatcher is intentionally explicit so each command's dependencies stay obvious at the call site.
+  // Central write entry point: route one supported command to its handler with the exact dependencies it needs.
   async dispatch(command: SupportedCommand): Promise<CommandResult> {
     switch (command.commandName) {
       case "CreateSaveGame": {
@@ -214,23 +216,27 @@ export class FlightLineBackend {
     return assertUnreachable(command);
   }
 
-  // Read-model helpers expose the projections the UI and tests ask for most often.
+  // Lightweight read helper for shell chrome and any feature that only needs company-level state.
   async loadCompanyContext(saveId: string): Promise<CompanyContext | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadActiveCompanyContext(context.saveDatabase, saveId));
   }
 
+  // Returns the company's accepted/active/completed contract snapshot without mutating anything.
   async loadCompanyContracts(saveId: string): Promise<CompanyContractsView | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadCompanyContracts(context.saveDatabase, saveId));
   }
 
+  // Returns the currently active commercial offer board, if one exists for this save.
   async loadActiveContractBoard(saveId: string): Promise<ContractBoardView | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadActiveContractBoard(context.saveDatabase, saveId));
   }
 
+  // Returns the currently visible aircraft market state after any prior reconciliation has been persisted.
   async loadActiveAircraftMarket(saveId: string): Promise<AircraftMarketView | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadActiveAircraftMarket(context.saveDatabase, saveId));
   }
 
+  // Reconciles the rolling aircraft market from simulated time so listings can expire and be replaced individually.
   async reconcileAircraftMarket(
     saveId: string,
     refreshReason: "scheduled" | "manual" | "bootstrap" = "scheduled",
@@ -286,6 +292,7 @@ export class FlightLineBackend {
   }
 
   // Save sessions are cached per save id so a burst of UI/API calls reuses one sqlite connection.
+  // Executes a read callback only when the save already exists, keeping callers from recreating sessions accidentally.
   async withExistingSaveDatabase<TResult>(
     saveId: string,
     reader: (context: FlightLineSaveReadContext) => TResult | Promise<TResult>,

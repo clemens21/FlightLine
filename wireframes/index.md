@@ -25,6 +25,8 @@ Wireframe order:
 - same global shell across every screen
 - low-fidelity layout first, visual styling later
 - right-side detail drawers preferred over full-page context switches where possible
+- top-level shell is now `Dashboard`, `Contracts`, `Aircraft`, `Staffing`, and `Dispatch`
+- `Clock / Calendar` and `Settings` live in the shell rather than the main nav
 
 ## Source Documents
 

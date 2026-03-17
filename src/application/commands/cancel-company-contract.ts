@@ -53,6 +53,7 @@ function parseCancellationPenaltyAmount(penaltyModelJson: string, fallbackAmount
   return Math.max(0, Math.round(fallbackAmount));
 }
 
+// Cancels an already accepted contract, applies the configured penalty, and records the resulting financial/event side effects.
 export async function handleCancelCompanyContract(
   command: CancelCompanyContractCommand,
   dependencies: CancelCompanyContractDependencies,

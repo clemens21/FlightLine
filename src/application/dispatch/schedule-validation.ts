@@ -1,6 +1,8 @@
 /*
  * Centralizes schedule validation rules for aircraft legs, contract bindings, timing windows, and dispatch readiness.
  * Command handlers use these helpers to keep draft and committed schedules consistent with the simulation rules.
+ * If schedule behavior looks surprising, this is the first file to inspect because it owns the rulebook for what is
+ * considered legal, risky, or blocked before a schedule ever reaches the database.
  */
 
 import type { AirportId, CompanyContractId, JsonObject } from "../../domain/common/primitives.js";

@@ -50,6 +50,7 @@ export interface CompanyContext {
   activeContractCount: number;
 }
 
+// Loads the one active company snapshot for a save, including top-level progression, cash, and home-base context.
 export function loadActiveCompanyContext(
   saveDatabase: SqliteFileDatabase,
   saveId: SaveId,

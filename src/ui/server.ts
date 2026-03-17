@@ -2,6 +2,8 @@
 /*
  * Implements the local UI server, its HTML render paths, and its JSON/form action endpoints.
  * This is the largest orchestration file in the project because it connects launcher flows, shell pages, and API routes in one place.
+ * A useful way to read it is in layers: static asset routing first, launcher/save-opening HTML second, then API/tab/action routes,
+ * all of which translate browser requests into backend-service calls and UI payload builders.
  */
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -439,6 +441,38 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       --line: rgba(237,243,247,.08);
       --accent: #6fc9d4;
       --accent-soft: rgba(111,201,212,.12);
+      --warn: #efb15f;
+      --warn-soft: rgba(239,177,95,.12);
+      --danger: #ef8c83;
+      --danger-soft: rgba(239,140,131,.14);
+      --shadow: 0 24px 60px rgba(0,0,0,.34);
+    }
+    body[data-theme="forest"] {
+      color-scheme: dark;
+      --bg: #0d1512;
+      --bg-alt: radial-gradient(circle at top left, rgba(41,95,74,.28), transparent 34%), linear-gradient(180deg, rgba(13,21,18,.98), rgba(10,17,14,.98));
+      --panel: rgba(18,31,26,.9);
+      --panel-strong: rgba(15,25,22,.98);
+      --text: #eef6f1;
+      --muted: #96aaa0;
+      --line: rgba(238,246,241,.08);
+      --accent: #78d3a7;
+      --accent-soft: rgba(120,211,167,.12);
+      --danger: #ef8c83;
+      --danger-soft: rgba(239,140,131,.14);
+      --shadow: 0 24px 60px rgba(0,0,0,.34);
+    }
+    body[data-theme="forest"] {
+      color-scheme: dark;
+      --bg: #0d1512;
+      --bg-alt: radial-gradient(circle at top left, rgba(41,95,74,.28), transparent 34%), linear-gradient(180deg, rgba(13,21,18,.98), rgba(10,17,14,.98));
+      --panel: rgba(18,31,26,.84);
+      --panel-strong: rgba(15,25,22,.96);
+      --text: #eef6f1;
+      --muted: #96aaa0;
+      --line: rgba(238,246,241,.08);
+      --accent: #78d3a7;
+      --accent-soft: rgba(120,211,167,.12);
       --warn: #efb15f;
       --warn-soft: rgba(239,177,95,.12);
       --danger: #ef8c83;
@@ -952,12 +986,16 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
   <script>
     (() => {
       const key = 'flightline-theme';
+      const themes = ['light', 'dark', 'forest'];
+      const themeSet = new Set(themes);
       const root = document.body;
       const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      const initial = localStorage.getItem(key) || preferred;
+      const stored = localStorage.getItem(key);
+      const initial = stored && themeSet.has(stored) ? stored : preferred;
       root.dataset.theme = initial;
       window.toggleTheme = () => {
-        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        const currentIndex = themes.indexOf(root.dataset.theme || 'light');
+        const next = themes[(currentIndex + 1 + themes.length) % themes.length];
         root.dataset.theme = next;
         localStorage.setItem(key, next);
         window.dispatchEvent(new CustomEvent('flightline:theme-changed', { detail: { theme: next } }));
@@ -1251,12 +1289,16 @@ function renderLauncherPage(saveIds, flash, confirmDeleteSaveId) {
   <script>
     (() => {
       const key = 'flightline-theme';
+      const themes = ['light', 'dark', 'forest'];
+      const themeSet = new Set(themes);
       const root = document.body;
       const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      const initial = localStorage.getItem(key) || preferred;
+      const stored = localStorage.getItem(key);
+      const initial = stored && themeSet.has(stored) ? stored : preferred;
       root.dataset.theme = initial;
       window.toggleTheme = () => {
-        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        const currentIndex = themes.indexOf(root.dataset.theme || 'light');
+        const next = themes[(currentIndex + 1 + themes.length) % themes.length];
         root.dataset.theme = next;
         localStorage.setItem(key, next);
       };
@@ -1687,6 +1729,7 @@ async function handleAcceptContractApi(response, saveId, form) {
         success: result.success,
         message: result.success ? buildAcceptedContractMessage(payload, result, contractOfferId) : undefined,
         error: result.success ? undefined : result.hardBlockers[0] ?? "Could not accept contract.",
+        notificationLevel: result.success ? "important" : undefined,
         shell: tabPayload.shell,
         payload,
     });
@@ -1716,6 +1759,7 @@ async function handleCancelContractApi(response, saveId, form) {
         success: result.success,
         message: result.success ? buildCancelledContractMessage(payload, result, companyContractId) : undefined,
         error: result.success ? undefined : result.hardBlockers[0] ?? "Could not cancel contract.",
+        notificationLevel: result.success ? "important" : undefined,
         shell: tabPayload.shell,
         payload,
     });
@@ -1736,6 +1780,7 @@ async function sendContractsTabApiResponse(response, saveId, result) {
         success: result.success,
         message: result.message,
         error: result.error,
+        notificationLevel: result.notificationLevel,
         shell: tabPayload.shell,
         payload,
     });
@@ -1754,6 +1799,7 @@ async function handlePlannerAddApi(response, saveId, form) {
         success: result?.success ?? false,
         message: result?.success ? result.message ?? "Added item to the route plan." : undefined,
         error: result?.success ? undefined : result?.error ?? "Could not add item to the route plan.",
+        notificationLevel: result?.success ? "routine" : undefined,
     });
 }
 async function handlePlannerRemoveApi(response, saveId, form) {
@@ -1767,6 +1813,7 @@ async function handlePlannerRemoveApi(response, saveId, form) {
         success: result?.success ?? false,
         message: result?.success ? result.message ?? "Removed route plan item." : undefined,
         error: result?.success ? undefined : result?.error ?? "Could not remove route plan item.",
+        notificationLevel: result?.success ? "routine" : undefined,
     });
 }
 async function handlePlannerReorderApi(response, saveId, form) {
@@ -1781,6 +1828,7 @@ async function handlePlannerReorderApi(response, saveId, form) {
         success: result?.success ?? false,
         message: result?.success ? result.message ?? "Reordered route plan item." : undefined,
         error: result?.success ? undefined : result?.error ?? "Could not reorder route plan item.",
+        notificationLevel: result?.success ? "routine" : undefined,
     });
 }
 async function handlePlannerClearApi(response, saveId) {
@@ -1793,6 +1841,7 @@ async function handlePlannerClearApi(response, saveId) {
         success: result?.success ?? false,
         message: result?.success ? result.message ?? "Cleared route plan." : undefined,
         error: result?.success ? undefined : result?.error ?? "Could not clear route plan.",
+        notificationLevel: result?.success ? "routine" : undefined,
     });
 }
 async function handlePlannerAcceptApi(response, saveId, form) {
@@ -1802,6 +1851,7 @@ async function handlePlannerAcceptApi(response, saveId, form) {
         success: result.success,
         message: result.success ? result.message ?? "Accepted planned offers." : undefined,
         error: result.success ? undefined : result.error ?? "Could not accept planned offers.",
+        notificationLevel: result.success ? "important" : undefined,
     });
 }
 async function handleAutoPlanContract(response, form) {
@@ -2318,6 +2368,7 @@ async function sendClockActionResponse(response, saveId, tab, selectedLocalDate,
         success: result.success,
         message: result.message,
         error: result.error,
+        notificationLevel: result.notificationLevel,
         shell: tabPayload?.shell ?? bootstrapPayload.shell,
         tab: tabPayload ?? undefined,
         clock: clockPayload,
@@ -2332,7 +2383,7 @@ async function handleBindRoutePlanApi(response, saveId, form) {
     try {
         const result = await bindRoutePlanToAircraft(backend, saveId, aircraftId, commandId("cmd_route_plan_bind_api"));
         await sendShellActionResponse(response, saveId, tab, result.success
-            ? { success: true, message: result.message ?? "Drafted route plan schedule." }
+            ? { success: true, message: result.message ?? "Drafted route plan schedule.", notificationLevel: "important" }
             : { success: false, error: result.error ?? "Could not draft the route plan schedule." });
     }
     catch (error) {
@@ -2353,6 +2404,7 @@ async function sendShellActionResponse(response, saveId, tab, result) {
         success: result.success,
         message: result.message,
         error: result.error,
+        notificationLevel: result.notificationLevel,
         shell: tabPayload.shell,
         tab: tabPayload,
     });
@@ -2389,7 +2441,7 @@ async function handleCreateCompanyApi(response, saveId, form) {
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Created company ${displayName}.` }
+        ? { success: true, message: `Created company ${displayName}.`, notificationLevel: "important" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not create company." });
 }
 async function handleAcquireAircraftApi(response, saveId, form) {
@@ -2410,7 +2462,7 @@ async function handleAcquireAircraftApi(response, saveId, form) {
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Acquired ${selectedOption.label}.` }
+        ? { success: true, message: `Acquired ${selectedOption.label}.`, notificationLevel: "important" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not acquire aircraft." });
 }
 async function handleAcquireAircraftOfferApi(response, saveId, form) {
@@ -2456,7 +2508,7 @@ async function handleAcquireAircraftOfferApi(response, saveId, form) {
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Acquired ${model?.displayName ?? offer.displayName} at ${offer.currentAirportId} via ${dealLabel}${termMonths ? ` (${termMonths} mo)` : ""}.` }
+        ? { success: true, message: `Acquired ${model?.displayName ?? offer.displayName} at ${offer.currentAirportId} via ${dealLabel}${termMonths ? ` (${termMonths} mo)` : ""}.`, notificationLevel: "important" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not acquire that aircraft listing." });
 }
 async function handleAddStaffingApi(response, saveId, form) {
@@ -2481,7 +2533,7 @@ async function handleAddStaffingApi(response, saveId, form) {
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Activated ${preset.label}.` }
+        ? { success: true, message: `Activated ${preset.label}.`, notificationLevel: "routine" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not add staffing." });
 }
 async function handleCommitScheduleApi(response, saveId, form) {
@@ -2496,7 +2548,7 @@ async function handleCommitScheduleApi(response, saveId, form) {
         payload: { scheduleId },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Committed schedule ${scheduleId}.` }
+        ? { success: true, message: `Committed schedule ${scheduleId}.`, notificationLevel: "important" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not commit schedule." });
 }
 async function handleAdvanceTimeApi(response, saveId, form) {
@@ -2522,7 +2574,7 @@ async function handleAdvanceTimeApi(response, saveId, form) {
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Advanced time to ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} (${String(result.metadata?.stoppedBecause ?? "target_time")}).` }
+        ? { success: true, message: `Advanced time to ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} (${String(result.metadata?.stoppedBecause ?? "target_time")}).`, notificationLevel: "routine" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not advance time." });
 }
 async function handleClockApi(response, saveId, selectedLocalDate) {
@@ -2570,6 +2622,7 @@ async function handleClockTickApi(response, saveId, form) {
         ? {
             success: true,
             message: stoppedBecause !== "target_time" ? `Clock paused at ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} because ${stoppedBecause.replaceAll("_", " ")}.` : undefined,
+            notificationLevel: stoppedBecause !== "target_time" ? "important" : undefined,
         }
         : {
             success: false,
@@ -2614,6 +2667,7 @@ async function handleClockAdvanceToCalendarAnchorApi(response, saveId, form) {
             message: stoppedBecause === "target_time"
                 ? `Advanced to the selected morning on ${localDate}.`
                 : `Stopped before the selected morning on ${localDate} because ${stoppedBecause.replaceAll("_", " ")}.`,
+            notificationLevel: stoppedBecause === "target_time" ? "routine" : "important",
         }
         : {
             success: false,
@@ -2681,7 +2735,7 @@ async function handleAutoPlanContractApi(response, saveId, form) {
         });
         await sendShellActionResponse(response, saveId, tab, result.hardBlockers.length > 0
             ? { success: false, error: result.hardBlockers[0] ?? "Could not draft the schedule." }
-            : { success: true, message: `Drafted schedule ${String(result.metadata?.scheduleId ?? "")}.` });
+            : { success: true, message: `Drafted schedule ${String(result.metadata?.scheduleId ?? "")}.`, notificationLevel: "important" });
     }
     catch (error) {
         const message = error instanceof Error ? error.message : "Auto-plan failed.";

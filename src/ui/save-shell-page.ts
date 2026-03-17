@@ -1,6 +1,8 @@
 /*
  * Renders the base HTML shell that the browser client hydrates after a save is opened.
  * It provides the layout, static chrome, and bootstrapping hooks for the richer client-side shell experience.
+ * This file is mostly structure and CSS. When a shell layout or visual regression appears, start here before assuming
+ * the browser controller is wrong, because many "logic bugs" in the UI are really shell-level layout issues.
  */
 
 import type { SavePageTab } from "./save-shell-model.js";
@@ -54,6 +56,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       --danger-soft: rgba(239,140,131,.14);
       --shadow: 0 24px 60px rgba(0,0,0,.34);
     }
+    body[data-theme="forest"] {
+      color-scheme: dark;
+      --bg: #0d1512;
+      --bg-alt: radial-gradient(circle at top left, rgba(41,95,74,.28), transparent 34%), linear-gradient(180deg, rgba(13,21,18,.98), rgba(10,17,14,.98));
+      --panel: rgba(18,31,26,.84);
+      --panel-strong: rgba(15,25,22,.96);
+      --text: #eef6f1;
+      --muted: #96aaa0;
+      --line: rgba(238,246,241,.08);
+      --accent: #78d3a7;
+      --accent-soft: rgba(120,211,167,.12);
+      --danger-soft: rgba(239,140,131,.14);
+      --shadow: 0 24px 60px rgba(0,0,0,.34);
+    }
     * { box-sizing: border-box; }
     html, body { height: 100%; }
     body {
@@ -82,12 +98,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     body[data-theme="dark"] .theme-toggle,
     body[data-theme="dark"] button,
-    body[data-theme="dark"] .button-link {
+    body[data-theme="dark"] .button-link,
+    body[data-theme="forest"] .theme-toggle,
+    body[data-theme="forest"] button,
+    body[data-theme="forest"] .button-link {
       color: #091018;
       background: var(--accent);
     }
     .button-secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-    body[data-theme="dark"] .button-secondary { color: var(--text); background: transparent; }
+    body[data-theme="dark"] .button-secondary,
+    body[data-theme="forest"] .button-secondary { color: var(--text); background: transparent; }
     .shell-root { height: 100vh; overflow: hidden; padding: 20px 24px; }
     .handoff-screen {
       display: grid;
@@ -416,7 +436,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 8px;
     }
     .settings-action,
-    body[data-theme="dark"] .settings-action {
+    body[data-theme="dark"] .settings-action,
+    body[data-theme="forest"] .settings-action {
       width: 100%;
       justify-content: flex-start;
       border: 1px solid var(--line);
@@ -1198,9 +1219,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
               <div class="settings-meta">
                 <div class="settings-meta-row"><span class="muted">Save slot</span><strong>${escapeHtml(saveId)}</strong></div>
                 <div class="settings-meta-row"><span class="muted">Theme</span><strong data-settings-theme-label>Loading...</strong></div>
+                <div class="settings-meta-row"><span class="muted">Activity popups</span><strong data-settings-popup-label>Loading...</strong></div>
               </div>
               <div class="settings-actions">
-                <button class="settings-action" type="button" data-settings-theme>Toggle theme</button>
+                <button class="settings-action" type="button" data-settings-open-activity>Open activity log</button>
+                <button class="settings-action" type="button" data-settings-popup-mode-toggle>Activity popups: Loading...</button>
+                <button class="settings-action" type="button" data-settings-theme>Theme: Loading...</button>
                 <a class="button-link settings-action" href="/">Back to saved games</a>
               </div>
             </div>
@@ -1218,14 +1242,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
   <script>
     (() => {
       const key = 'flightline-theme';
+      const themes = ['light', 'dark', 'forest'];
+      const themeSet = new Set(themes);
       const root = document.body;
       const preferred = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      const initial = localStorage.getItem(key) || preferred;
+      const stored = localStorage.getItem(key);
+      const initial = stored && themeSet.has(stored) ? stored : preferred;
       root.dataset.theme = initial;
       window.toggleTheme = () => {
-        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        const currentIndex = themes.indexOf(root.dataset.theme || 'light');
+        const next = themes[(currentIndex + 1 + themes.length) % themes.length];
         root.dataset.theme = next;
         localStorage.setItem(key, next);
+        window.dispatchEvent(new CustomEvent('flightline:theme-changed', { detail: { theme: next } }));
+        return next;
       };
     })();
   </script>

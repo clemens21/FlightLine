@@ -1,6 +1,8 @@
 /*
  * Derives the aircraft-tab view model from fleet, schedule, staffing, maintenance, and company context.
  * The browser client receives this pre-shaped payload so it can stay focused on interaction instead of simulation rules.
+ * This file does most of the thinking for the Aircraft workspace: it condenses fleet posture, staffing readiness,
+ * maintenance risk, market listings, and sort/filter behavior into UI-ready shapes so the browser can remain dumb.
  */
 
 import type { AircraftMarketView, AircraftOfferTermsView } from "../application/queries/aircraft-market.js";
@@ -62,6 +64,7 @@ export interface AircraftTabAircraftView {
   displayName: string;
   modelDisplayName: string;
   roleLabel: string;
+  imageAssetPath: string;
   location: AircraftTabLocationView;
   ownershipType: FleetAircraftView["ownershipType"];
   operationalState: AircraftOperationalState;
@@ -69,6 +72,8 @@ export interface AircraftTabAircraftView {
   maintenanceState: AircraftMaintenanceState;
   riskBand: AircraftRiskBand;
   staffingFlag: AircraftStaffingFlag;
+  staffingSummary: string;
+  staffingDetail: string;
   isReadyForNewWork: boolean;
   conditionValue: number;
   rangeNm: number;
@@ -286,6 +291,7 @@ const defaultMarketSort: AircraftMarketSort = {
 };
 
 // Public entry points shape raw backend and reference data into stable fleet and market workspaces for the browser client.
+// Use this when the UI needs a single aircraft payload that already reflects fleet posture, market state, and company context.
 export function buildAircraftTabPayload(params: BuildAircraftTabPayloadParams): AircraftTabPayload {
   const companyContext = normalizeCompanyContext(params.companyContext, params.fleetState);
   const fleetWorkspace = buildFleetWorkspace({
@@ -310,6 +316,7 @@ export function buildAircraftTabPayload(params: BuildAircraftTabPayloadParams): 
   };
 }
 
+// Convenience wrapper for legacy callers that only care about the fleet side of the aircraft workspace.
 export function applyAircraftTabViewState(
   payload: AircraftTabPayload,
   options: {
@@ -321,6 +328,7 @@ export function applyAircraftTabViewState(
   return applyAircraftFleetViewState(payload.fleetWorkspace, options);
 }
 
+// Applies the current fleet filters, sort, and selection without mutating the underlying payload.
 export function applyAircraftFleetViewState(
   payload: AircraftFleetWorkspacePayload,
   options: {
@@ -356,6 +364,7 @@ export function applyAircraftFleetViewState(
   };
 }
 
+// Applies market filters, geographic matching, sorting, and selected-listing fallback for the acquisition workspace.
 export function applyAircraftMarketViewState(
   payload: AircraftMarketWorkspacePayload,
   options: {
@@ -455,6 +464,7 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
     const maintenanceState = deriveMaintenanceState(entry, maintenanceTask);
     const riskBand = deriveRiskBand(conditionBand, maintenanceState);
     const staffingFlag = deriveStaffingFlag(entry, primarySchedule, params.staffingState, reservedByQualification, reservedByScheduleQualification);
+    const staffingStatus = describeStaffingSupport(entry, staffingFlag, params.staffingState, params.airportReference);
     const roleLabel = deriveRoleLabel(entry);
     const currentCommitment = buildCurrentCommitment(primarySchedule, maintenanceTask, contractsById, params.airportReference);
     const nextEvent = buildNextEvent(
@@ -492,6 +502,7 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
       displayName: entry.displayName,
       modelDisplayName: entry.modelDisplayName,
       roleLabel,
+      imageAssetPath: aircraftImageAssetPathForModel(entry.aircraftModelId),
       location,
       ownershipType: entry.ownershipType,
       operationalState,
@@ -499,6 +510,8 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
       maintenanceState,
       riskBand,
       staffingFlag,
+      staffingSummary: staffingStatus.summary,
+      staffingDetail: staffingStatus.detail,
       isReadyForNewWork,
       conditionValue: entry.conditionValue,
       rangeNm: entry.rangeNm,
@@ -995,7 +1008,7 @@ function matchesFleetFilters(aircraft: AircraftTabAircraftView, filters: Aircraf
 
 function compareFleetAircraft(left: AircraftTabAircraftView, right: AircraftTabAircraftView, sort: AircraftTableSort): number {
   const direction = sort.direction === "asc" ? 1 : -1;
-  const stateRank = { available: 0, scheduled: 1, maintenance: 2, grounded: 3 } satisfies Record<AircraftOperationalState, number>;
+  const ownershipRank = { owned: 0, financed: 1, leased: 2 } satisfies Record<FleetAircraftView["ownershipType"], number>;
   const conditionRank = { excellent: 0, healthy: 1, watch: 2, critical: 3 } satisfies Record<AircraftConditionBand, number>;
   const staffingRank = { covered: 0, tight: 1, uncovered: 2 } satisfies Record<AircraftStaffingFlag, number>;
 
@@ -1011,7 +1024,7 @@ function compareFleetAircraft(left: AircraftTabAircraftView, right: AircraftTabA
       comparison = left.location.code.localeCompare(right.location.code, "en-US");
       break;
     case "state":
-      comparison = stateRank[left.operationalState] - stateRank[right.operationalState];
+      comparison = ownershipRank[left.ownershipType] - ownershipRank[right.ownershipType];
       break;
     case "condition":
       comparison = conditionRank[left.conditionBand] - conditionRank[right.conditionBand];
@@ -1380,6 +1393,88 @@ function deriveStaffingFlag(
   }
 
   return hasTightCoverage ? "tight" : "covered";
+}
+
+function describeStaffingSupport(
+  aircraft: FleetAircraftView,
+  staffingFlag: AircraftStaffingFlag,
+  staffingState: StaffingStateView | null,
+  airportReference: AirportReferenceRepository,
+): { summary: string; detail: string } {
+  const currentAirport = airportReference.findAirport(aircraft.currentAirportId);
+  const currentRegion = currentAirport?.isoRegion;
+  const locationLabel = currentAirport?.identCode || currentAirport?.airportKey || aircraft.currentAirportId;
+  const requirements = [
+    {
+      laborCategory: "pilot",
+      qualificationGroup: aircraft.pilotQualificationGroup,
+      unitsRequired: aircraft.pilotsRequired,
+    },
+    {
+      laborCategory: "flight_attendant",
+      qualificationGroup: "cabin_general",
+      unitsRequired: aircraft.flightAttendantsRequired,
+    },
+  ].filter((entry) => entry.unitsRequired > 0);
+
+  if (requirements.length === 0) {
+    return {
+      summary: "No dedicated crew requirement",
+      detail: "This airframe does not need additional staffed positions beyond general dispatch readiness.",
+    };
+  }
+
+  const localCoverageByKey = new Map<string, number>();
+  for (const staffingPackage of staffingState?.staffingPackages ?? []) {
+    if (staffingPackage.status !== "active") {
+      continue;
+    }
+
+    if (
+      staffingPackage.serviceRegionCode
+      && currentRegion
+      && staffingPackage.serviceRegionCode !== currentRegion
+    ) {
+      continue;
+    }
+
+    const key = `${staffingPackage.laborCategory}:${staffingPackage.qualificationGroup}`;
+    localCoverageByKey.set(key, (localCoverageByKey.get(key) ?? 0) + staffingPackage.coverageUnits);
+  }
+
+  const hasLocalCoverage = requirements.every((entry) => {
+    const key = `${entry.laborCategory}:${entry.qualificationGroup}`;
+    return (localCoverageByKey.get(key) ?? 0) >= entry.unitsRequired;
+  });
+
+  if (staffingFlag === "uncovered") {
+    return {
+      summary: "Crew coverage missing",
+      detail: `Current staffing does not fully cover this aircraft's crew requirement${currentRegion ? ` for ${locationLabel} (${currentRegion})` : ""}.`,
+    };
+  }
+
+  if (hasLocalCoverage) {
+    return staffingFlag === "tight"
+      ? {
+          summary: "Crew coverage is local but tight",
+          detail: `Qualified crew can operate from ${locationLabel}${currentRegion ? ` in ${currentRegion}` : ""}, but there is little backup coverage.`,
+        }
+      : {
+          summary: "Crew coverage is local",
+          detail: `Qualified crew is already staged for operations from ${locationLabel}${currentRegion ? ` in ${currentRegion}` : ""}.`,
+        };
+  }
+
+  return staffingFlag === "tight"
+    ? {
+        summary: "Crew coverage needs repositioning",
+        detail: `Qualified crew exists in the company network, but not at ${locationLabel}${currentRegion ? ` in ${currentRegion}` : ""}.`,
+      }
+    : {
+        summary: "Crew available elsewhere in network",
+        detail: `Qualified crew exists, but local station coverage is not yet in place for ${locationLabel}${currentRegion ? ` in ${currentRegion}` : ""}.`,
+      };
 }
 
 function deriveRoleLabel(aircraft: FleetAircraftView): string {
