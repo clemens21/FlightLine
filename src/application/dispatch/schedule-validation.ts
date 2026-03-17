@@ -1,3 +1,8 @@
+/*
+ * Centralizes schedule validation rules for aircraft legs, contract bindings, timing windows, and dispatch readiness.
+ * Command handlers use these helpers to keep draft and committed schedules consistent with the simulation rules.
+ */
+
 import type { AirportId, CompanyContractId, JsonObject } from "../../domain/common/primitives.js";
 import type { FlightLegType, ValidationMessage } from "../../domain/dispatch/types.js";
 import type { LaborCategory } from "../../domain/staffing/types.js";

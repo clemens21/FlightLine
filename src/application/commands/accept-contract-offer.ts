@@ -1,3 +1,8 @@
+/*
+ * Implements the accept contract offer command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import type { CommandResult, AcceptContractOfferCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";

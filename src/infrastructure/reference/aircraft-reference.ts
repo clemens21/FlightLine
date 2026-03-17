@@ -1,3 +1,8 @@
+/*
+ * Opens the aircraft reference database and exposes lookup helpers for models, layouts, and supporting metadata.
+ * Application code treats this as read-only reference data rather than mutable save state.
+ */
+
 import type { AircraftLayoutId, AircraftModelId } from "../../domain/common/primitives.js";
 import { SqliteFileDatabase } from "../persistence/sqlite/sqlite-file-database.js";
 

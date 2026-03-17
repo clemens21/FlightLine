@@ -1,4 +1,9 @@
-﻿import { spawn } from "node:child_process";
+/*
+ * Provides shared helpers for starting the UI server, allocating ports, and creating workspace-scoped backend instances in tests.
+ * It is the infrastructure layer that both HTTP and Playwright tests build on.
+ */
+
+import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { rm } from "node:fs/promises";
 import net from "node:net";

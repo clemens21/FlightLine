@@ -1,9 +1,19 @@
+/*
+ * Applies and tracks SQLite schema migrations for FlightLine save files.
+ * The backend relies on this module to keep older saves compatible with newer code and schema revisions.
+ */
+
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 import type { SqliteFileDatabase } from "./sqlite-file-database.js";
 
-const SAVE_MIGRATION_FILES = ["0001_initial.sql", "0002_route_plan.sql", "0003_aircraft_market.sql"] as const;
+const SAVE_MIGRATION_FILES = [
+  "0001_initial.sql",
+  "0002_route_plan.sql",
+  "0003_aircraft_market.sql",
+  "0004_aircraft_market_lifecycle.sql",
+] as const;
 const saveSchemaDirectoryUrl = new URL("../save-schema/", import.meta.url);
 
 export async function applySaveMigrations(database: SqliteFileDatabase, appVersion = "dev"): Promise<void> {

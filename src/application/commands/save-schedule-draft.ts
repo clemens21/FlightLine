@@ -1,3 +1,8 @@
+/*
+ * Implements the save schedule draft command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import type { CommandResult, SaveScheduleDraftCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
 import { validateProposedSchedule } from "../dispatch/schedule-validation.js";

@@ -1,3 +1,8 @@
+/*
+ * Coordinates command dispatch, save-database access, reference repositories, and lifecycle helpers for the whole application.
+ * Most higher-level entry points talk to the simulation through this service instead of touching persistence or reference data directly.
+ */
+
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -25,7 +30,9 @@ import { applySaveMigrations } from "../infrastructure/persistence/sqlite/migrat
 import { SqliteFileDatabase } from "../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
+import { reconcileAircraftMarket } from "./aircraft/aircraft-market-reconciler.js";
 
+// These types capture the long-lived backend configuration and the per-save session context handed to readers and commands.
 export interface FlightLineBackendConfig {
   saveDirectoryPath?: string;
   airportDatabasePath?: string;
@@ -59,6 +66,7 @@ export class FlightLineBackend {
     private readonly aircraftReference: AircraftReferenceRepository,
   ) {}
 
+  // Backend creation opens shared reference repositories once and reuses them for every save session.
   static async create(config: FlightLineBackendConfig = {}): Promise<FlightLineBackend> {
     const resolvedConfig: ResolvedFlightLineBackendConfig = {
       saveDirectoryPath: config.saveDirectoryPath ?? resolve(process.cwd(), "data", "saves"),
@@ -76,6 +84,7 @@ export class FlightLineBackend {
     return new FlightLineBackend(resolvedConfig, airportReference, aircraftReference);
   }
 
+  // The write-side dispatcher is intentionally explicit so each command's dependencies stay obvious at the call site.
   async dispatch(command: SupportedCommand): Promise<CommandResult> {
     switch (command.commandName) {
       case "CreateSaveGame": {
@@ -94,7 +103,22 @@ export class FlightLineBackend {
           saveDatabase: context.saveDatabase,
           airportReference: this.airportReference,
         }));
-        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+        if (!result) {
+          return this.missingSaveResult(command.commandId, command.saveId);
+        }
+
+        if (result.success) {
+          const marketResult = await this.reconcileAircraftMarket(command.saveId, "bootstrap");
+          if (marketResult?.success) {
+            result.metadata = {
+              ...(result.metadata ?? {}),
+              aircraftMarketChanged: marketResult.changed,
+              aircraftMarketOfferCount: marketResult.offerCount,
+            };
+          }
+        }
+
+        return result;
       }
 
       case "AcquireAircraft": {
@@ -168,13 +192,29 @@ export class FlightLineBackend {
           saveDatabase: context.saveDatabase,
           aircraftReference: this.aircraftReference,
         }));
-        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+        if (!result) {
+          return this.missingSaveResult(command.commandId, command.saveId);
+        }
+
+        if (result.success) {
+          const marketResult = await this.reconcileAircraftMarket(command.saveId, "scheduled");
+          if (marketResult?.success) {
+            result.metadata = {
+              ...(result.metadata ?? {}),
+              aircraftMarketChanged: marketResult.changed,
+              aircraftMarketOfferCount: marketResult.offerCount,
+            };
+          }
+        }
+
+        return result;
       }
     }
 
     return assertUnreachable(command);
   }
 
+  // Read-model helpers expose the projections the UI and tests ask for most often.
   async loadCompanyContext(saveId: string): Promise<CompanyContext | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadActiveCompanyContext(context.saveDatabase, saveId));
   }
@@ -189,6 +229,43 @@ export class FlightLineBackend {
 
   async loadActiveAircraftMarket(saveId: string): Promise<AircraftMarketView | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadActiveAircraftMarket(context.saveDatabase, saveId));
+  }
+
+  async reconcileAircraftMarket(
+    saveId: string,
+    refreshReason: "scheduled" | "manual" | "bootstrap" = "scheduled",
+  ) {
+    return this.withExistingSaveDatabase(saveId, async (context) => {
+      const commandId = `cmd_aircraft_market_${Date.now()}`;
+      const issuedAtUtc = new Date().toISOString();
+
+      const result = await handleRefreshAircraftMarket({
+        commandId,
+        saveId,
+        commandName: "RefreshAircraftMarket",
+        issuedAtUtc,
+        actorType: "system",
+        payload: {
+          refreshReason,
+        },
+      }, {
+        saveDatabase: context.saveDatabase,
+        airportReference: this.airportReference,
+        aircraftReference: this.aircraftReference,
+      });
+
+      return result.success
+        ? {
+            success: true,
+            changed: Boolean(result.metadata?.changed),
+            offerCount: Number(result.metadata?.offerCount ?? 0),
+          }
+        : {
+            success: false,
+            changed: false,
+            offerCount: Number(result.metadata?.offerCount ?? 0),
+          };
+    });
   }
 
   async loadRecentEventLog(saveId: string, limit = 20): Promise<EventLogView | null> {
@@ -208,6 +285,7 @@ export class FlightLineBackend {
     return schedules ?? [];
   }
 
+  // Save sessions are cached per save id so a burst of UI/API calls reuses one sqlite connection.
   async withExistingSaveDatabase<TResult>(
     saveId: string,
     reader: (context: FlightLineSaveReadContext) => TResult | Promise<TResult>,
@@ -255,6 +333,7 @@ export class FlightLineBackend {
     return this.aircraftReference;
   }
 
+  // Everything below this point is session lifecycle plumbing rather than simulation logic.
   private missingSaveResult(commandId: string, saveId: string): CommandResult {
     return {
       success: false,

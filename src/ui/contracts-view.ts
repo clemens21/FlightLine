@@ -1,3 +1,8 @@
+/*
+ * Builds the server-side contracts payload by combining company work, market offers, route planning, and airport metadata.
+ * The contracts client consumes this model as its single snapshot of commercial state.
+ */
+
 import type { JsonObject } from "../domain/common/primitives.js";
 import type { FlightLineBackend } from "../application/backend-service.js";
 import { loadCompanyContracts, type CompanyContractsView } from "../application/queries/company-contracts.js";

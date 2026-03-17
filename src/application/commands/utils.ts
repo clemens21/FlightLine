@@ -1,3 +1,8 @@
+/*
+ * Implements the utils command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import { randomUUID } from "node:crypto";
 
 import type { CurrencyAmount } from "../../domain/common/primitives.js";

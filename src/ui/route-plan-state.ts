@@ -1,3 +1,8 @@
+/*
+ * Persists and mutates the saved route-plan state used by the contracts planner.
+ * Planner add, remove, reorder, and clear operations all flow through this module.
+ */
+
 import { createPrefixedId } from "../application/commands/utils.js";
 import { loadCompanyContracts, type CompanyContractView } from "../application/queries/company-contracts.js";
 import { loadActiveCompanyContext } from "../application/queries/company-state.js";
@@ -87,6 +92,7 @@ export interface RoutePlanMutationResult {
 const closedCompanyContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);
 const visibleOfferStatuses = new Set(["available", "shortlisted"]);
 
+// Public planner entry points keep the saved route plan in sqlite so contracts, dispatch, and tests share one source of truth.
 export function loadRoutePlanState(saveDatabase: SqliteFileDatabase, saveId: string): RoutePlanState | null {
   const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
 
@@ -656,6 +662,7 @@ export function markRoutePlanItemsScheduled(
   touchRoutePlan(saveDatabase, routePlanRow.routePlanId, companyContext.currentTimeUtc);
 }
 
+// Reconciliation keeps stored planner rows aligned with a changing contract board and contract lifecycle.
 function reconcileRoutePlanState(
   saveDatabase: SqliteFileDatabase,
   saveId: string,
@@ -842,6 +849,7 @@ function offerIsPlanCandidateAvailable(offer: CandidateOfferRow, currentTimeUtc:
     && new Date(offer.expiresAtUtc).getTime() > new Date(currentTimeUtc).getTime();
 }
 
+// Persistence helpers below handle sequence maintenance, touch timestamps, and row-to-state mapping.
 function ensureRoutePlan(saveDatabase: SqliteFileDatabase, companyId: string, currentTimeUtc: string): string {
   const existing = saveDatabase.getOne<RoutePlanRow>(
     `SELECT

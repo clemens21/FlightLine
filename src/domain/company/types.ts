@@ -1,3 +1,8 @@
+/*
+ * Declares the domain types for company so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
 import type { AirportId, CompanyBaseId, CompanyId, SaveId, UtcIsoString } from "../common/primitives.js";
 
 export type CompanyPhase = "startup" | "small_operator" | "regional_carrier" | "expanding";

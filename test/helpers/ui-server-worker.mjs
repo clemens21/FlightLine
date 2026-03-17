@@ -1,4 +1,9 @@
-﻿import { workerData } from "node:worker_threads";
+/*
+ * Starts the UI server inside a worker thread for environments where a normal child process cannot be spawned.
+ * This keeps the UI tests portable across more restricted execution environments.
+ */
+
+import { workerData } from "node:worker_threads";
 
 process.env.PORT = String(workerData.port);
 

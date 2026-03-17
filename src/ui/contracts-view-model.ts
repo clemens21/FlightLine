@@ -1,3 +1,8 @@
+/*
+ * Defines the contracts-tab view model shared between the server render path and the browser client.
+ * Keeping these payload contracts explicit makes the contracts UI easier to evolve without hidden coupling.
+ */
+
 export interface ContractsViewAirport {
   airportId: string;
   code: string;

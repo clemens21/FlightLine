@@ -1,3 +1,8 @@
+/*
+ * Defines the primitives module for FlightLine.
+ * This comment should orient the reader before they step into the implementation details below.
+ */
+
 export type EntityId = string;
 export type SaveId = string;
 export type CommandId = string;

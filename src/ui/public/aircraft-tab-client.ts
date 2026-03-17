@@ -1,3 +1,8 @@
+/*
+ * Browser controller for the aircraft tab inside the save shell.
+ * It manages client-side selection, filtering, sorting, and detail-panel updates for the fleet command view.
+ */
+
 import {
   applyAircraftFleetViewState,
   applyAircraftMarketViewState,
@@ -22,6 +27,7 @@ export interface AircraftTabController {
 
 const workspaceStoragePrefix = "flightline:aircraft-workspace:";
 
+// The client keeps only ephemeral interaction state; expensive simulation shaping already happened on the server.
 export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload): AircraftTabController {
   let workspaceTab = loadStoredWorkspace(payload.saveId) ?? payload.defaultWorkspaceTab;
   let fleetFilters: AircraftTableFilters = payload.fleetWorkspace.defaultFilters;
@@ -165,6 +171,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   };
 }
 
+// Rendering branches between owned fleet and live market workspaces but keeps the same overall workbench layout.
 function renderAircraftTab(
   payload: AircraftTabPayload,
   workspaceTab: AircraftWorkspaceTab,
@@ -180,12 +187,24 @@ function renderAircraftTab(
     <section class="panel">
       <div class="panel-head">
         <h3>Aircraft Workspace</h3>
-        <div class="pill-row">
-          <button type="button" class="subtab-link ${workspaceTab === "fleet" ? "current" : ""}" data-aircraft-workspace="fleet">Fleet</button>
-          <button type="button" class="subtab-link ${workspaceTab === "market" ? "current" : ""}" data-aircraft-workspace="market">Market</button>
+        <div class="contracts-board-tabs" role="tablist" aria-label="Aircraft workspace">
+          <button
+            type="button"
+            class="contracts-board-tab ${workspaceTab === "fleet" ? "current" : ""}"
+            data-aircraft-workspace="fleet"
+            role="tab"
+            aria-selected="${workspaceTab === "fleet" ? "true" : "false"}"
+          >Fleet</button>
+          <button
+            type="button"
+            class="contracts-board-tab ${workspaceTab === "market" ? "current" : ""}"
+            data-aircraft-workspace="market"
+            role="tab"
+            aria-selected="${workspaceTab === "market" ? "true" : "false"}"
+          >Market</button>
         </div>
       </div>
-      <div class="panel-body">
+      <div class="panel-body aircraft-workspace-body">
         ${workspaceTab === "fleet"
           ? renderFleetWorkspace(payload, fleetViewState)
           : renderMarketWorkspace(payload, marketViewState)}
@@ -198,6 +217,7 @@ function renderSummaryCard(card: AircraftTabPayload["fleetWorkspace"]["summaryCa
   return `<article class="context-card ${card.tone}"><div class="eyebrow">${escapeHtml(card.label)}</div><strong>${escapeHtml(card.value)}</strong><span class="muted">${escapeHtml(card.detail)}</span></article>`;
 }
 
+// Fleet workspace emphasizes triage: filters, sortable table, and a single selected-aircraft detail rail.
 function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFleetViewState): string {
   if (payload.fleetWorkspace.aircraft.length === 0) {
     return `<div class="empty-state">No aircraft in the fleet yet. Switch to <strong>Market</strong> to acquire the first airframe.</div>`;
@@ -245,6 +265,7 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
   `;
 }
 
+// Market workspace mirrors the fleet layout so acquisition research feels like the same tool, not a separate screen.
 function renderMarketWorkspace(payload: AircraftTabPayload, viewState: ReturnType<typeof applyAircraftMarketViewState>): string {
   return `
     <div class="aircraft-workbench">
@@ -254,11 +275,7 @@ function renderMarketWorkspace(payload: AircraftTabPayload, viewState: ReturnTyp
           <div class="pill-row">
             <span class="pill">${escapeHtml(String(viewState.visibleOffers.length))} visible</span>
             <span class="pill">${escapeHtml(String(payload.marketWorkspace.offers.length))} listed</span>
-            ${payload.marketWorkspace.expiresAtUtc ? `<span class="pill">Expires ${escapeHtml(formatDate(payload.marketWorkspace.expiresAtUtc))}</span>` : ""}
-            <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/refresh-aircraft-market" class="inline" data-api-form>
-              <input type="hidden" name="tab" value="aircraft" />
-              <button type="submit" data-pending-label="Refreshing market...">Refresh market</button>
-            </form>
+            <span class="pill">Live market</span>
           </div>
         </div>
         <div class="panel-body aircraft-fleet-body">
@@ -266,13 +283,8 @@ function renderMarketWorkspace(payload: AircraftTabPayload, viewState: ReturnTyp
             <label>Search<input type="text" value="${escapeHtml(viewState.filters.searchText)}" data-market-filter="searchText" placeholder="Model, role, airport" /></label>
             <label>Role<select data-market-filter="rolePool">${renderOptions(viewState.filters.rolePool, [["all", "All roles"], ...payload.marketWorkspace.filterOptions.rolePools.map((value) => [value, humanize(value)] as [string, string])])}</select></label>
             <label>Condition<select data-market-filter="conditionBand">${renderOptions(viewState.filters.conditionBand, [["all", "All bands"], ...payload.marketWorkspace.filterOptions.conditionBands.map((value) => [value, humanize(value)] as [string, string])])}</select></label>
-            <label>Location<input type="text" value="${escapeHtml(viewState.filters.locationText)}" data-market-filter="locationText" placeholder="Airport code or city" /></label>
-            <label>Affordability<select data-market-filter="affordability">${renderOptions(viewState.filters.affordability, [
-              ["all", "All offers"],
-              ["can_buy_now", "Can buy now"],
-              ["can_loan_now", "Can loan now"],
-              ["can_lease_now", "Can lease now"],
-            ])}</select></label>
+            <label>Airport<input type="text" value="${escapeHtml(viewState.filters.locationAirportText)}" data-market-filter="locationAirportText" placeholder="Airport code or name" /></label>
+            <label>Max nm<input type="number" min="0" step="25" value="${escapeHtml(viewState.filters.maxDistanceNm)}" data-market-filter="maxDistanceNm" /></label>
           </div>
           ${renderMarketTable(viewState)}
         </div>
@@ -285,6 +297,7 @@ function renderMarketWorkspace(payload: AircraftTabPayload, viewState: ReturnTyp
   `;
 }
 
+// Tables stay as plain HTML so row selection and server-posted acquisition forms keep working without a framework.
 function renderFleetTable(viewState: AircraftFleetViewState): string {
   if (viewState.visibleAircraft.length === 0) {
     return `<div class="empty-state">No aircraft match the current filters. <button type="button" class="button-link button-secondary" data-aircraft-clear-filters="1">Clear filters</button></div>`;
@@ -327,7 +340,6 @@ function renderMarketTable(viewState: ReturnType<typeof applyAircraftMarketViewS
             <th class="sortable">${renderMarketSortButton(viewState.sort, "condition", "Condition")}</th>
             <th class="sortable">${renderMarketSortButton(viewState.sort, "range", "Capability")}</th>
             <th class="sortable">${renderMarketSortButton(viewState.sort, "asking_price", "Ask")}</th>
-            <th class="sortable">${renderMarketSortButton(viewState.sort, "monthly_burden", "Monthly")}</th>
             <th class="sortable">${renderMarketSortButton(viewState.sort, "distance", "Distance")}</th>
           </tr>
         </thead>
@@ -382,12 +394,12 @@ function renderMarketRow(offer: AircraftMarketOfferView, selectedOfferId: string
       <td><div class="meta-stack"><div class="pill-row">${renderBadge(offer.conditionBand)}${renderBadge(offer.maintenanceState)}</div><span class="muted">${formatPercent(offer.conditionValue)} | ${formatHours(offer.hoursToService)} to service</span></div></td>
       <td><div class="meta-stack"><span>${escapeHtml(envelopeLabel(offer.maxPassengers, offer.maxCargoLb, offer.rangeNm))}</span><span class="muted">${escapeHtml(accessLabel(offer.minimumRunwayFt, offer.minimumAirportSize))}</span></div></td>
       <td>${escapeHtml(formatMoney(offer.askingPurchasePriceAmount))}</td>
-      <td>${escapeHtml(formatMoney(offer.lowestRecurringBurdenAmount))}</td>
       <td>${escapeHtml(formatNumber(offer.distanceFromHomeBaseNm))} nm</td>
     </tr>
   `;
 }
 
+// Detail panels expand the selected row into growth fit, labor burden, and maintenance posture.
 function renderAircraftDetail(aircraft: AircraftTabAircraftView | null): string {
   if (!aircraft) {
     return `<div class="empty-state">No aircraft are visible with the current filters.</div>`;
@@ -468,6 +480,7 @@ function renderMarketDetail(saveId: string, offer: AircraftMarketOfferView | nul
   `;
 }
 
+// Deal cards post directly back into the shell action API using whichever listing is currently selected.
 function renderDealCard(
   saveId: string,
   offer: AircraftMarketOfferView,
@@ -534,6 +547,7 @@ function badgeClass(value: string): string {
   return "neutral";
 }
 
+// The remaining helpers translate sort intent, labels, and local storage into small UI-only utilities.
 function nextFleetSortDirection(sort: AircraftTableSort, key: AircraftTableSortKey): AircraftTableSortDirection {
   if (sort.key !== key) {
     return defaultFleetSortDirection(key);

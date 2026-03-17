@@ -1,3 +1,8 @@
+/*
+ * Builds the contract board read model from persisted save data and reference lookups when needed.
+ * These query modules intentionally stay read-only so the UI and tests can ask for consistent snapshots without triggering side effects.
+ */
+
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";

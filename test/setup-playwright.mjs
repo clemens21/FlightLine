@@ -1,3 +1,8 @@
+/*
+ * Installs the Playwright browser dependencies expected by the UI suites.
+ * This script is separate so browser installation can be done once instead of during every test run.
+ */
+
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 

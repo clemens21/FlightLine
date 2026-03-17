@@ -1,3 +1,8 @@
+/*
+ * Keeps the aircraft market fresh enough for UI consumption without forcing every caller to understand market refresh rules.
+ * This module is the bridge between the backend command/query layer and the save-shell market experience.
+ */
+
 import type { FlightLineBackend } from "../application/backend-service.js";
 import type { AircraftMarketView } from "../application/queries/aircraft-market.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
@@ -27,44 +32,20 @@ export async function ensureActiveAircraftMarket(
     };
   }
 
-  const marketExpired = !aircraftMarket || new Date(aircraftMarket.expiresAtUtc).getTime() <= new Date(companyContext.currentTimeUtc).getTime();
-  if (aircraftMarket && !marketExpired) {
-    console.log(`[ui:timing] aircraft-market ${saveId} refresh=${refreshReason} reused ${Date.now() - startedAtMs}ms offers=${aircraftMarket.offers.length}`);
-    return {
-      companyContext,
-      aircraftMarket,
-      refreshed: false,
-    };
-  }
-
-  const refreshResult = await backend.dispatch({
-    commandId: `cmd_aircraft_market_${Date.now()}`,
-    saveId,
-    commandName: "RefreshAircraftMarket",
-    issuedAtUtc: new Date().toISOString(),
-    actorType: "system",
-    payload: {
-      refreshReason,
-    },
-  });
-
-  if (!refreshResult.success) {
-    return {
-      companyContext,
-      aircraftMarket,
-      refreshed: false,
-    };
-  }
+  const refreshResult = await backend.reconcileAircraftMarket(saveId, refreshReason);
+  const refreshed = Boolean(refreshResult?.success && refreshResult.changed);
 
   [companyContext, aircraftMarket] = await Promise.all([
     backend.loadCompanyContext(saveId),
     backend.loadActiveAircraftMarket(saveId),
   ]);
 
-  console.log(`[ui:timing] aircraft-market ${saveId} refresh=${refreshReason} regenerated ${Date.now() - startedAtMs}ms offers=${aircraftMarket?.offers.length ?? 0}`);
+  console.log(
+    `[ui:timing] aircraft-market ${saveId} refresh=${refreshReason} ${refreshed ? "reconciled" : "stable"} ${Date.now() - startedAtMs}ms offers=${aircraftMarket?.offers.length ?? 0}`,
+  );
   return {
     companyContext,
     aircraftMarket,
-    refreshed: true,
+    refreshed,
   };
 }

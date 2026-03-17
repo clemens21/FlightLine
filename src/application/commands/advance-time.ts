@@ -1,3 +1,8 @@
+/*
+ * Implements the advance time command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import type { AdvanceTimeCommand, CommandResult } from "./types.js";
 import { createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
@@ -102,6 +107,7 @@ interface AdvanceTimeTransactionResult {
   summary: JsonObject;
 }
 
+// Small parsers normalize scheduled-event payloads before the transaction loop starts mutating persistent state.
 function parseJsonObject(rawValue: string | null): JsonObject | undefined {
   if (!rawValue) {
     return undefined;
@@ -223,6 +229,7 @@ function determineStopReason(
   return null;
 }
 
+// Time advancement runs inside a single transaction so scheduled events, cash, and status transitions stay consistent.
 export async function handleAdvanceTime(
   command: AdvanceTimeCommand,
   dependencies: AdvanceTimeDependencies,
@@ -260,6 +267,7 @@ export async function handleAdvanceTime(
   }
 
   const stopConditions = normalizeStopConditions(command.payload.stopConditions);
+  // The transaction replays due events in chronological order and can stop early when one of the requested milestones is reached.
   const transactionResult = dependencies.saveDatabase.transaction<AdvanceTimeTransactionResult>(() => {
     let currentCashAmount = companyContext!.currentCashAmount;
     let processedEventCount = 0;

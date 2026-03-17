@@ -1,3 +1,8 @@
+/*
+ * Builds the aircraft market read model from persisted save data and reference lookups when needed.
+ * These query modules intentionally stay read-only so the UI and tests can ask for consistent snapshots without triggering side effects.
+ */
+
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
@@ -38,6 +43,10 @@ interface AircraftOfferRow extends Record<string, unknown> {
   explanationMetadataJson: string;
   generatedSeed: string;
   offerStatus: OfferStatus;
+  listedAtUtc: string | null;
+  availableUntilUtc: string | null;
+  closedAtUtc: string | null;
+  closeReason: string | null;
 }
 
 export interface AircraftOfferTermsView {
@@ -72,6 +81,10 @@ export interface AircraftOfferView {
   explanationMetadata: JsonObject;
   generatedSeed: string;
   offerStatus: OfferStatus;
+  listedAtUtc: string | undefined;
+  availableUntilUtc: string | undefined;
+  closedAtUtc: string | undefined;
+  closeReason: string | undefined;
 }
 
 export interface AircraftMarketView {
@@ -151,9 +164,14 @@ export function loadActiveAircraftMarket(
       lease_terms_json AS leaseTermsJson,
       explanation_metadata_json AS explanationMetadataJson,
       generated_seed AS generatedSeed,
-      offer_status AS offerStatus
+      offer_status AS offerStatus,
+      listed_at_utc AS listedAtUtc,
+      available_until_utc AS availableUntilUtc,
+      closed_at_utc AS closedAtUtc,
+      close_reason AS closeReason
     FROM aircraft_offer
     WHERE offer_window_id = $offer_window_id
+      AND offer_status = 'available'
     ORDER BY asking_purchase_price_amount ASC, aircraft_offer_id ASC`,
     { $offer_window_id: windowRow.offerWindowId },
   );
@@ -191,6 +209,10 @@ export function loadActiveAircraftMarket(
       explanationMetadata: parseJsonObject(offer.explanationMetadataJson),
       generatedSeed: offer.generatedSeed,
       offerStatus: offer.offerStatus,
+      listedAtUtc: offer.listedAtUtc ?? undefined,
+      availableUntilUtc: offer.availableUntilUtc ?? undefined,
+      closedAtUtc: offer.closedAtUtc ?? undefined,
+      closeReason: offer.closeReason ?? undefined,
     })),
   };
 }

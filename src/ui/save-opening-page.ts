@@ -1,3 +1,8 @@
+/*
+ * Renders the intermediate open-save page that appears before the main shell is shown.
+ * The page is intentionally lightweight because its only purpose is to stage the handoff into the real shell.
+ */
+
 import type { SavePageTab } from "./save-shell-model.js";
 
 function escapeHtml(value: string): string {

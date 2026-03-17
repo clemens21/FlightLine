@@ -1,3 +1,8 @@
+/*
+ * Implements the acquire aircraft command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import type { CommandResult, AcquireAircraftCommand } from "./types.js";
 import {
   addCadenceToUtc,
@@ -609,9 +614,14 @@ export async function handleAcquireAircraft(
     if (marketOffer) {
       dependencies.saveDatabase.run(
         `UPDATE aircraft_offer
-        SET offer_status = 'acquired'
+        SET offer_status = 'acquired',
+            closed_at_utc = $closed_at_utc,
+            close_reason = 'acquired'
         WHERE aircraft_offer_id = $aircraft_offer_id`,
-        { $aircraft_offer_id: marketOffer.aircraftOfferId },
+        {
+          $aircraft_offer_id: marketOffer.aircraftOfferId,
+          $closed_at_utc: acquiredAtUtc,
+        },
       );
     }
 

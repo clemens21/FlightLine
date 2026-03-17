@@ -1,4 +1,9 @@
-﻿import assert from "node:assert/strict";
+/*
+ * Regression coverage for ui server smoke.test.
+ * This test file sets up enough backend or UI state to lock in the behavior the product currently depends on.
+ */
+
+import assert from "node:assert/strict";
 
 import {
   acquireAircraft,

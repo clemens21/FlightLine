@@ -1,4 +1,9 @@
-﻿import type { AircraftId, CurrencyAmount, MaintenanceTaskId, ScheduleId, StaffingPackageId, UtcIsoString } from "../common/primitives.js";
+/*
+ * Declares the domain types for staffing so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
+import type { AircraftId, CurrencyAmount, MaintenanceTaskId, ScheduleId, StaffingPackageId, UtcIsoString } from "../common/primitives.js";
 
 export type LaborCategory = "pilot" | "flight_attendant" | "mechanic" | "ops_support";
 export type EmploymentModel = "direct_hire" | "contract_pool" | "service_agreement";

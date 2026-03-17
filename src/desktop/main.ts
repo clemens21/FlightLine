@@ -1,3 +1,8 @@
+/*
+ * Electron main-process entry point for the desktop shell.
+ * It creates the browser window, points it at the local UI experience, and owns desktop-only process wiring.
+ */
+
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";

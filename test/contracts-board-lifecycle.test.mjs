@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for contracts board lifecycle.test.
+ * This test file sets up enough backend or UI state to lock in the behavior the product currently depends on.
+ */
+
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

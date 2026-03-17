@@ -1,3 +1,8 @@
+/*
+ * Regression coverage for save slot files.test.
+ * This test file sets up enough backend or UI state to lock in the behavior the product currently depends on.
+ */
+
 import assert from "node:assert/strict";
 import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

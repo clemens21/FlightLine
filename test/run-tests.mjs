@@ -1,3 +1,8 @@
+/*
+ * Runs the non-browser automated suite in a fixed import order.
+ * The explicit order makes setup predictable and narrows the search space when a later import fails.
+ */
+
 import { syncDistSaveSchema } from "./helpers/dist-assets.mjs";
 
 await syncDistSaveSchema();

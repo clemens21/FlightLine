@@ -1,4 +1,8 @@
 // @ts-nocheck
+/*
+ * Implements the local UI server, its HTML render paths, and its JSON/form action endpoints.
+ * This is the largest orchestration file in the project because it connects launcher flows, shell pages, and API routes in one place.
+ */
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -15,6 +19,7 @@ import { bindRoutePlanToAircraft } from "./route-plan-dispatch.js";
 import { addAcceptedContractToRoutePlan, addCandidateOfferToRoutePlan, clearRoutePlan, removeRoutePlanItem, reorderRoutePlanItem, } from "./route-plan-state.js";
 import { renderSaveOpeningPage } from "./save-opening-page.js";
 import { renderIncrementalSavePage } from "./save-shell-page.js";
+// Process-wide resources are initialized once because every request shares the same backend and the same reference catalogs.
 const port = Number.parseInt(process.env.PORT ?? "4321", 10);
 const turnaroundMinutes = 45;
 const saveDirectoryPath = resolve(process.cwd(), "data", "saves");
@@ -93,6 +98,7 @@ const backend = await FlightLineBackend.create({
 });
 const airportReference = await AirportReferenceRepository.open(airportDatabasePath);
 const aircraftReference = await AircraftReferenceRepository.open(aircraftDatabasePath);
+// Small formatting helpers keep the large template strings below readable.
 function escapeHtml(value) {
     return value
         .replaceAll("&", "&amp;")
@@ -253,6 +259,7 @@ function commandId(prefix) {
 function registrationFor(prefix) {
     return `${prefix}${Math.floor(100 + Math.random() * 900)}`;
 }
+// Route helpers centralize URL building so links, redirects, and client fallbacks stay aligned.
 function saveRoute(saveId, options = {}) {
     const search = new URLSearchParams();
     if (options.tab && options.tab !== "dashboard") {
@@ -289,6 +296,7 @@ function launcherRoute(options = {}) {
     const query = search.toString();
     return query ? `/?${query}` : "/";
 }
+// Request parsing and response helpers bridge raw Node HTTP primitives to the render and action handlers.
 async function listSaveIds() {
     return listSaveSlotIds(saveDirectoryPath);
 }
@@ -342,6 +350,7 @@ function redirect(response, location) {
     response.writeHead(303, { location });
     response.end();
 }
+// Server-rendered page helpers still support the launcher and the non-hydrated shell paths.
 function renderPanel(title, body, options = {}) {
     const className = options.className ? ` ${options.className}` : "";
     return `<section class="panel${className}"><div class="panel-head"><h3>${escapeHtml(title)}</h3>${options.actionHtml ?? ""}</div><div class="panel-body">${body}</div></section>`;
@@ -933,6 +942,7 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
 </body>
 </html>`;
 }
+// The launcher remains a pure server render because its interactions are simple and it is the first screen every session hits.
 function renderLauncherPage(saveIds, flash, confirmDeleteSaveId) {
     const saveRows = saveIds.length === 0
         ? `<div class="launcher-empty">No saves yet. Create one to start the first company.</div>`
@@ -1229,6 +1239,7 @@ function renderLauncherPage(saveIds, flash, confirmDeleteSaveId) {
 </body>
 </html>`;
 }
+// Save-page rendering composes the loaded projections into either a plain fallback shell or the richer hydrated experience.
 function serializeJsonForScript(value) {
     return JSON.stringify(value)
         .replaceAll("&", "\\u0026")
@@ -1464,9 +1475,10 @@ function renderSavePage(model, saveIds, flash, activeTab, contractsPayload = nul
     })();
     return renderShell(company.displayName, saveIds, model.saveId, flash, `<div class="content-shell">${renderMetricStrip(model)}${renderSaveTabs(model.saveId, activeTab, tabMeta)}${activeTab === "contracts" ? "" : renderContextRail(contextCards)}${activeTabBody}</div>`);
 }
+// Legacy form actions keep the older full-page flows working and provide simple fallbacks when debugging without the hydrated shell.
 async function handleCreateSave(response, form) {
     const saveId = resolveRequestedSaveId(form.get("saveName"), `save_${Date.now()}`);
-    const worldSeed = saveId;
+    const worldSeed = `world_${randomUUID()}`;
     const result = await backend.dispatch({
         commandId: commandId("cmd_save"),
         saveId,
@@ -1887,6 +1899,7 @@ async function handleAdvanceTime(response, form) {
             : { error: result.hardBlockers[0] ?? "Could not advance time." },
     }));
 }
+// The legacy action map supports the non-hydrated pages and keeps server form posts declarative.
 const actionHandlers = {
     "/actions/create-save": handleCreateSave,
     "/actions/delete-save": handleDeleteSave,
@@ -1921,6 +1934,7 @@ async function withUiTiming(label, operation) {
         logUiTiming(label, startedAtMs);
     }
 }
+// The request router fans the raw Node request into assets, HTML pages, and incremental JSON shell endpoints.
 async function handleRequest(request, response) {
     const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? `localhost:${port}`}`);
     const pathname = requestUrl.pathname;
@@ -2034,9 +2048,6 @@ async function handleRequest(request, response) {
                 return;
             case "acquire-aircraft":
                 await withUiTiming(`action save=${saveId} name=acquire-aircraft`, () => handleAcquireAircraftApi(response, saveId, form));
-                return;
-            case "refresh-aircraft-market":
-                await withUiTiming(`action save=${saveId} name=refresh-aircraft-market`, () => handleRefreshAircraftMarketApi(response, saveId, form));
                 return;
             case "acquire-aircraft-offer":
                 await withUiTiming(`action save=${saveId} name=acquire-aircraft-offer`, () => handleAcquireAircraftOfferApi(response, saveId, form));
@@ -2177,6 +2188,7 @@ await new Promise((resolveListen) => {
     server.listen(port, () => resolveListen());
 });
 console.log(`FlightLine UI running at http://localhost:${port}`);
+// Incremental shell rendering is factored into this object so individual tabs can be reloaded over JSON without rebuilding the entire page.
 const saveShellRenderers = {
     renderCreateCompany(saveId, tabId) {
         return `<section class="panel"><div class="panel-head"><h3>Create Company</h3></div><div class="panel-body"><form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/create-company" class="actions" data-api-form>${renderHiddenContext(saveId, tabId)}<div class="action-group"><label>Display Name<input name="displayName" value="FlightLine Regional" /></label><label>Starter Airport<input name="starterAirportId" value="KDEN" /></label><label>Starting Cash<input name="startingCashAmount" value="3500000" /></label></div><button type="submit" data-pending-label="Creating company...">Create company</button></form></div></section>`;
@@ -2223,6 +2235,7 @@ const saveShellRenderers = {
         return `<div class="contracts-host" data-contracts-host><section class="panel"><div class="panel-body"><div class="empty-state compact">Loading contracts board...</div></div></section></div>`;
     },
 };
+// These JSON endpoints power the hydrated shell by reloading only the chrome, tab, and clock fragments that changed.
 async function buildBootstrapApiPayload(saveId, initialTab) {
     return buildBootstrapPayload(backend, saveId, initialTab);
 }
@@ -2352,22 +2365,6 @@ async function handleAcquireAircraftApi(response, saveId, form) {
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: `Acquired ${selectedOption.label}.` }
         : { success: false, error: result.hardBlockers[0] ?? "Could not acquire aircraft." });
-}
-async function handleRefreshAircraftMarketApi(response, saveId, form) {
-    const tab = normalizeShellTab(form.get("tab"));
-    const result = await backend.dispatch({
-        commandId: commandId("cmd_aircraft_market_refresh_api"),
-        saveId,
-        commandName: "RefreshAircraftMarket",
-        issuedAtUtc: new Date().toISOString(),
-        actorType: "player",
-        payload: {
-            refreshReason: "manual",
-        },
-    });
-    await sendShellActionResponse(response, saveId, tab, result.success
-        ? { success: true, message: `Refreshed the aircraft market with ${String(result.metadata?.offerCount ?? 0)} listings.` }
-        : { success: false, error: result.hardBlockers[0] ?? "Could not refresh the aircraft market." });
 }
 async function handleAcquireAircraftOfferApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
@@ -2510,6 +2507,7 @@ async function handleClockTickApi(response, saveId, form) {
         },
     });
     const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
+    const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
     await sendClockActionResponse(response, saveId, tab, selectedLocalDate, result.success
         ? {
             success: true,
@@ -2518,7 +2516,7 @@ async function handleClockTickApi(response, saveId, form) {
         : {
             success: false,
             error: result.hardBlockers[0] ?? "Could not advance the simulation clock.",
-        });
+        }, { includeTab });
 }
 async function handleClockAdvanceToCalendarAnchorApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
@@ -2551,6 +2549,7 @@ async function handleClockAdvanceToCalendarAnchorApi(response, saveId, form) {
         },
     });
     const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
+    const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
     await sendClockActionResponse(response, saveId, tab, localDate, result.success
         ? {
             success: true,
@@ -2561,7 +2560,7 @@ async function handleClockAdvanceToCalendarAnchorApi(response, saveId, form) {
         : {
             success: false,
             error: result.hardBlockers[0] ?? "Could not advance to the selected calendar anchor.",
-        }, { includeTab: true });
+        }, { includeTab });
 }
 async function handleAutoPlanContractApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));

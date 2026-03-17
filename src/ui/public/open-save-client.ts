@@ -1,4 +1,9 @@
-﻿import type { SaveBootstrapPayload, SavePageTab, SaveTabPayload } from "../save-shell-model.js";
+/*
+ * Browser controller for the transitional open-save screen that prefetches shell data before redirecting.
+ * Its job is to make save opening feel immediate while warming the browser cache with the first shell payloads.
+ */
+
+import type { SaveBootstrapPayload, SavePageTab, SaveTabPayload } from "../save-shell-model.js";
 
 interface OpenSaveConfig {
   saveId: string;

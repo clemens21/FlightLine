@@ -1,3 +1,8 @@
+/*
+ * Implements the refresh contract board command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import type { CommandResult, RefreshContractBoardCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
 import { generateContractBoard } from "../contracts/contract-board-generator.js";

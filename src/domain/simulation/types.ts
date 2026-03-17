@@ -1,3 +1,8 @@
+/*
+ * Declares the domain types for simulation so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
 import type { JsonObject, UtcIsoString } from "../common/primitives.js";
 
 export type AdvanceTimeStopCondition =

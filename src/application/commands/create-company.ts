@@ -1,3 +1,8 @@
+/*
+ * Implements the create company command handler for the backend command pipeline.
+ * Files in this layer validate a request, mutate save-state tables inside a transaction, and return structured results for callers.
+ */
+
 import type { CommandResult, CreateCompanyCommand } from "./types.js";
 import { createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
 import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";

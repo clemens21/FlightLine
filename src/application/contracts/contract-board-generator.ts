@@ -1,3 +1,8 @@
+/*
+ * Generates the live contract board from company phase, airport network, aircraft capability, and timing constraints.
+ * This is where contract supply is shaped into offers that the player can actually browse and accept.
+ */
+
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { AirportRecord } from "../../infrastructure/reference/airport-reference.js";
 import type { CompanyContext } from "../queries/company-state.js";

@@ -1,3 +1,8 @@
+/*
+ * Builds the schedule state read model from persisted save data and reference lookups when needed.
+ * These query modules intentionally stay read-only so the UI and tests can ask for consistent snapshots without triggering side effects.
+ */
+
 import type { JsonObject, SaveId } from "../../domain/common/primitives.js";
 import type { FlightLegType, FlightLegState, ScheduleState } from "../../domain/dispatch/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";

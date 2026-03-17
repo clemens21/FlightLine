@@ -1,3 +1,8 @@
+/*
+ * Builds the clock and calendar payload from company time, schedules, contracts, maintenance, and recurring obligations.
+ * This is the server-side source of truth for everything shown in the shell clock popover.
+ */
+
 import type { FlightLineBackend } from "../application/backend-service.js";
 import { loadCompanyContracts } from "../application/queries/company-contracts.js";
 import { loadActiveCompanyContext } from "../application/queries/company-state.js";
@@ -29,6 +34,7 @@ interface LocalTimeParts {
 
 const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+// Clock payload construction only loads the date span needed for the visible 6x7 calendar grid.
 export async function loadClockPanelPayload(
   backend: FlightLineBackend,
   saveId: string,
@@ -120,6 +126,7 @@ export async function loadClockPanelPayload(
   });
 }
 
+// Local-anchor helpers convert home-base local calendar actions back into UTC timestamps for simulation commands.
 export function resolveCalendarAnchorUtc(localDate: string, localTime: string, timeZone: string): string {
   const { year, month, day } = parseLocalDateParts(localDate);
   const { hour, minute } = parseLocalTimeParts(localTime);
@@ -190,6 +197,7 @@ function buildCalendarDayView(
   };
 }
 
+// Event synthesis merges contracts, dispatch, maintenance, and recurring finance into one agenda vocabulary.
 function loadCalendarEvents(
   saveDatabase: SqliteFileDatabase,
   saveId: string,
@@ -361,6 +369,7 @@ function loadCalendarEvents(
   return events.sort((left, right) => Date.parse(left.startsAtUtc) - Date.parse(right.startsAtUtc));
 }
 
+// Severity and status helpers intentionally collapse several simulation tables into the smaller badge vocabulary shown in the popover.
 function loadRecurringObligations(saveDatabase: SqliteFileDatabase, companyId: string): RecurringObligationRow[] {
   return saveDatabase.all<RecurringObligationRow>(
     `SELECT
@@ -438,6 +447,7 @@ function formatPayloadSummary(volumeType: "passenger" | "cargo", passengerCount:
     : `${formatNumber(passengerCount ?? 0)} pax`;
 }
 
+// Date helpers below avoid a larger timezone library while still honoring the company's home-base zone.
 function buildCalendarGridDates(monthAnchorDate: string): string[] {
   const year = Number.parseInt(monthAnchorDate.slice(0, 4), 10);
   const month = Number.parseInt(monthAnchorDate.slice(5, 7), 10);

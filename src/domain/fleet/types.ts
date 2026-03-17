@@ -1,4 +1,9 @@
-﻿import type { AircraftId, AircraftLayoutId, AircraftModelId, AirportId, CurrencyAmount, UtcIsoString } from "../common/primitives.js";
+/*
+ * Declares the domain types for fleet so commands, queries, and UI code share the same vocabulary.
+ * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
+ */
+
+import type { AircraftId, AircraftLayoutId, AircraftModelId, AirportId, CurrencyAmount, UtcIsoString } from "../common/primitives.js";
 
 export type OwnershipType = "owned" | "financed" | "leased";
 export type DeliveryState = "pending_delivery" | "delivered" | "available" | "retired";

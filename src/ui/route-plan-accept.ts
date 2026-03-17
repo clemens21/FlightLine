@@ -1,3 +1,8 @@
+/*
+ * Applies route-plan acceptance actions on behalf of the contracts UI.
+ * It translates planner selections into the command-layer mutations that create or update company work.
+ */
+
 import type { FlightLineBackend } from "../index.js";
 import { loadRoutePlanState } from "./route-plan-state.js";
 
