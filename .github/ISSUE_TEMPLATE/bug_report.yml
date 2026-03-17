@@ -1,0 +1,127 @@
+name: Bug Report
+description: Track a persistent bug, regression, or QA finding for FlightLine.
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the bug.
+      placeholder: Dispatch selects the wrong committed schedule when multiple committed schedules exist for one aircraft.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary Area
+      description: Pick the main subsystem affected by the bug.
+      options:
+        - shell-ui
+        - contracts
+        - aircraft
+        - staffing
+        - dispatch
+        - save-load
+        - time-advance
+        - finance
+        - tests
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Use the bug-tracking doc labels after issue creation.
+      options:
+        - blocker
+        - high
+        - medium
+        - low
+    validations:
+      required: true
+
+  - type: input
+    id: reported_by
+    attributes:
+      label: Reported By
+      description: Who found or surfaced the bug.
+      placeholder: Nadia Cross
+
+  - type: textarea
+    id: current_behavior
+    attributes:
+      label: Current Behavior
+      description: Describe what is happening now.
+      placeholder: The Dispatch board shows the most recently edited committed schedule instead of the current or next operational plan.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: Describe the correct behavior.
+      placeholder: Dispatch should show the current draft first, otherwise the current or next operationally relevant committed schedule.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Give concrete steps, data conditions, or scenarios.
+      placeholder: |
+        1. Create two non-overlapping committed schedules for one aircraft.
+        2. Edit the farther-future schedule last.
+        3. Open Dispatch for that aircraft.
+        4. Observe that the farther-future schedule is shown as the primary plan.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: File paths, screenshots, failing tests, logs, or observations.
+      placeholder: |
+        - src/ui/dispatch-tab-model.ts
+        - test/ui-server-smoke.test.mjs
+        - Screenshot or save file if relevant
+
+  - type: checkboxes
+    id: red_flags
+    attributes:
+      label: Red-Flag Areas
+      description: Check any red-flag areas involved.
+      options:
+        - label: Save or load behavior
+        - label: Schema or migration risk
+        - label: Event model or persistence integrity
+        - label: Ledger or financial integrity
+        - label: Scheduling or time advance
+        - label: UI versus state mismatch
+
+  - type: checkboxes
+    id: framing
+    attributes:
+      label: Framing Need
+      description: Check if this bug likely needs Mara framing before Eli should execute.
+      options:
+        - label: Cross-system or ambiguous enough to need a Mara intake brief
+        - label: Small and contained enough for Eli or Single-Agent Mode
+
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation Notes
+      description: Note current validation status or gaps.
+      placeholder: |
+        - Reproduced locally
+        - No regression test exists yet
+        - Affected browser smoke coverage should be added
