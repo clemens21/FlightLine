@@ -9,6 +9,8 @@ import {
   acquireAircraft,
   activateStaffingPackage,
   createCompanySave,
+  dispatchOrThrow,
+  pickFlyableOffer,
   refreshContractBoard,
   saveAndCommitSchedule,
   uniqueSaveId,
@@ -63,6 +65,8 @@ async function postFormJson(baseUrl, path, fields) {
 const saveId = uniqueSaveId("ui_http");
 const displayName = `UI HTTP ${saveId}`;
 let server = null;
+let draftAircraftId = "";
+let flyableOfferId = "";
 
 try {
   const backend = await createWorkspaceBackend();
@@ -71,7 +75,7 @@ try {
     const startedAtUtc = await createCompanySave(backend, saveId, {
       startedAtUtc: "2026-03-16T13:00:00.000Z",
       displayName,
-      startingCashAmount: 9_500_000,
+      startingCashAmount: 50_000_000,
     });
 
     await acquireAircraft(backend, saveId, startedAtUtc, {
@@ -82,22 +86,35 @@ try {
       registration: "N20CHT",
       aircraftModelId: "cessna_208b_grand_caravan_ex_cargo",
     });
+    await acquireAircraft(backend, saveId, startedAtUtc, {
+      registration: "N20DHT",
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    });
     await activateStaffingPackage(backend, saveId, startedAtUtc, {
       laborCategory: "pilot",
       qualificationGroup: "single_turboprop_utility",
-      coverageUnits: 2,
+      coverageUnits: 3,
       fixedCostAmount: 12_000,
     });
     await refreshContractBoard(backend, saveId, startedAtUtc);
 
     const fleetState = await backend.loadFleetState(saveId);
     assert.ok(fleetState);
-    assert.equal(fleetState.aircraft.length, 2);
+    assert.equal(fleetState.aircraft.length, 3);
 
     const leadAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N208HT");
     const constrainedAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N20CHT");
+    const draftAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N20DHT");
     assert.ok(leadAircraft);
     assert.ok(constrainedAircraft);
+    assert.ok(draftAircraft);
+    draftAircraftId = draftAircraft.aircraftId;
+
+    const board = await backend.loadActiveContractBoard(saveId);
+    assert.ok(board);
+    const flyableOffer = pickFlyableOffer(board, draftAircraft, backend.getAirportReference());
+    assert.ok(flyableOffer);
+    flyableOfferId = flyableOffer.contractOfferId;
 
     await saveAndCommitSchedule(
       backend,
@@ -112,8 +129,44 @@ try {
           plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
           plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
         },
+        {
+          legType: "reposition",
+          originAirportId: "KCOS",
+          destinationAirportId: "KDEN",
+          plannedDepartureUtc: "2026-03-16T17:00:00.000Z",
+          plannedArrivalUtc: "2026-03-16T18:10:00.000Z",
+        },
       ],
     );
+
+    const draftResult = await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_draft_${draftAircraft.aircraftId}`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: draftAircraft.aircraftId,
+        scheduleKind: "operational",
+        legs: [
+          {
+            legType: "reposition",
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-16T15:30:00.000Z",
+            plannedArrivalUtc: "2026-03-16T16:40:00.000Z",
+          },
+          {
+            legType: "reposition",
+            originAirportId: "KCOS",
+            destinationAirportId: "KDEN",
+            plannedDepartureUtc: "2026-03-16T17:25:00.000Z",
+            plannedArrivalUtc: "2026-03-16T18:35:00.000Z",
+          },
+        ],
+      },
+    });
+    assert.equal(draftResult.hardBlockers.length, 0);
 
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       const companyContext = await backend.loadCompanyContext(saveId);
@@ -221,13 +274,14 @@ try {
   assert.equal(bootstrap.saveId, saveId);
   assert.equal(bootstrap.initialTab, "aircraft");
   assert.equal(bootstrap.shell.title, displayName);
-  assert.equal(bootstrap.shell.tabCounts.aircraft, "0/2");
+  assert.equal(bootstrap.shell.tabCounts.aircraft, "1/3");
+  assert.equal(bootstrap.shell.tabCounts.staffing, "3");
 
   const aircraftTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/aircraft`);
   assert.equal(aircraftTab.tabId, "aircraft");
   assert.equal(aircraftTab.contentHtml.includes("data-aircraft-tab-host"), true);
   assert.ok(aircraftTab.aircraftPayload);
-  assert.equal(aircraftTab.aircraftPayload.aircraft.length, 2);
+  assert.equal(aircraftTab.aircraftPayload.aircraft.length, 3);
   assert.ok(aircraftTab.aircraftPayload.marketWorkspace);
   assert.ok(aircraftTab.aircraftPayload.marketWorkspace.offers.length > 0);
 
@@ -250,7 +304,7 @@ try {
   assert.equal(acquireOfferResult.payload.success, true);
   assert.equal(acquireOfferResult.payload.tab.tabId, "aircraft");
   assert.ok(acquireOfferResult.payload.tab.aircraftPayload);
-  assert.equal(acquireOfferResult.payload.tab.aircraftPayload.aircraft.length, 3);
+  assert.equal(acquireOfferResult.payload.tab.aircraftPayload.aircraft.length, 4);
   assert.equal(
     acquireOfferResult.payload.tab.aircraftPayload.marketWorkspace.offers.some((offer) => offer.aircraftOfferId === purchasableOffer.aircraftOfferId),
     false,
@@ -264,7 +318,7 @@ try {
   const contractsView = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/view`);
   assert.ok(contractsView.payload);
   assert.ok(contractsView.payload.offers.length > 0);
-  const selectedOffer = contractsView.payload.offers.find((offer) => offer.offerStatus === "available");
+  const selectedOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId === flyableOfferId);
   assert.ok(selectedOffer);
 
   const plannerAddResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/add`, {
@@ -285,6 +339,33 @@ try {
   assert.ok(plannerAcceptResult.payload.payload.acceptedContracts.length >= 1);
   assert.equal(
     plannerAcceptResult.payload.payload.acceptedContracts.some((contract) => contract.routePlanItemId === routePlanItem.routePlanItemId),
+    true,
+  );
+
+  const dispatchTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/dispatch`);
+  assert.equal(dispatchTab.tabId, "dispatch");
+  assert.equal(dispatchTab.contentHtml.includes("data-dispatch-tab-host"), true);
+  assert.ok(dispatchTab.dispatchPayload);
+  assert.equal(dispatchTab.dispatchPayload.aircraft.length, 4);
+  assert.equal(dispatchTab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft), true);
+  assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedContracts.length >= 1, true);
+  assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedReadyCount >= 1, true);
+
+  const bindRoutePlanResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/bind-route-plan`, {
+    tab: "dispatch",
+    saveId,
+    aircraftId: draftAircraftId,
+  });
+  assert.equal(bindRoutePlanResult.response.ok, true);
+  assert.equal(bindRoutePlanResult.payload.success, true);
+  assert.equal(bindRoutePlanResult.payload.tab.tabId, "dispatch");
+  assert.ok(bindRoutePlanResult.payload.tab.dispatchPayload);
+  assert.equal(
+    bindRoutePlanResult.payload.tab.dispatchPayload.workInputs.routePlanItems.some((item) => item.linkedAircraftId === draftAircraftId && item.plannerItemStatus === "scheduled"),
+    true,
+  );
+  assert.equal(
+    bindRoutePlanResult.payload.tab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft),
     true,
   );
 
@@ -314,8 +395,8 @@ try {
   assert.ok(acquireResult.payload.tab);
   assert.equal(acquireResult.payload.tab.tabId, "aircraft");
   assert.ok(acquireResult.payload.tab.aircraftPayload);
-  assert.equal(acquireResult.payload.tab.aircraftPayload.aircraft.length, 4);
-  assert.equal(acquireResult.payload.tab.shell.tabCounts.aircraft, "2/4");
+  assert.equal(acquireResult.payload.tab.aircraftPayload.aircraft.length, 5);
+  assert.equal(acquireResult.payload.tab.shell.tabCounts.aircraft, "3/5");
 } finally {
   await Promise.allSettled([
     server?.stop(),

@@ -933,7 +933,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-toolbar {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
     .market-toolbar {
@@ -1128,6 +1128,245 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-empty-note {
       margin-top: 12px;
     }
+    .dispatch-workspace {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+    }
+    .dispatch-hero-card {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: color-mix(in srgb, var(--panel-strong) 92%, transparent);
+      box-shadow: var(--shadow);
+    }
+    .dispatch-aircraft-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .dispatch-aircraft-card,
+    body[data-theme="dark"] .dispatch-aircraft-card,
+    body[data-theme="forest"] .dispatch-aircraft-card {
+      appearance: none;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 16px;
+      background: var(--panel);
+      color: var(--text);
+      display: grid;
+      gap: 10px;
+      text-align: left;
+      box-shadow: var(--shadow);
+    }
+    .dispatch-aircraft-card.selected {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+    }
+    .dispatch-aircraft-card-head,
+    .dispatch-input-card-head,
+    .dispatch-input-section-head,
+    .dispatch-message-head,
+    .dispatch-leg-button-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dispatch-aircraft-card-meta,
+    .dispatch-aircraft-card-facts,
+    .dispatch-input-card-meta,
+    .dispatch-leg-button-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .dispatch-board {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(300px, .82fr) minmax(0, 1.18fr) minmax(300px, .82fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .dispatch-plan-column {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
+    }
+    .dispatch-input-body,
+    .dispatch-timeline-body,
+    .dispatch-queue-body,
+    .dispatch-validation-body {
+      display: grid;
+      gap: 14px;
+    }
+    .dispatch-input-section {
+      display: grid;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .dispatch-input-section:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+    .dispatch-section-note {
+      font-size: 13px;
+    }
+    .dispatch-inline-action,
+    .dispatch-inline-form {
+      display: grid;
+      gap: 8px;
+    }
+    .dispatch-input-list,
+    .dispatch-message-list,
+    .dispatch-queue-list {
+      display: grid;
+      gap: 10px;
+    }
+    .dispatch-input-card,
+    .dispatch-detail-card,
+    .dispatch-message-item {
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      display: grid;
+      gap: 8px;
+    }
+    .dispatch-message-item.warning {
+      border-color: rgba(239,177,95,.3);
+      background: color-mix(in srgb, var(--warn-soft) 72%, var(--panel-strong));
+    }
+    .dispatch-message-item.blocker {
+      border-color: rgba(176,58,46,.24);
+      background: color-mix(in srgb, var(--danger-soft) 72%, var(--panel-strong));
+    }
+    .dispatch-selected-aircraft-grid,
+    .dispatch-detail-grid,
+    .dispatch-validation-summary,
+    .dispatch-commit-metrics {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .dispatch-timeline-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+    .dispatch-timeline-item {
+      display: grid;
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 14px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .dispatch-timeline-item:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .dispatch-timeline-time {
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .dispatch-timeline-copy {
+      display: grid;
+      gap: 4px;
+    }
+    .dispatch-queue-grid {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+      gap: 18px;
+    }
+    .dispatch-leg-button,
+    body[data-theme="dark"] .dispatch-leg-button,
+    body[data-theme="forest"] .dispatch-leg-button {
+      appearance: none;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: var(--panel-strong);
+      color: var(--text);
+      display: grid;
+      gap: 10px;
+      text-align: left;
+      box-shadow: none;
+    }
+    .dispatch-leg-button.selected {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+    }
+    .dispatch-leg-sequence {
+      display: inline-flex;
+      width: 28px;
+      height: 28px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--text);
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+    .dispatch-leg-detail-stack {
+      display: grid;
+      gap: 14px;
+    }
+    .dispatch-time-utility .dispatch-advance-form {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: end;
+    }
+    .dispatch-time-utility .dispatch-advance-form button {
+      grid-column: span 2;
+    }
+    .dispatch-commit-bar {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      padding: 16px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel-strong) 94%, transparent);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+    .dispatch-commit-copy {
+      display: grid;
+      gap: 14px;
+    }
+    .dispatch-commit-actions {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      min-width: 180px;
+    }
+    .dispatch-commit-metric {
+      display: grid;
+      gap: 4px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
     @media (max-width: 1240px) {
       body { overflow: auto; }
       .shell-root { height: auto; min-height: 100vh; padding: 18px; }
@@ -1140,6 +1379,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .aircraft-toolbar,
       .market-deals,
       .market-review-summary,
+      .dispatch-board,
+      .dispatch-queue-grid,
+      .dispatch-selected-aircraft-grid,
+      .dispatch-detail-grid,
+      .dispatch-validation-summary,
+      .dispatch-commit-metrics,
       .contracts-grid,
       .contracts-side-column {
         grid-template-columns: 1fr;
@@ -1161,6 +1406,25 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
       .aircraft-hero-image {
         justify-self: start;
+      }
+      .dispatch-hero-card,
+      .dispatch-commit-bar {
+        grid-template-columns: 1fr;
+      }
+      .dispatch-time-utility .dispatch-advance-form {
+        grid-template-columns: 1fr;
+      }
+      .dispatch-time-utility .dispatch-advance-form button {
+        grid-column: auto;
+      }
+      .dispatch-timeline-item {
+        grid-template-columns: 1fr;
+        gap: 6px;
+      }
+    }
+    @media (max-width: 760px) {
+      .dispatch-aircraft-strip {
+        grid-template-columns: 1fr;
       }
     }
   </style>

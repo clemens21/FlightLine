@@ -170,9 +170,26 @@ export async function startUiServer(port) {
 
 export async function removeWorkspaceSave(saveId) {
   const basePath = join(saveDirectoryPath, `${saveId}.sqlite`);
-  await Promise.allSettled([
-    rm(basePath, { force: true }),
-    rm(`${basePath}-wal`, { force: true }),
-    rm(`${basePath}-shm`, { force: true }),
-  ]);
+  const targets = [
+    basePath,
+    `${basePath}-wal`,
+    `${basePath}-shm`,
+  ];
+  const results = await Promise.allSettled(
+    targets.map((targetPath) => rm(targetPath, { force: true })),
+  );
+  const failures = results.flatMap((result, index) => {
+    if (result.status === "fulfilled") {
+      return [];
+    }
+
+    const reason = result.reason instanceof Error
+      ? result.reason.message
+      : String(result.reason);
+    return [new Error(`Could not remove ${targets[index]}: ${reason}`)];
+  });
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, `Could not fully remove workspace save ${saveId}.`);
+  }
 }

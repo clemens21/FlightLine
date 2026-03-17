@@ -309,7 +309,5 @@ try {
     browser?.close(),
     server?.stop(),
   ]);
-  await Promise.allSettled([
-    removeWorkspaceSave(companySaveId),
-  ]);
+  await removeWorkspaceSave(companySaveId);
 }

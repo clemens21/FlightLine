@@ -313,21 +313,15 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
         <div class="panel-body aircraft-fleet-body">
           <div class="aircraft-toolbar">
             <label>Readiness<select data-aircraft-filter="readiness">${renderOptions(viewState.filters.readiness, [
-              ["all", "All fleet"],
+              ["all", "All"],
               ["ready", "Ready"],
               ["constrained", "Constrained"],
             ])}</select></label>
-            <label>Risk<select data-aircraft-filter="risk">${renderOptions(viewState.filters.risk, [
-              ["all", "All bands"],
+            <label>Health<select data-aircraft-filter="risk">${renderOptions(viewState.filters.risk, [
+              ["all", "All"],
               ["healthy", "Healthy"],
               ["watch", "Watch"],
               ["critical", "Critical"],
-            ])}</select></label>
-            <label>Staffing<select data-aircraft-filter="staffing">${renderOptions(viewState.filters.staffing, [
-              ["all", "All coverage"],
-              ["covered", "Covered"],
-              ["tight", "Tight"],
-              ["uncovered", "Uncovered"],
             ])}</select></label>
           </div>
           ${renderFleetTable(viewState)}
@@ -454,7 +448,11 @@ function renderMarketSortButton(sort: AircraftMarketSort, key: AircraftMarketSor
 function renderAircraftRow(aircraft: AircraftTabAircraftView, selectedAircraftId: string | undefined): string {
   const isSelected = aircraft.aircraftId === selectedAircraftId;
   return `
-    <tr class="aircraft-row ${isSelected ? "selected" : ""}">
+    <tr
+      class="aircraft-row ${isSelected ? "selected" : ""}"
+      data-aircraft-select="${escapeHtml(aircraft.aircraftId)}"
+      aria-selected="${isSelected ? "true" : "false"}"
+    >
       <td>
         <button type="button" class="aircraft-row-button" data-aircraft-select="${escapeHtml(aircraft.aircraftId)}">
           <div class="meta-stack">

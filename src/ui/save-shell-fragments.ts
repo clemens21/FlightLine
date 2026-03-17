@@ -16,6 +16,7 @@ import { loadAircraftSchedules, type AircraftScheduleView } from "../application
 import { loadStaffingState, type StaffingStateView } from "../application/queries/staffing-state.js";
 import type { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import { buildAircraftTabPayload } from "./aircraft-tab-model.js";
+import { buildDispatchTabPayload } from "./dispatch-tab-model.js";
 import { ensureActiveAircraftMarket } from "./aircraft-market-lifecycle.js";
 import { loadContractsViewPayload } from "./contracts-view.js";
 import { loadRoutePlanState, type RoutePlanState } from "./route-plan-state.js";
@@ -88,6 +89,7 @@ export async function buildTabPayload(
   }
 
   let aircraftPayload: SaveTabPayload["aircraftPayload"] | undefined;
+  let dispatchPayload: SaveTabPayload["dispatchPayload"] | undefined;
   if (tabId === "aircraft" && source.companyContext) {
     const ensuredMarket = await ensureActiveAircraftMarket(backend, saveId, "scheduled");
     if (ensuredMarket.refreshed) {
@@ -110,6 +112,19 @@ export async function buildTabPayload(
     });
   }
 
+  if (tabId === "dispatch" && source.companyContext) {
+    dispatchPayload = buildDispatchTabPayload({
+      saveId,
+      companyContext: source.companyContext,
+      companyContracts: source.companyContracts,
+      fleetState: source.fleetState,
+      staffingState: source.staffingState,
+      schedules: source.schedules,
+      routePlan: source.routePlan,
+      airportReference: backend.getAirportReference(),
+    });
+  }
+
   return {
     saveId,
     tabId,
@@ -117,6 +132,7 @@ export async function buildTabPayload(
     contentHtml: renderTabContent(renderers, tabId, saveId, source, backend.getAirportReference()),
     contractsPayload: null,
     aircraftPayload: aircraftPayload ?? null,
+    dispatchPayload: dispatchPayload ?? null,
   };
 }
 

@@ -138,14 +138,9 @@ try {
   await waitForLauncher(page);
   assert.equal(await page.title(), "Open or Create Save");
   assert.equal(await launcherSaveRow(page, seededSaveId).count(), 1);
+  assert.equal(await page.locator(".theme-toggle").count(), 0);
 
   const launcherTheme = await readTheme(page);
-  const toggledLauncherTheme = nextTheme(launcherTheme);
-  await clickUi(page.locator(".theme-toggle"));
-  await waitForTheme(page, toggledLauncherTheme);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await waitForLauncher(page);
-  assert.equal(await readTheme(page), toggledLauncherTheme);
 
   await page.locator("input[name='saveName']").fill(launcherSaveId);
   await Promise.all([
@@ -168,11 +163,11 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-clock-menu]")?.open !== true);
 
   await clickUi(page.locator("[data-settings-menu] summary"));
-  const settingsThemeLabel = themeLabel(toggledLauncherTheme);
+  const settingsThemeLabel = themeLabel(launcherTheme);
   await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, settingsThemeLabel);
   assert.equal((await page.locator("[data-settings-menu]").textContent())?.includes(launcherSaveId), true);
 
-  const shellTheme = nextTheme(toggledLauncherTheme);
+  const shellTheme = nextTheme(launcherTheme);
   const shellThemeLabel = themeLabel(shellTheme);
   await clickUi(page.locator("[data-settings-theme]"));
   await waitForTheme(page, shellTheme);
@@ -355,7 +350,7 @@ try {
     browser?.close(),
     server?.stop(),
   ]);
-  await Promise.allSettled([
+  await Promise.all([
     removeWorkspaceSave(seededSaveId),
     removeWorkspaceSave(launcherSaveId),
     removeWorkspaceSave(deleteSaveId),

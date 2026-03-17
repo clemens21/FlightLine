@@ -7,6 +7,7 @@
 
 import { mountAircraftTab, type AircraftTabController } from "./aircraft-tab-client.js";
 import { mountContractsTab, type ContractsTabController } from "./contracts-tab-client.js";
+import { mountDispatchTab, type DispatchTabController } from "./dispatch-tab-client.js";
 import type { ClockPanelPayload, ClockRateMode } from "../clock-calendar-model.js";
 import type {
   NotificationLevel,
@@ -176,6 +177,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   let activeTab: SavePageTab = config.initialTab;
   let contractsController: ContractsTabController | null = null;
   let aircraftController: AircraftTabController | null = null;
+  let dispatchController: DispatchTabController | null = null;
   let clockPayload: ClockPanelPayload | null = null;
   let clockDateActionOpen = false;
   let clockMode = restoreClockRate(config.saveId);
@@ -508,6 +510,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     contractsController = null;
     aircraftController?.destroy();
     aircraftController = null;
+    dispatchController?.destroy();
+    dispatchController = null;
     tabPanelNode.innerHTML = payload.contentHtml;
 
     if (payload.tabId === "contracts") {
@@ -543,6 +547,13 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       const host = tabPanelNode.querySelector<HTMLElement>("[data-aircraft-tab-host]");
       if (host && payload.aircraftPayload) {
         aircraftController = mountAircraftTab(host, payload.aircraftPayload);
+      }
+    }
+
+    if (payload.tabId === "dispatch") {
+      const host = tabPanelNode.querySelector<HTMLElement>("[data-dispatch-tab-host]");
+      if (host && payload.dispatchPayload) {
+        dispatchController = mountDispatchTab(host, payload.dispatchPayload);
       }
     }
   }

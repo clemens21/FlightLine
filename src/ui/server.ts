@@ -29,6 +29,7 @@ const saveDirectoryPath = resolve(process.cwd(), "data", "saves");
 const airportDatabasePath = resolve(process.cwd(), "data", "airports", "flightline-airports.sqlite");
 const contractsTabClientAssetUrl = new URL("./public/contracts-tab-client.js", import.meta.url);
 const aircraftTabClientAssetUrl = new URL("./public/aircraft-tab-client.js", import.meta.url);
+const dispatchTabClientAssetUrl = new URL("./public/dispatch-tab-client.js", import.meta.url);
 const aircraftDatabasePath = resolve(process.cwd(), "data", "aircraft", "flightline-aircraft.sqlite");
 const openSaveClientAssetUrl = new URL("./public/open-save-client.js", import.meta.url);
 const saveShellClientAssetUrl = new URL("./public/save-shell-client.js", import.meta.url);
@@ -37,6 +38,7 @@ const uiBrowserModuleAssetUrls = new Map<string, URL>([
     ["aircraft-tab-model", new URL("./aircraft-tab-model.js", import.meta.url)],
     ["clock-calendar-model", new URL("./clock-calendar-model.js", import.meta.url)],
     ["contracts-view-model", new URL("./contracts-view-model.js", import.meta.url)],
+    ["dispatch-tab-model", new URL("./dispatch-tab-model.js", import.meta.url)],
     ["save-shell-model", new URL("./save-shell-model.js", import.meta.url)],
 ]);
 const assetVersion = Date.now().toString(36);
@@ -1257,7 +1259,6 @@ function renderLauncherPage(saveIds, flash, confirmDeleteSaveId) {
         <h1>Open or Create Save</h1>
         <p>Create a new save or continue an existing local company.</p>
       </div>
-      <button class="theme-toggle" type="button" onclick="window.toggleTheme()">Toggle theme</button>
     </header>
     ${flash.notice ? `<div class="flash notice">${escapeHtml(flash.notice)}</div>` : ""}
     ${flash.error ? `<div class="flash error">${escapeHtml(flash.error)}</div>` : ""}
@@ -2044,6 +2045,15 @@ async function handleRequest(request, response) {
         response.end(assetSource);
         return;
     }
+    if (request.method === "GET" && pathname === "/assets/dispatch-tab-client.js") {
+        const assetSource = await readFile(dispatchTabClientAssetUrl, "utf8");
+        response.writeHead(200, {
+            "content-type": "text/javascript; charset=utf-8",
+            "cache-control": "no-store",
+        });
+        response.end(assetSource);
+        return;
+    }
     if (request.method === "GET" && pathname === "/assets/contracts-tab-client.js") {
         const assetSource = await readFile(contractsTabClientAssetUrl, "utf8");
         response.writeHead(200, {
@@ -2312,18 +2322,9 @@ const saveShellRenderers = {
         return `<div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Activate Staffing</h3></div><div class="panel-body"><div class="actions"><div class="action-group tight">${actionButtons}</div></div></div></section><section class="panel"><div class="panel-head"><h3>Coverage Summary</h3></div><div class="panel-body">${coverage.length === 0 ? `<div class="empty-state">No staffing coverage is active yet.</div>` : `<div class="table-wrap"><table><thead><tr><th>Category</th><th>Qualification</th><th>Active</th><th>Pending</th></tr></thead><tbody>${coverage.map((summary) => `<tr><td>${escapeHtml(summary.laborCategory)}</td><td>${escapeHtml(summary.qualificationGroup)}</td><td>${formatNumber(summary.activeCoverageUnits)}</td><td>${formatNumber(summary.pendingCoverageUnits)}</td></tr>`).join("")}</tbody></table></div>`}</div></section></div><section class="panel"><div class="panel-head"><h3>Packages</h3></div><div class="panel-body">${packages.length === 0 ? `<div class="empty-state">Activate packages to create labor capacity.</div>` : `<div class="table-wrap"><table><thead><tr><th>Category</th><th>Model</th><th>Coverage</th><th>Cost</th></tr></thead><tbody>${packages.map((pkg) => `<tr><td>${escapeHtml(pkg.laborCategory)}</td><td>${escapeHtml(pkg.qualificationGroup)}</td><td>${formatNumber(pkg.coverageUnits)}</td><td>${formatMoney(pkg.fixedCostAmount)}</td></tr>`).join("")}</tbody></table></div>`}</div></section>`;
     },
     renderDispatch(saveId, tabId, source, airportRepo) {
+        void saveId;
         void airportRepo;
-        const fleet = source.fleetState?.aircraft ?? [];
-        const contracts = source.companyContracts?.contracts ?? [];
-        const schedules = source.schedules;
-        const routePlanItems = source.routePlan?.items ?? [];
-        const acceptedReadyItems = routePlanItems.filter((item) => item.plannerItemStatus === "accepted_ready");
-        const blockerItems = routePlanItems.filter((item) => item.plannerItemStatus === "candidate_available" || item.plannerItemStatus === "candidate_stale");
-        const scheduledPlanItems = routePlanItems.filter((item) => item.plannerItemStatus === "scheduled");
-        const aircraftById = new Map(fleet.map((aircraft) => [aircraft.aircraftId, aircraft]));
-        const pilotOptions = fleet.map((aircraft) => `<option value="${escapeHtml(aircraft.aircraftId)}">${escapeHtml(aircraft.registration)} | ${escapeHtml(aircraft.modelDisplayName)} | ${escapeHtml(aircraft.currentAirportId)}</option>`).join("");
-        const acceptedContracts = contracts.filter((contract) => contract.contractState === "accepted");
-        return `<div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Advance Time</h3></div><div class="panel-body"><form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/advance-time" class="actions" data-api-form>${renderHiddenContext(saveId, tabId)}<div class="action-group"><label>Hours<input name="hours" type="number" min="1" value="24" /></label><label>Stop Mode<select name="stopMode"><option value="target_time">Target time</option><option value="leg_completed">Until leg completed</option></select></label></div><button type="submit" data-pending-label="Advancing time...">Advance time</button></form></div></section><section class="panel"><div class="panel-head"><h3>Route Plan Handoff</h3></div><div class="panel-body">${routePlanItems.length === 0 ? `<div class="empty-state">Add contracts to the route plan from the Contracts tab to hand them off here.</div>` : `<div class="summary-list">${routePlanItems.map((item) => `<div class="summary-item compact"><div class="meta-stack"><div class="pill-row">${renderBadge(item.plannerItemStatus)}</div><strong>${renderRouteDisplay(item.originAirportId, item.destinationAirportId)}</strong><span class="muted">${escapeHtml(formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb))} | due ${escapeHtml(formatDate(item.deadlineUtc))}</span></div></div>`).join("")}</div><div class="summary-list"><div class="summary-item compact"><div class="eyebrow">Accepted-ready</div><strong>${acceptedReadyItems.length}</strong><span class="muted">${blockerItems.length} blockers | ${scheduledPlanItems.length} scheduled</span></div><div class="summary-item compact"><div class="eyebrow">Current endpoint</div><strong>${escapeHtml(source.routePlan?.endpointAirportId ?? "-")}</strong><span class="muted">Last non-stale planned destination.</span></div></div>${acceptedReadyItems.length > 0 && fleet.length > 0 ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/bind-route-plan" class="actions" data-api-form>${renderHiddenContext(saveId, tabId)}<label>Aircraft<select name="aircraftId">${pilotOptions}</select></label><button type="submit" data-pending-label="Drafting route plan...">Draft from route plan</button></form>` : fleet.length === 0 ? `<div class="empty-state compact">Acquire aircraft before binding a route plan.</div>` : `<div class="empty-state compact">No accepted-ready planner items yet. Accept planned offers first.</div>`}`} </div></section></div><div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Accepted Work</h3></div><div class="panel-body">${acceptedContracts.length === 0 ? `<div class="empty-state">No accepted contracts waiting for assignment.</div>` : `<div class="table-wrap"><table><thead><tr><th>Route</th><th>Deadline</th><th>Aircraft</th><th></th></tr></thead><tbody>${acceptedContracts.map((contract) => `<tr><td>${renderRouteDisplay(contract.originAirportId, contract.destinationAirportId)}</td><td>${formatDate(contract.deadlineUtc)}</td><td><select name="aircraftId" form="auto-plan-${escapeHtml(contract.companyContractId)}">${pilotOptions}</select></td><td>${fleet.length > 0 ? `<form id="auto-plan-${escapeHtml(contract.companyContractId)}" method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/auto-plan-contract" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="companyContractId" value="${escapeHtml(contract.companyContractId)}" /><button type="submit" data-pending-label="Drafting schedule...">Auto-plan</button></form>` : `<span class="muted">Acquire aircraft first.</span>`}</td></tr>`).join("")}</tbody></table></div>`}</div></section><section class="panel"><div class="panel-head"><h3>Schedules</h3></div><div class="panel-body">${schedules.length === 0 ? `<div class="empty-state">No schedules created yet.</div>` : `<div class="table-wrap"><table><thead><tr><th>Aircraft</th><th>State</th><th>Timing</th><th></th></tr></thead><tbody>${schedules.map((schedule) => { const aircraft = aircraftById.get(schedule.aircraftId); return `<tr><td><div class="meta-stack"><span class="route">${escapeHtml(aircraft?.registration ?? schedule.aircraftId)}</span><span class="muted">${escapeHtml(aircraft?.modelDisplayName ?? schedule.aircraftId)}</span></div></td><td>${renderBadge(schedule.isDraft ? "draft" : schedule.scheduleState)}</td><td><div class="meta-stack"><span>${formatDate(schedule.plannedStartUtc)}</span><span class="muted">to ${formatDate(schedule.plannedEndUtc)}</span></div></td><td>${schedule.isDraft ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/commit-schedule" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="scheduleId" value="${escapeHtml(schedule.scheduleId)}" /><button type="submit" data-pending-label="Committing schedule...">Commit</button></form>` : ``}</td></tr>`; }).join("")}</tbody></table></div>`}</div></section></div>`;
+        return `<div class="dispatch-tab-host" data-dispatch-tab-host><section class="panel"><div class="panel-body"><div class="empty-state compact">Loading dispatch workspace...</div></div></section></div>`;
     },
     renderActivity(source) {
         return `<section class="panel"><div class="panel-head"><h3>Recent Activity</h3></div><div class="panel-body">${!source.eventLog || source.eventLog.entries.length === 0 ? `<div class="empty-state">No event log entries yet.</div>` : `<div class="event-list">${source.eventLog.entries.map((entry) => `<div class="event-item"><div class="meta-stack"><div>${renderBadge(entry.severity ?? "info")} <strong>${escapeHtml(entry.message)}</strong></div><div class="muted">${formatDate(entry.eventTimeUtc)} | ${escapeHtml(entry.eventType)}</div></div></div>`).join("")}</div>`}</div></section>`;

@@ -13,6 +13,7 @@ import {
   activateStaffingPackage,
 } from "./helpers/flightline-testkit.mjs";
 import { buildBootstrapPayload, buildTabPayload, normalizeTab } from "../dist/ui/save-shell-fragments.js";
+import { buildDispatchTabPayload } from "../dist/ui/dispatch-tab-model.js";
 
 const renderers = {
   renderCreateCompany() {
@@ -39,7 +40,7 @@ const renderers = {
 };
 
 const harness = await createTestHarness("flightline-shell");
-const { backend } = harness;
+const { backend, airportReference } = harness;
 
 try {
   assert.equal(normalizeTab("aircraft"), "aircraft");
@@ -112,6 +113,125 @@ try {
     assert.equal(dispatchTab.tabId, "dispatch");
     assert.equal(dispatchTab.contentHtml, "<div>dispatch</div>");
     assert.equal(dispatchTab.aircraftPayload ?? null, null);
+    assert.ok(dispatchTab.dispatchPayload);
+    assert.equal(dispatchTab.dispatchPayload.aircraft.length, 1);
+  }
+
+  {
+    const saveId = uniqueSaveId("shell_dispatch_schedule_priority");
+    const startedAtUtc = await createCompanySave(backend, saveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+    });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N208DP" });
+    await activateStaffingPackage(backend, saveId, startedAtUtc, {
+      laborCategory: "pilot",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 2,
+      fixedCostAmount: 12_000,
+    });
+
+    const fleetState = await backend.loadFleetState(saveId);
+    assert.ok(fleetState);
+    const aircraft = fleetState.aircraft.find((entry) => entry.registration === "N208DP");
+    assert.ok(aircraft);
+    const companyContext = await backend.loadCompanyContext(saveId);
+    const staffingState = await backend.loadStaffingState(saveId);
+    assert.ok(companyContext);
+
+    const schedules = [
+      {
+        scheduleId: "schedule_current",
+        aircraftId: aircraft.aircraftId,
+        scheduleKind: "operational",
+        scheduleState: "committed",
+        isDraft: false,
+        plannedStartUtc: "2026-03-16T16:00:00.000Z",
+        plannedEndUtc: "2026-03-16T17:10:00.000Z",
+        validationSnapshot: undefined,
+        createdAtUtc: "2026-03-16T12:00:00.000Z",
+        updatedAtUtc: "2026-03-16T12:05:00.000Z",
+        legs: [
+          {
+            flightLegId: "leg_current",
+            sequenceNumber: 1,
+            legType: "reposition",
+            linkedCompanyContractId: undefined,
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-16T16:00:00.000Z",
+            plannedArrivalUtc: "2026-03-16T17:10:00.000Z",
+            actualDepartureUtc: undefined,
+            actualArrivalUtc: undefined,
+            legState: "planned",
+            assignedQualificationGroup: "single_turboprop_utility",
+            payloadSnapshot: undefined,
+          },
+        ],
+        laborAllocations: [],
+      },
+      {
+        scheduleId: "schedule_next",
+        aircraftId: aircraft.aircraftId,
+        scheduleKind: "operational",
+        scheduleState: "committed",
+        isDraft: false,
+        plannedStartUtc: "2026-03-16T19:00:00.000Z",
+        plannedEndUtc: "2026-03-16T20:10:00.000Z",
+        validationSnapshot: undefined,
+        createdAtUtc: "2026-03-16T12:10:00.000Z",
+        updatedAtUtc: "2026-03-16T12:15:00.000Z",
+        legs: [
+          {
+            flightLegId: "leg_next",
+            sequenceNumber: 1,
+            legType: "reposition",
+            linkedCompanyContractId: undefined,
+            originAirportId: "KCOS",
+            destinationAirportId: "KDEN",
+            plannedDepartureUtc: "2026-03-16T19:00:00.000Z",
+            plannedArrivalUtc: "2026-03-16T20:10:00.000Z",
+            actualDepartureUtc: undefined,
+            actualArrivalUtc: undefined,
+            legState: "planned",
+            assignedQualificationGroup: "single_turboprop_utility",
+            payloadSnapshot: undefined,
+          },
+        ],
+        laborAllocations: [],
+      },
+    ];
+
+    const currentPayload = buildDispatchTabPayload({
+      saveId,
+      companyContext: {
+        ...companyContext,
+        currentTimeUtc: "2026-03-16T16:30:00.000Z",
+      },
+      companyContracts: null,
+      fleetState,
+      staffingState,
+      schedules,
+      routePlan: null,
+      airportReference,
+    });
+    assert.equal(currentPayload.aircraft.length, 1);
+    assert.equal(currentPayload.aircraft[0]?.schedule?.scheduleId, "schedule_current");
+
+    const nextPayload = buildDispatchTabPayload({
+      saveId,
+      companyContext: {
+        ...companyContext,
+        currentTimeUtc: "2026-03-16T18:00:00.000Z",
+      },
+      companyContracts: null,
+      fleetState,
+      staffingState,
+      schedules,
+      routePlan: null,
+      airportReference,
+    });
+    assert.equal(nextPayload.aircraft.length, 1);
+    assert.equal(nextPayload.aircraft[0]?.schedule?.scheduleId, "schedule_next");
   }
 } finally {
   await harness.cleanup();

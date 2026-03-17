@@ -5,6 +5,7 @@
 
 import type { AircraftTabPayload } from "./aircraft-tab-model.js";
 import type { ContractsViewPayload } from "./contracts-view-model.js";
+import type { DispatchTabPayload } from "./dispatch-tab-model.js";
 
 export const saveTabs = [
   { id: "dashboard", label: "Overview" },
@@ -56,6 +57,7 @@ export interface SaveTabPayload {
   contentHtml: string;
   contractsPayload?: ContractsViewPayload | null;
   aircraftPayload?: AircraftTabPayload | null;
+  dispatchPayload?: DispatchTabPayload | null;
 }
 
 export interface SaveActionResponse {

@@ -9,6 +9,7 @@ import {
   acquireAircraft,
   activateStaffingPackage,
   createCompanySave,
+  dispatchOrThrow,
   saveAndCommitSchedule,
   uniqueSaveId,
 } from "./helpers/flightline-testkit.mjs";
@@ -46,6 +47,10 @@ try {
       registration: "N20CUI",
       aircraftModelId: "cessna_208b_grand_caravan_ex_cargo",
     });
+    await acquireAircraft(backend, saveId, startedAtUtc, {
+      registration: "N20DUI",
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    });
     await activateStaffingPackage(backend, saveId, startedAtUtc, {
       laborCategory: "pilot",
       qualificationGroup: "single_turboprop_utility",
@@ -67,12 +72,14 @@ try {
 
     const fleetState = await backend.loadFleetState(saveId);
     assert.ok(fleetState);
-    assert.equal(fleetState.aircraft.length, 2);
+    assert.equal(fleetState.aircraft.length, 3);
 
     const leadAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N208UI");
     const constrainedAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N20CUI");
+    const draftAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N20DUI");
     assert.ok(leadAircraft);
     assert.ok(constrainedAircraft);
+    assert.ok(draftAircraft);
 
     await saveAndCommitSchedule(
       backend,
@@ -87,8 +94,44 @@ try {
           plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
           plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
         },
+        {
+          legType: "reposition",
+          originAirportId: "KCOS",
+          destinationAirportId: "KDEN",
+          plannedDepartureUtc: "2026-03-16T17:00:00.000Z",
+          plannedArrivalUtc: "2026-03-16T18:10:00.000Z",
+        },
       ],
     );
+
+    const draftResult = await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_draft_${draftAircraft.aircraftId}`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: draftAircraft.aircraftId,
+        scheduleKind: "operational",
+        legs: [
+          {
+            legType: "reposition",
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-16T15:30:00.000Z",
+            plannedArrivalUtc: "2026-03-16T16:40:00.000Z",
+          },
+          {
+            legType: "reposition",
+            originAirportId: "KCOS",
+            destinationAirportId: "KDEN",
+            plannedDepartureUtc: "2026-03-16T17:25:00.000Z",
+            plannedArrivalUtc: "2026-03-16T18:35:00.000Z",
+          },
+        ],
+      },
+    });
+    assert.equal(draftResult.hardBlockers.length, 0);
 
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       const companyContext = await backend.loadCompanyContext(saveId);
@@ -186,12 +229,22 @@ try {
   browser = await launchBrowser();
   const page = await browser.newPage();
 
-  await page.goto(`${server.baseUrl}/open-save/${encodeURIComponent(saveId)}?tab=contracts`, { waitUntil: "domcontentloaded" });
-  await page.waitForURL(new RegExp(`/save/${saveId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  await page.goto(`${server.baseUrl}/save/${encodeURIComponent(saveId)}?tab=dispatch`, { waitUntil: "domcontentloaded" });
+  await page.waitForURL((url) => url.pathname === `/save/${saveId}` && url.searchParams.get("tab") === "dispatch");
   await waitForShellTitle(page, displayName);
 
   assert.equal(await page.locator("[data-shell-title]").textContent(), displayName);
+  assert.equal(await page.evaluate(() => new URL(window.location.href).searchParams.get("tab")), "dispatch");
 
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Advance time"), true);
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
+  assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
+  await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
+
+  await clickUi(page.locator("[data-shell-tab='contracts']"));
   await page.waitForFunction(() => document.querySelectorAll(".contracts-board-table tbody tr").length > 0);
   assert.ok((await page.locator(".contracts-board-table tbody tr").count()) > 0);
 
@@ -207,14 +260,43 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
   assert.ok((await page.locator(".contracts-board-table tbody tr").count()) >= 1);
 
+  await clickUi(page.locator("[data-shell-tab='dispatch']"));
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Route Plan Handoff"), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Work"), true);
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
+  assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
+  await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
+  assert.equal((await page.locator("[data-dispatch-selected-leg-detail]").textContent())?.includes("KCOS -> KDEN"), true);
+  await clickUi(page.locator("[data-dispatch-commit-button]"));
+  await page.waitForFunction(() => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const commitButton = document.querySelector("[data-dispatch-commit-button]");
+    return flashText.includes("Committed schedule") && commitButton?.textContent?.includes("Already committed");
+  });
+
   await clickUi(page.locator("[data-shell-tab='aircraft']"));
-  await page.waitForFunction(() => document.querySelectorAll(".aircraft-row-button").length === 2);
-  await clickUi(page.locator(".aircraft-row-button").filter({ hasText: "N20CUI" }).first());
+  await page.waitForFunction(() => document.querySelectorAll(".aircraft-row-button").length === 3);
+  await page.waitForFunction(() => {
+    const filters = [...document.querySelectorAll("[data-aircraft-filter]")];
+    return filters.length === 2
+      && filters.every((entry) => entry instanceof HTMLSelectElement && entry.selectedOptions[0]?.textContent?.trim() === "All");
+  });
+  await page.waitForFunction(() => {
+    const labels = [...document.querySelectorAll(".aircraft-toolbar label")].map((entry) => entry.textContent ?? "");
+    return labels.some((label) => label.includes("Readiness"))
+      && labels.some((label) => label.includes("Health"))
+      && labels.every((label) => !label.includes("Staffing"));
+  });
+  const constrainedRow = page.locator(".aircraft-row").filter({ hasText: "N20CUI" }).first();
+  await clickUi(constrainedRow.locator("td").nth(1));
   await page.waitForFunction(() => document.querySelector(".aircraft-detail-panel")?.textContent?.includes("N20CUI"));
   assert.equal((await page.locator(".aircraft-detail-panel").textContent())?.includes("N20CUI"), true);
   assert.equal((await page.locator(".aircraft-detail-panel").textContent())?.toLowerCase().includes("grounded"), true);
 
-  await page.locator(".aircraft-toolbar select").nth(1).selectOption("critical");
+  await page.locator("[data-aircraft-filter='risk']").selectOption("critical");
   await page.waitForFunction(() => document.querySelectorAll(".aircraft-row-button").length === 1);
   assert.equal(await page.locator(".aircraft-row-button").count(), 1);
   assert.equal((await page.locator(".aircraft-detail-panel").textContent())?.includes("N20CUI"), true);
