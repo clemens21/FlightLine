@@ -241,14 +241,8 @@ try {
 
   await page.waitForFunction(() => document.body.innerText.includes("Control Tower"));
   await waitForCompanyClock(page);
-  const initialClockLabel = await page.locator("[data-clock-label]").textContent();
-  await clickUi(page.getByRole("button", { name: "Advance 12h" }));
-  await page.waitForFunction((previousLabel) => {
-    const nextLabel = document.querySelector("[data-clock-label]")?.textContent;
-    return Boolean(nextLabel) && nextLabel !== "Loading..." && nextLabel !== previousLabel;
-  }, initialClockLabel);
-  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
   assert.equal(await page.locator(".panel").filter({ hasText: "Control Tower" }).count(), 1);
+  assert.equal(await page.getByRole("button", { name: "Advance 12h" }).count(), 0);
 
   await clickUi(page.locator("[data-shell-tab='contracts']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);

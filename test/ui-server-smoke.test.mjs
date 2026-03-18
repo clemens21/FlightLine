@@ -65,6 +65,7 @@ async function postFormJson(baseUrl, path, fields) {
 const saveId = uniqueSaveId("ui_http");
 const displayName = `UI HTTP ${saveId}`;
 let server = null;
+let constrainedAircraftId = "";
 let draftAircraftId = "";
 let flyableOfferId = "";
 
@@ -108,6 +109,7 @@ try {
     assert.ok(leadAircraft);
     assert.ok(constrainedAircraft);
     assert.ok(draftAircraft);
+    constrainedAircraftId = constrainedAircraft.aircraftId;
     draftAircraftId = draftAircraft.aircraftId;
 
     const board = await backend.loadActiveContractBoard(saveId);
@@ -350,6 +352,28 @@ try {
   assert.equal(dispatchTab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft), true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedContracts.length >= 1, true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedReadyCount >= 1, true);
+  const acceptedDispatchContractId = dispatchTab.dispatchPayload.workInputs.acceptedContracts[0]?.companyContractId;
+  assert.ok(acceptedDispatchContractId);
+
+  const bindRoutePlanFailureResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/bind-route-plan`, {
+    tab: "dispatch",
+    saveId,
+    aircraftId: constrainedAircraftId,
+  });
+  assert.equal(bindRoutePlanFailureResult.response.ok, false);
+  assert.equal(bindRoutePlanFailureResult.payload.success, false);
+  assert.match(bindRoutePlanFailureResult.payload.error ?? "", /dispatch ready/i);
+  assert.equal(bindRoutePlanFailureResult.payload.tab.tabId, "dispatch");
+  assert.ok(bindRoutePlanFailureResult.payload.tab.dispatchPayload);
+  assert.equal(
+    bindRoutePlanFailureResult.payload.tab.dispatchPayload.workInputs.routePlanItems.some((item) => item.linkedAircraftId === constrainedAircraftId),
+    false,
+  );
+  assert.equal(
+    bindRoutePlanFailureResult.payload.tab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === constrainedAircraftId && aircraft.schedule),
+    false,
+  );
+  assert.equal(bindRoutePlanFailureResult.payload.tab.dispatchPayload.workInputs.acceptedReadyCount >= 1, true);
 
   const bindRoutePlanResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/bind-route-plan`, {
     tab: "dispatch",
@@ -368,6 +392,45 @@ try {
     bindRoutePlanResult.payload.tab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft),
     true,
   );
+
+  const autoPlanFailureResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/auto-plan-contract`, {
+    tab: "dispatch",
+    saveId,
+    companyContractId: acceptedDispatchContractId,
+    aircraftId: constrainedAircraftId,
+  });
+  assert.equal(autoPlanFailureResult.response.ok, false);
+  assert.equal(autoPlanFailureResult.payload.success, false);
+  assert.match(autoPlanFailureResult.payload.error ?? "", /not dispatchable/i);
+  assert.equal(autoPlanFailureResult.payload.tab.tabId, "dispatch");
+  assert.ok(autoPlanFailureResult.payload.tab.dispatchPayload);
+  const constrainedAfterAutoPlanFailure = autoPlanFailureResult.payload.tab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === constrainedAircraftId);
+  assert.ok(constrainedAfterAutoPlanFailure?.schedule);
+  assert.equal(constrainedAfterAutoPlanFailure.schedule.isDraft, true);
+  assert.equal(constrainedAfterAutoPlanFailure.schedule.scheduleState, "blocked");
+  assert.equal(constrainedAfterAutoPlanFailure.schedule.validation?.isCommittable, false);
+  assert.equal(
+    autoPlanFailureResult.payload.tab.dispatchPayload.workInputs.acceptedContracts.some((contract) => contract.companyContractId === acceptedDispatchContractId),
+    true,
+  );
+
+  const blockedScheduleId = constrainedAfterAutoPlanFailure.schedule.scheduleId;
+  const blockedCommitResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/commit-schedule`, {
+    tab: "dispatch",
+    saveId,
+    scheduleId: blockedScheduleId,
+  });
+  assert.equal(blockedCommitResult.response.ok, false);
+  assert.equal(blockedCommitResult.payload.success, false);
+  assert.match(blockedCommitResult.payload.error ?? "", /not dispatchable/i);
+  assert.equal(blockedCommitResult.payload.tab.tabId, "dispatch");
+  assert.ok(blockedCommitResult.payload.tab.dispatchPayload);
+  const constrainedAfterBlockedCommit = blockedCommitResult.payload.tab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === constrainedAircraftId);
+  assert.ok(constrainedAfterBlockedCommit?.schedule);
+  assert.equal(constrainedAfterBlockedCommit.schedule.scheduleId, blockedScheduleId);
+  assert.equal(constrainedAfterBlockedCommit.schedule.isDraft, true);
+  assert.equal(constrainedAfterBlockedCommit.schedule.scheduleState, "blocked");
+  assert.equal(constrainedAfterBlockedCommit.schedule.validation?.isCommittable, false);
 
   const clockResult = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/clock`);
   assert.ok(clockResult.payload);
