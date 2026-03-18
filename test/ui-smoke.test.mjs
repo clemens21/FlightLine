@@ -30,6 +30,17 @@ const displayName = `UI Smoke ${saveId}`;
 let server = null;
 let browser = null;
 
+async function forceButtonSubmit(page, selector) {
+  await page.locator(selector).evaluate((element, buttonSelector) => {
+    if (!(element instanceof HTMLButtonElement)) {
+      throw new Error(`Expected ${buttonSelector} to resolve to a button.`);
+    }
+
+    element.disabled = false;
+    element.click();
+  }, selector);
+}
+
 try {
   const backend = await createWorkspaceBackend();
   try {
@@ -265,6 +276,57 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Route Plan Handoff"), true);
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Work"), true);
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
+  assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
+
+  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20CUI" }).first());
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20CUI"));
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("No draft to commit"), true);
+
+  await forceButtonSubmit(page, "[data-dispatch-bind-route-plan]");
+  await page.waitForFunction(() => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
+    const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+    return flashText.includes("Selected aircraft is not dispatch ready.")
+      && selectedAircraft.includes("N20CUI")
+      && commitButton.includes("No draft to commit");
+  });
+
+  await clickUi(page.locator("[data-dispatch-accepted-contract] button").first());
+  await page.waitForFunction(() => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
+    const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+    const legButtons = document.querySelectorAll("[data-dispatch-leg-select]");
+    return flashText.includes("is not dispatchable in its current state.")
+      && selectedAircraft.includes("N20CUI")
+      && commitButton.includes("Resolve blockers")
+      && legButtons.length >= 1;
+  });
+
+  await clickUi(page.locator("[data-dispatch-leg-select]").first());
+  await page.waitForFunction(() => {
+    const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
+    return detail.includes("Selected Leg") && detail.includes("->");
+  });
+  const blockedLegDetailText = await page.locator("[data-dispatch-selected-leg-detail]").textContent();
+  await forceButtonSubmit(page, "[data-dispatch-commit-button]");
+  await page.waitForFunction((expectedDetail) => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
+    const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
+    const commitButton = document.querySelector("[data-dispatch-commit-button]");
+    return flashText.includes("is not dispatchable in its current state.")
+      && selectedAircraft.includes("N20CUI")
+      && detail === expectedDetail
+      && commitButton?.textContent?.includes("Resolve blockers")
+      && commitButton instanceof HTMLButtonElement
+      && commitButton.disabled;
+  }, blockedLegDetailText ?? "");
+
+  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
