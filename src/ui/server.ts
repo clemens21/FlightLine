@@ -22,6 +22,7 @@ import { addAcceptedContractToRoutePlan, addCandidateOfferToRoutePlan, clearRout
 import { renderSaveOpeningPage } from "./save-opening-page.js";
 import { renderIncrementalSavePage } from "./save-shell-page.js";
 import { resolveAircraftImageAsset } from "./aircraft-image-cache.js";
+import { availableCertificationTrainingTargets, formatPilotCertificationList } from "../domain/staffing/pilot-certifications.js";
 // Process-wide resources are initialized once because every request shares the same backend and the same reference catalogs.
 const port = Number.parseInt(process.env.PORT ?? "4321", 10);
 const turnaroundMinutes = 45;
@@ -30,9 +31,43 @@ const airportDatabasePath = resolve(process.cwd(), "data", "airports", "flightli
 const contractsTabClientAssetUrl = new URL("./public/contracts-tab-client.js", import.meta.url);
 const aircraftTabClientAssetUrl = new URL("./public/aircraft-tab-client.js", import.meta.url);
 const dispatchTabClientAssetUrl = new URL("./public/dispatch-tab-client.js", import.meta.url);
+const staffingTabClientAssetUrl = new URL("./public/staffing-tab-client.js", import.meta.url);
+const staffPortraitVariants = [
+    { portraitId: "f01", background: "#F4F1ED", shirt: "#F05A5A", accent: "#F8EAE6", skin: "#F4CCAE", hair: "#8C5A3C", hairStyle: "long_bob", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f02", background: "#F2F4F6", shirt: "#5EA6D6", accent: "#E6F1F8", skin: "#F0C39B", hair: "#4F3429", hairStyle: "soft_wave", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f03", background: "#F5F3EE", shirt: "#F2C326", accent: "#FAF1C8", skin: "#7B5138", hair: "#3B251F", hairStyle: "rounded_bob", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f04", background: "#F1F3F5", shirt: "#B7B7B7", accent: "#E8E8E8", skin: "#9A6847", hair: "#1F1C1E", hairStyle: "locs_tied", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f05", background: "#F4F0F0", shirt: "#4B2E24", accent: "#D8C1B7", skin: "#F0BE95", hair: "#1E1616", hairStyle: "rounded_bob", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f06", background: "#F2F1ED", shirt: "#7B6A2B", accent: "#E3D8B8", skin: "#B27A57", hair: "#201B1B", hairStyle: "side_part_long", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f07", background: "#F3F4F6", shirt: "#F49A16", accent: "#FCE6C3", skin: "#E7C1A6", hair: "#D0B25C", hairStyle: "long_bob", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f08", background: "#F2F4F5", shirt: "#82C8E7", accent: "#E5F4FB", skin: "#F1D1B8", hair: "#D5B065", hairStyle: "top_bun", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f09", background: "#F4F2F3", shirt: "#DDD5C8", accent: "#F7F3ED", skin: "#F2CCB1", hair: "#7C4B27", hairStyle: "side_swoop", shirtStyle: "vneck", accessory: "none", facialHair: "none" },
+    { portraitId: "f10", background: "#F3F4F6", shirt: "#0C6872", accent: "#DCEFF1", skin: "#E2B589", hair: "#33221E", hairStyle: "rounded_bob", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f11", background: "#F5F3F0", shirt: "#F2B2C3", accent: "#FCE8EE", skin: "#A67253", hair: "#2E201D", hairStyle: "side_part_long", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "f12", background: "#F4F3F6", shirt: "#8F57AA", accent: "#EBDDFA", skin: "#8A5A3F", hair: "#1C191B", hairStyle: "top_bun", shirtStyle: "crew", accessory: "round_glasses", facialHair: "none" },
+    { portraitId: "f13", background: "#F5F5F3", shirt: "#C9666B", accent: "#F7DFE0", skin: "#E2B48C", hair: "#2A2326", hairStyle: "soft_wave", shirtStyle: "crew", accessory: "round_glasses", facialHair: "none" },
+    { portraitId: "f14", background: "#F2F5F6", shirt: "#F07A1A", accent: "#FCE8D7", skin: "#B68163", hair: "#1E1818", hairStyle: "side_swoop", shirtStyle: "crew", accessory: "square_glasses", facialHair: "none" },
+    { portraitId: "f15", background: "#F4F3F5", shirt: "#E64576", accent: "#FADDEA", skin: "#F1D2BB", hair: "#C9AF63", hairStyle: "long_bob", shirtStyle: "collar", accessory: "square_glasses", facialHair: "none" },
+    { portraitId: "m01", background: "#F3F4F5", shirt: "#B01212", accent: "#F6D8D8", skin: "#F1C6A2", hair: "#3F2B21", hairStyle: "side_part", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "m02", background: "#F2F4F6", shirt: "#F3CA22", accent: "#FAF0C5", skin: "#E8C29F", hair: "#714A2E", hairStyle: "short_crop", shirtStyle: "crew", accessory: "none", facialHair: "full_beard" },
+    { portraitId: "m03", background: "#F4F2F1", shirt: "#A09A47", accent: "#E7E1C2", skin: "#8C5C42", hair: "#1B1818", hairStyle: "curl_top", shirtStyle: "crew", accessory: "none", facialHair: "full_beard" },
+    { portraitId: "m04", background: "#F3F4F6", shirt: "#3D6F98", accent: "#DDE8F2", skin: "#B37B59", hair: "#201B1A", hairStyle: "short_crop", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "m05", background: "#F5F3F0", shirt: "#9D6A84", accent: "#EDDFE6", skin: "#F0C7A8", hair: "#2A1F1B", hairStyle: "quiff", shirtStyle: "crew", accessory: "none", facialHair: "goatee" },
+    { portraitId: "m06", background: "#F2F5F6", shirt: "#E7D26F", accent: "#FAF4D5", skin: "#F2D3BF", hair: "#C8AE63", hairStyle: "side_part", shirtStyle: "collar", accessory: "none", facialHair: "none" },
+    { portraitId: "m07", background: "#F4F4F3", shirt: "#123E5B", accent: "#D6E3ED", skin: "#F3D1B6", hair: "#C9833C", hairStyle: "bald", shirtStyle: "crew", accessory: "none", facialHair: "full_beard" },
+    { portraitId: "m08", background: "#F3F4F6", shirt: "#F56F10", accent: "#FCE3D3", skin: "#8A5B42", hair: "#2A211E", hairStyle: "side_part", shirtStyle: "crew", accessory: "none", facialHair: "none" },
+    { portraitId: "m09", background: "#F2F4F5", shirt: "#955148", accent: "#EADAD6", skin: "#C8865E", hair: "#1C1718", hairStyle: "curl_top", shirtStyle: "crew", accessory: "none", facialHair: "mustache" },
+    { portraitId: "m10", background: "#F4F2F4", shirt: "#2C6B8A", accent: "#DDEAF0", skin: "#E5B68C", hair: "#221B1B", hairStyle: "quiff", shirtStyle: "crew", accessory: "none", facialHair: "full_beard" },
+    { portraitId: "m11", background: "#F5F3F0", shirt: "#DDC43B", accent: "#F9F0C8", skin: "#F2D1B8", hair: "#D0B06A", hairStyle: "side_part", shirtStyle: "crew", accessory: "none", facialHair: "full_beard" },
+    { portraitId: "m12", background: "#F2F4F6", shirt: "#6BA6C2", accent: "#E1EEF4", skin: "#EDCAA9", hair: "#C58D4E", hairStyle: "bald", shirtStyle: "crew", accessory: "round_glasses", facialHair: "full_beard" },
+    { portraitId: "m13", background: "#F4F4F3", shirt: "#5B8735", accent: "#E0EACC", skin: "#F0D1BB", hair: "#C9AF69", hairStyle: "short_crop", shirtStyle: "collar", accessory: "none", facialHair: "none" },
+    { portraitId: "m14", background: "#F3F4F6", shirt: "#F07D1E", accent: "#FCE6D5", skin: "#F0C4A2", hair: "#2A2321", hairStyle: "side_part", shirtStyle: "crew", accessory: "square_glasses", facialHair: "none" },
+    { portraitId: "m15", background: "#F4F2F5", shirt: "#82519A", accent: "#E7DBF0", skin: "#E7C2A0", hair: "#C8AE62", hairStyle: "short_crop", shirtStyle: "crew", accessory: "square_glasses", facialHair: "none" },
+];
 const aircraftDatabasePath = resolve(process.cwd(), "data", "aircraft", "flightline-aircraft.sqlite");
 const openSaveClientAssetUrl = new URL("./public/open-save-client.js", import.meta.url);
 const saveShellClientAssetUrl = new URL("./public/save-shell-client.js", import.meta.url);
+const pilotCertificationsModuleAssetUrl = new URL("../domain/staffing/pilot-certifications.js", import.meta.url);
 const uiBrowserModuleAssetUrls = new Map<string, URL>([
     ["aircraft-image-sources", new URL("./aircraft-image-sources.js", import.meta.url)],
     ["aircraft-tab-model", new URL("./aircraft-tab-model.js", import.meta.url)],
@@ -215,16 +250,127 @@ function badgeClass(value) {
     if (["critical", "failed", "blocked", "overdue", "confirmed_unavailable"].includes(value)) {
         return "danger";
     }
-    if (["warning", "late_completed", "assigned", "due_soon", "not_verified"].includes(value)) {
+    if (["warning", "late_completed", "assigned", "due_soon", "not_verified", "resting", "training", "reserved", "traveling", "available_soon"].includes(value)) {
         return "warn";
     }
-    if (["active", "in_flight", "scheduled", "confirmed_available", "opportunity"].includes(value)) {
+    if (["active", "in_flight", "scheduled", "confirmed_available", "opportunity", "ready", "flying", "available_now"].includes(value)) {
         return "accent";
     }
     return "neutral";
 }
 function renderBadge(label) {
     return `<span class="badge ${badgeClass(label)}">${escapeHtml(label.replaceAll("_", " "))}</span>`;
+}
+function humanize(value) {
+    return value.replaceAll("_", " ");
+}
+function formatEmploymentModelLabel(value) {
+    const label = value.replaceAll("_", " ");
+    return label.charAt(0).toUpperCase() + label.slice(1);
+}
+function formatStaffingAvailabilityLabel(candidateState, startsAtUtc) {
+    return candidateState === "available_soon" && startsAtUtc
+        ? `Starts ${formatDate(startsAtUtc)}`
+        : "Available now";
+}
+function formatContractEndLabel(endsAtUtc) {
+    return endsAtUtc ? `Ends ${formatDate(endsAtUtc)}` : "No fixed end date";
+}
+function hashStableValue(value) {
+    let hash = 0;
+    for (const character of value) {
+        hash = Math.imul(31, hash) + character.charCodeAt(0) | 0;
+    }
+    return Math.abs(hash);
+}
+function encodeSvgDataUri(svgMarkup) {
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`;
+}
+function resolveStaffPortraitVariant(seed) {
+    if (staffPortraitVariants.length === 0) {
+        return null;
+    }
+    return staffPortraitVariants[hashStableValue(seed) % staffPortraitVariants.length] ?? staffPortraitVariants[0];
+}
+function renderStaffPortraitHair(hairStyle, hairColor) {
+    switch (hairStyle) {
+        case "long_bob":
+            return `<path d="M29 39C29 24 38 15 49 15C60 15 68 24 68 39V53C64 48 58 44 49 44C39 44 33 48 29 53V39Z" fill="${hairColor}"/>`;
+        case "soft_wave":
+            return `<path d="M28 40C28 24 38 15 49 15C60 15 69 24 69 40C64 35 58 32 49 32C40 32 33 35 28 40Z" fill="${hairColor}"/><path d="M31 42C33 55 39 62 48 62C57 62 63 55 65 42" fill="${hairColor}" opacity=".18"/>`;
+        case "rounded_bob":
+            return `<path d="M30 38C30 24 39 15 49 15C59 15 68 24 68 38C68 43 67 49 64 54C60 47 55 43 49 43C42 43 36 47 32 54C30 49 30 43 30 38Z" fill="${hairColor}"/>`;
+        case "side_part_long":
+            return `<path d="M30 40C30 24 39 15 50 15C59 15 67 24 67 39V53C64 47 58 43 50 43C41 43 35 47 31 54C30 50 30 45 30 40Z" fill="${hairColor}"/><path d="M38 18C45 14 55 15 61 20" stroke="${hairColor}" stroke-linecap="round" stroke-width="6"/>`;
+        case "top_bun":
+            return `<circle cx="57" cy="16" r="7" fill="${hairColor}"/><path d="M31 40C31 25 39 16 49 16C59 16 67 24 67 39V50C63 46 57 43 49 43C41 43 35 46 31 50V40Z" fill="${hairColor}"/>`;
+        case "side_swoop":
+            return `<path d="M29 39C29 24 38 15 49 15C60 15 68 25 68 39V51C64 46 58 43 49 43C41 43 35 46 31 51V39Z" fill="${hairColor}"/><path d="M37 20C44 14 56 15 64 22C57 20 50 21 44 27" stroke="${hairColor}" stroke-linecap="round" stroke-width="6"/>`;
+        case "locs_tied":
+            return `<path d="M31 39C31 24 39 15 49 15C59 15 67 24 67 39C64 34 58 31 49 31C40 31 34 34 31 39Z" fill="${hairColor}"/><path d="M33 41C34 50 35 56 36 62M41 41C42 50 43 57 44 63M48 41C49 51 49 58 49 64M55 41C55 50 56 57 57 63M62 41C61 50 61 56 60 62" stroke="${hairColor}" stroke-linecap="round" stroke-width="4"/>`;
+        case "side_part":
+            return `<path d="M31 35C31 23 40 15 50 15C60 15 67 23 67 35C62 31 56 28 49 28C41 28 36 31 31 35Z" fill="${hairColor}"/><path d="M50 18C55 18 60 20 64 24" stroke="${hairColor}" stroke-linecap="round" stroke-width="5"/>`;
+        case "short_crop":
+            return `<path d="M31 36C31 23 40 15 49 15C59 15 66 23 66 35C62 30 56 28 49 28C41 28 35 30 31 36Z" fill="${hairColor}"/>`;
+        case "curl_top":
+            return `<path d="M30 37C30 23 39 15 49 15C58 15 66 22 67 34C63 29 57 27 50 27C43 27 36 29 30 37Z" fill="${hairColor}"/><circle cx="39" cy="23" r="3.4" fill="${hairColor}"/><circle cx="46" cy="20" r="4" fill="${hairColor}"/><circle cx="54" cy="21" r="3.8" fill="${hairColor}"/><circle cx="61" cy="24" r="3.1" fill="${hairColor}"/>`;
+        case "quiff":
+            return `<path d="M31 36C31 23 40 15 50 15C59 15 66 23 66 35C62 31 56 28 49 28C41 28 36 31 31 36Z" fill="${hairColor}"/><path d="M40 21C48 14 58 15 64 22C56 20 50 22 44 29" stroke="${hairColor}" stroke-linecap="round" stroke-width="5.5"/>`;
+        case "bald":
+            return `<path d="M36 27C39 21 43 19 48 19C53 19 57 21 60 27" stroke="${hairColor}" stroke-linecap="round" stroke-width="3.5" opacity=".35"/>`;
+        default:
+            return `<path d="M31 36C31 23 40 15 49 15C59 15 66 23 66 35C62 30 56 28 49 28C41 28 35 30 31 36Z" fill="${hairColor}"/>`;
+    }
+}
+function renderStaffPortraitShirt(shirtStyle, shirtColor, accentColor) {
+    const baseBody = `<path d="M21 96C24 79 35 67 48 67C61 67 72 79 75 96H21Z" fill="${shirtColor}"/>`;
+    switch (shirtStyle) {
+        case "collar":
+            return `${baseBody}<path d="M38 68L48 78L58 68L54 96H42L38 68Z" fill="${accentColor}"/><path d="M39 68L48 76L45 84L34 72Z" fill="#FFFFFF"/><path d="M57 68L48 76L51 84L62 72Z" fill="#FFFFFF"/>`;
+        case "vneck":
+            return `${baseBody}<path d="M38 68L48 81L58 68" stroke="${accentColor}" stroke-linecap="round" stroke-width="6"/>`;
+        default:
+            return baseBody;
+    }
+}
+function renderStaffPortraitFacialHair(style, hairColor) {
+    switch (style) {
+        case "full_beard":
+            return `<path d="M37 47C39 56 43 61 48 61C53 61 57 56 59 47" fill="${hairColor}"/>`;
+        case "goatee":
+            return `<path d="M44 49C45 55 47 58 48 58C49 58 51 55 52 49" fill="${hairColor}"/>`;
+        case "mustache":
+            return `<path d="M41 45C43 43 46 43 48 45C50 43 53 43 55 45" stroke="${hairColor}" stroke-linecap="round" stroke-width="3"/>`;
+        default:
+            return "";
+    }
+}
+function renderStaffPortraitAccessory(style) {
+    switch (style) {
+        case "round_glasses":
+            return `<circle cx="42" cy="36" r="5.5" stroke="#4B5563" stroke-width="2"/><circle cx="54" cy="36" r="5.5" stroke="#4B5563" stroke-width="2"/><path d="M47 36H49" stroke="#4B5563" stroke-linecap="round" stroke-width="2"/>`;
+        case "square_glasses":
+            return `<rect x="36.5" y="30.5" width="11" height="10" rx="3" stroke="#4B5563" stroke-width="2"/><rect x="48.5" y="30.5" width="11" height="10" rx="3" stroke="#4B5563" stroke-width="2"/><path d="M47 35.5H49" stroke="#4B5563" stroke-linecap="round" stroke-width="2"/>`;
+        default:
+            return "";
+    }
+}
+function buildStaffPortraitSvg(variant) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none"><circle cx="48" cy="48" r="46" fill="${variant.background}"/>${renderStaffPortraitShirt(variant.shirtStyle, variant.shirt, variant.accent)}<path d="M41 58C42 62 45 65 48 65C51 65 54 62 55 58V54H41V58Z" fill="${variant.skin}"/><circle cx="48" cy="36" r="16" fill="${variant.skin}"/>${renderStaffPortraitHair(variant.hairStyle, variant.hair)}${renderStaffPortraitFacialHair(variant.facialHair, variant.hair)}<circle cx="42" cy="36" r="1.7" fill="#2D2626"/><circle cx="54" cy="36" r="1.7" fill="#2D2626"/><path d="M42 45C44 48 52 48 54 45" stroke="#915B51" stroke-linecap="round" stroke-width="2.4"/>${renderStaffPortraitAccessory(variant.accessory)}</svg>`;
+}
+function resolveCandidatePortraitSeed(offer) {
+    return offer.staffingOfferId || offer.generatedSeed || offer.displayName || "staff-candidate";
+}
+function resolveEmployeePortraitSeed(pilot) {
+    return pilot.sourceOfferId || pilot.staffingPackageId || pilot.namedPilotId || pilot.displayName || "staff-employee";
+}
+function renderStaffPortrait(seed, surface, options = {}) {
+    const normalizedSeed = typeof seed === "string" && seed.trim().length > 0 ? seed.trim() : "staff-portrait";
+    const portraitVariant = resolveStaffPortraitVariant(normalizedSeed);
+    const sizeClass = options.size === "detail" ? " detail" : "";
+    const portraitId = portraitVariant?.portraitId ?? "fallback";
+    const portraitSrc = portraitVariant ? encodeSvgDataUri(buildStaffPortraitSvg(portraitVariant)) : "";
+    return `<span class="staff-portrait-frame${sizeClass}" data-staff-portrait-frame="${escapeHtml(surface)}" data-staff-portrait-slot="${escapeHtml(portraitId)}"><img class="staff-portrait-image" src="${escapeHtml(portraitSrc)}" alt="" aria-hidden="true" data-staff-portrait-surface="${escapeHtml(surface)}" data-staff-portrait-key="${escapeHtml(normalizedSeed)}" data-staff-portrait-slot="${escapeHtml(portraitId)}" /></span>`;
 }
 function renderTabInput(tab) {
     return `<input type="hidden" name="tab" value="${escapeHtml(tab)}" />`;
@@ -384,6 +530,221 @@ function redirect(response, location) {
 function renderPanel(title, body, options = {}) {
     const className = options.className ? ` ${options.className}` : "";
     return `<section class="panel${className}"><div class="panel-head"><h3>${escapeHtml(title)}</h3>${options.actionHtml ?? ""}</div><div class="panel-body">${body}</div></section>`;
+}
+function renderSupportCoverageActions(saveId, tabId, options = {}) {
+    const actionPath = options.api ? `/api/save/${encodeURIComponent(saveId)}/actions/add-staffing` : "/actions/add-staffing";
+    const supportPresets = Object.entries(staffingPresets).filter(([, preset]) => preset.laborCategory !== "pilot");
+    if (supportPresets.length === 0) {
+        return `<div class="muted">No pooled support packages are configured yet.</div>`;
+    }
+    return `<div class="actions"><div class="action-group tight">${supportPresets.map(([presetKey, preset]) => `<form method="post" action="${actionPath}" class="inline" ${options.api ? "data-api-form" : ""}>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="presetKey" value="${escapeHtml(presetKey)}" /><button type="submit" data-pending-label="Adding coverage..." data-support-coverage-start="${escapeHtml(presetKey)}">${escapeHtml(preset.label)}</button></form>`).join("")}</div></div>`;
+}
+function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
+    const staffingMarket = source.staffingMarket;
+    void saveId;
+    void tabId;
+    void options;
+    const pilotOffers = (staffingMarket?.offers ?? []).filter((offer) => offer.laborCategory === "pilot" && offer.candidateState === "available_now");
+    if (pilotOffers.length === 0) {
+        return `<div class="empty-state" data-staffing-market-empty><strong>No pilots are available to hire right now.</strong><div class="muted">This market only shows named pilots who are available now.</div></div>`;
+    }
+    const selectedOfferId = options.selectedOfferId ?? pilotOffers[0]?.staffingOfferId ?? "";
+    return `<div class="aircraft-table-wrap" data-pilot-candidate-market data-staffing-scroll-region="hire:list"><table><thead><tr><th>Pilot</th><th>Certifications</th><th>Base</th><th>Cost</th></tr></thead><tbody>${pilotOffers.map((offer) => {
+        const isSelected = offer.staffingOfferId === selectedOfferId;
+        const portraitSeed = resolveCandidatePortraitSeed(offer);
+        const marketLine = [
+            formatEmploymentModelLabel(offer.employmentModel),
+            formatStaffingAvailabilityLabel(offer.candidateState, offer.startsAtUtc),
+            offer.employmentModel === "contract_hire" && offer.endsAtUtc
+                ? formatContractEndLabel(offer.endsAtUtc)
+                : undefined,
+        ].filter((entry) => Boolean(entry)).join(" | ");
+        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(offer.staffingOfferId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(offer.staffingOfferId)}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<div class="meta-stack"><strong>${escapeHtml(offer.displayName ?? "Unnamed candidate")}</strong><span class="muted">${escapeHtml(marketLine)}</span></div></div></td><td><div class="meta-stack"><span>${escapeHtml(formatPilotCertificationList(offer.certifications ?? []))}</span><span class="muted">${escapeHtml(humanize(offer.qualificationGroup))}</span></div></td><td>${offer.currentAirportId ? renderAirportDisplay(offer.currentAirportId) : `<span class="muted">Unassigned base</span>`}</td><td><div class="meta-stack"><span>${escapeHtml(formatMoney(offer.fixedCostAmount))}/mo</span><span class="muted">Monthly fixed staffing cost</span></div></td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+function renderStaffingFactRow(label, value, detail) {
+    return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><strong>${escapeHtml(value)}</strong><span class="muted">${escapeHtml(detail)}</span></div></div>`;
+}
+function renderStaffingFactListRow(label, entries) {
+    if (entries.length === 0) {
+        return "";
+    }
+    return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><ul class="aircraft-fact-list">${entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul></div></div>`;
+}
+function preferredNamedPilotId(namedPilots) {
+    return namedPilots.find((pilot) => pilot.packageStatus === "active" && pilot.availabilityState === "ready")?.namedPilotId
+        ?? namedPilots.find((pilot) => pilot.packageStatus === "active")?.namedPilotId
+        ?? namedPilots[0]?.namedPilotId
+        ?? "";
+}
+function preferredPilotOfferId(pilotOffers) {
+    return pilotOffers[0]?.staffingOfferId ?? "";
+}
+function buildTransferDestinationCatalog(companyContext, aircraft) {
+    if (!companyContext) {
+        return [];
+    }
+    return [...new Set([
+        companyContext.homeBaseAirportId,
+        ...aircraft
+            .map((entry) => entry.currentAirportId)
+            .filter((airportId) => Boolean(airportId)),
+    ])]
+        .map((airportId) => {
+        const airport = describeAirport(airportId);
+        return {
+            airportId,
+            label: `${airport.code} | ${airport.primaryLabel}${airportId === companyContext.homeBaseAirportId ? " | Home" : ""}`,
+        };
+    })
+        .sort((left, right) => {
+        if (left.airportId === companyContext.homeBaseAirportId) {
+            return -1;
+        }
+        if (right.airportId === companyContext.homeBaseAirportId) {
+            return 1;
+        }
+        return left.label.localeCompare(right.label);
+    });
+}
+function buildPilotContextParts(pilot, aircraftById) {
+    const contextParts = [];
+    const assignedAircraft = pilot.assignedAircraftId ? aircraftById.get(pilot.assignedAircraftId) : undefined;
+    if (pilot.availabilityState === "reserved" || pilot.availabilityState === "flying") {
+        contextParts.push(assignedAircraft ? assignedAircraft.registration : pilot.assignedAircraftId ? `Aircraft ${pilot.assignedAircraftId}` : "Assigned");
+        contextParts.push(pilot.assignmentToUtc ? `until ${formatDate(pilot.assignmentToUtc)}` : undefined);
+    }
+    else if (pilot.availabilityState === "traveling") {
+        contextParts.push(pilot.travelDestinationAirportId ? `Traveling to ${pilot.travelDestinationAirportId}` : "Traveling");
+        contextParts.push(pilot.travelUntilUtc ? `until ${formatDate(pilot.travelUntilUtc)}` : undefined);
+    }
+    else if (pilot.availabilityState === "training") {
+        contextParts.push(pilot.trainingTargetCertificationCode
+            ? `${pilot.trainingTargetCertificationCode} training until ${formatDate(pilot.trainingUntilUtc)}`
+            : pilot.trainingUntilUtc ? `Training until ${formatDate(pilot.trainingUntilUtc)}` : "In training");
+    }
+    else if (pilot.availabilityState === "resting") {
+        contextParts.push(pilot.restingUntilUtc ? `Ready ${formatDate(pilot.restingUntilUtc)}` : "Post-flight rest");
+    }
+    else {
+        if (pilot.packageStatus === "pending") {
+            contextParts.push(`Package starts ${formatDate(pilot.startsAtUtc)}`);
+        }
+        contextParts.push(pilot.currentAirportId ? `At ${pilot.currentAirportId}` : "Ready for dispatch");
+    }
+    if (pilot.packageStatus === "pending" && pilot.availabilityState !== "ready") {
+        contextParts.push(`starts ${formatDate(pilot.startsAtUtc)}`);
+    }
+    return contextParts.filter((entry) => Boolean(entry));
+}
+function findPilotCoverageSummary(coverage, qualificationGroup) {
+    return coverage.find((summary) => summary.laborCategory === "pilot" && summary.qualificationGroup === qualificationGroup) ?? null;
+}
+function summarizeSupportCoverage(coverage) {
+    return coverage
+        .filter((summary) => summary.laborCategory !== "pilot")
+        .reduce((aggregate, summary) => ({
+        activeCoverageUnits: aggregate.activeCoverageUnits + summary.activeCoverageUnits,
+        pendingCoverageUnits: aggregate.pendingCoverageUnits + summary.pendingCoverageUnits,
+        lanes: aggregate.lanes + 1,
+    }), { activeCoverageUnits: 0, pendingCoverageUnits: 0, lanes: 0 });
+}
+function renderStaffingCoverageCard(coverage, qualificationGroup, namedPilots, staffingState, options = {}) {
+    const laneSummary = findPilotCoverageSummary(coverage, qualificationGroup);
+    const matchingPilots = namedPilots.filter((pilot) => pilot.qualificationGroup === qualificationGroup);
+    const activeMatchingPilots = matchingPilots.filter((pilot) => pilot.packageStatus === "active");
+    const readyMatchingPilots = activeMatchingPilots.filter((pilot) => pilot.availabilityState === "ready");
+    const supportCoverage = summarizeSupportCoverage(coverage);
+    const impactDetail = options.impactDetail ?? `${matchingPilots.length} named pilot${matchingPilots.length === 1 ? "" : "s"} currently map to this lane.`;
+    return `<section class="aircraft-facts-card"><div class="eyebrow">Coverage posture</div><div class="aircraft-facts-list">${renderStaffingFactRow("Pilot lane", laneSummary ? `${formatNumber(laneSummary.activeCoverageUnits)} active | ${formatNumber(laneSummary.pendingCoverageUnits)} pending` : "No pilot coverage", `${humanize(qualificationGroup)} | ${impactDetail}`)}${renderStaffingFactRow("Roster readiness", `${formatNumber(readyMatchingPilots.length)} ready | ${formatNumber(Math.max(activeMatchingPilots.length - readyMatchingPilots.length, 0))} committed`, `${formatNumber(activeMatchingPilots.length)} active named pilots are currently tied to this certification lane.`)}${renderStaffingFactRow("Support coverage", supportCoverage.lanes > 0 ? `${formatNumber(supportCoverage.activeCoverageUnits)} active | ${formatNumber(supportCoverage.pendingCoverageUnits)} pending` : "No pooled support", supportCoverage.lanes > 0 ? `${formatNumber(supportCoverage.lanes)} pooled support lane${supportCoverage.lanes === 1 ? "" : "s"} are currently active or pending.` : "Flight attendants and other support roles can still be added as pooled coverage.")}${renderStaffingFactRow("Labor fixed cost", formatMoney(staffingState?.totalMonthlyFixedCostAmount ?? 0), "Current monthly fixed staffing load across all active and pending coverage.")}</div></section>`;
+}
+function renderNamedPilotActions(saveId, tabId, pilot, homeBaseAirportId, transferDestinationCatalog) {
+    const homeReturnAction = pilot.packageStatus === "active"
+        && pilot.availabilityState === "ready"
+        && pilot.currentAirportId
+        && homeBaseAirportId
+        && pilot.currentAirportId !== homeBaseAirportId
+        ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/start-pilot-transfer" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="namedPilotId" value="${escapeHtml(pilot.namedPilotId)}" /><input type="hidden" name="destinationAirportId" value="${escapeHtml(homeBaseAirportId)}" /><button type="submit" data-pending-label="Starting return..." data-pilot-home-return-start="${escapeHtml(pilot.namedPilotId)}">Return home</button></form>`
+        : "";
+    const transferDestinations = transferDestinationCatalog.filter((destination) => destination.airportId !== pilot.currentAirportId && (!homeReturnAction || destination.airportId !== homeBaseAirportId));
+    const trainingTargets = pilot.employmentModel === "contract_hire"
+        ? []
+        : availableCertificationTrainingTargets(pilot.certifications ?? []);
+    const trainingAction = pilot.packageStatus === "active" && pilot.availabilityState === "ready"
+        ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/start-pilot-training" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="namedPilotId" value="${escapeHtml(pilot.namedPilotId)}" /><select name="targetCertificationCode" aria-label="Training target" data-pilot-training-target="${escapeHtml(pilot.namedPilotId)}"><option value="">Recurrent</option>${trainingTargets.map((target) => `<option value="${escapeHtml(target)}">${escapeHtml(target)}</option>`).join("")}</select><button type="submit" data-pending-label="Starting training..." data-pilot-training-start="${escapeHtml(pilot.namedPilotId)}">Start training</button></form>`
+        : "";
+    const contractTrainingNote = pilot.packageStatus === "active"
+        && pilot.availabilityState === "ready"
+        && pilot.employmentModel === "contract_hire"
+        ? `<span class="muted">Certification training is not available for contract hires in this first pass.</span>`
+        : "";
+    const transferAction = pilot.packageStatus === "active" && pilot.availabilityState === "ready" && transferDestinations.length > 0
+        ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/start-pilot-transfer" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="namedPilotId" value="${escapeHtml(pilot.namedPilotId)}" /><select name="destinationAirportId" aria-label="Transfer destination" data-pilot-transfer-destination="${escapeHtml(pilot.namedPilotId)}">${transferDestinations.map((destination) => `<option value="${escapeHtml(destination.airportId)}">${escapeHtml(destination.label)}</option>`).join("")}</select><button type="submit" data-pending-label="Starting transfer..." data-pilot-transfer-start="${escapeHtml(pilot.namedPilotId)}">Transfer</button></form>`
+        : "";
+    const readyTransferNote = pilot.packageStatus === "active" && pilot.availabilityState === "ready" && !homeReturnAction && !transferAction
+        ? `<span class="muted">No transfer route is available from the current airport.</span>`
+        : "";
+    const unavailableLabel = pilot.availabilityState === "training"
+        ? "Training is already active for this pilot."
+        : pilot.availabilityState === "traveling"
+            ? "This pilot is already repositioning."
+            : pilot.availabilityState === "resting"
+                ? "This pilot is still in post-flight rest."
+                : pilot.packageStatus === "pending"
+                    ? "This hire has not started active duty yet."
+                    : "No immediate action is available right now.";
+    const actions = [trainingAction, contractTrainingNote, homeReturnAction, transferAction, readyTransferNote].filter((entry) => Boolean(entry));
+    return actions.length > 0
+        ? `<div class="meta-stack">${actions.join("")}</div>`
+        : `<div class="muted">${escapeHtml(unavailableLabel)}</div>`;
+}
+function renderNamedPilotDetail(saveId, tabId, pilot, context) {
+    if (!pilot) {
+        return `<div class="aircraft-detail-stack"><section class="aircraft-facts-card"><div class="eyebrow">Employee detail</div><div class="empty-state compact"><strong>No employee selected.</strong><div class="muted">Select a pilot from the roster to review certifications, current availability, and employee actions.</div></div></section></div>`;
+    }
+    const aircraftById = context.aircraftById;
+    const statusContext = buildPilotContextParts(pilot, aircraftById);
+    const assignedAircraft = pilot.assignedAircraftId ? aircraftById.get(pilot.assignedAircraftId) : undefined;
+    const currentAirport = pilot.currentAirportId ? describeAirport(pilot.currentAirportId) : null;
+    const homeBaseAirport = context.homeBaseAirportId ? describeAirport(context.homeBaseAirportId) : null;
+    const statusBadges = [renderBadge(pilot.availabilityState), pilot.packageStatus === "pending" ? renderBadge(pilot.packageStatus) : ""].filter(Boolean).join("");
+    const actionBody = renderNamedPilotActions(saveId, tabId, pilot, context.homeBaseAirportId, context.transferDestinationCatalog);
+    const portraitSeed = resolveEmployeePortraitSeed(pilot);
+    const employeeNotes = [
+        pilot.packageStatus === "pending" ? `Starts active duty ${formatDate(pilot.startsAtUtc)}.` : undefined,
+        pilot.employmentModel === "contract_hire" && pilot.endsAtUtc ? `Contract ends ${formatDate(pilot.endsAtUtc)}.` : undefined,
+    ].filter((entry) => Boolean(entry));
+    return `<div class="aircraft-detail-stack" data-staffing-selected-detail="employees"><section class="aircraft-facts-card"><div class="staff-identity-card">${renderStaffPortrait(portraitSeed, "employees-detail", { size: "detail" })}<div class="meta-stack"><div class="eyebrow">Employee brief</div><strong data-staffing-selected-employee>${escapeHtml(pilot.displayName)}</strong><span class="muted">${escapeHtml(formatEmploymentModelLabel(pilot.employmentModel))} | ${escapeHtml(formatPilotCertificationList(pilot.certifications ?? []))}</span>${statusBadges ? `<div class="pill-row">${statusBadges}</div>` : ""}</div></div></section><section class="aircraft-facts-card"><div class="eyebrow">Operational brief</div><div class="aircraft-facts-list">${renderStaffingFactRow("Certifications", formatPilotCertificationList(pilot.certifications ?? []), `${humanize(pilot.qualificationGroup)} lane`) + renderStaffingFactRow("Employment", formatEmploymentModelLabel(pilot.employmentModel), pilot.employmentModel === "contract_hire"
+        ? (pilot.endsAtUtc ? `Contract end ${formatDate(pilot.endsAtUtc)}.` : "Fixed-term named pilot hire.")
+        : "Open-ended named pilot hire.") + renderStaffingFactRow("Status", humanize(pilot.availabilityState), statusContext.join(" | ") || "Available for new work.") + renderStaffingFactRow("Current base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned", homeBaseAirport ? `Home ${homeBaseAirport.code} | ${homeBaseAirport.primaryLabel}` : "No company home base is set.") + renderStaffingFactRow("Assignment", assignedAircraft ? assignedAircraft.registration : "No committed aircraft", assignedAircraft ? `Currently tied to ${assignedAircraft.registration} for operational coverage.` : "No current aircraft commitment is holding this pilot.") + renderStaffingFactListRow("Notes", employeeNotes)}</div></section>${renderStaffingCoverageCard(context.coverage, pilot.qualificationGroup, context.namedPilots, context.staffingState)}<section class="aircraft-facts-card"><div class="eyebrow">Employee actions</div>${actionBody}</section></div>`;
+}
+function renderHireCandidateDetail(saveId, tabId, offer, context) {
+    const supportCoverageCard = `<section class="aircraft-facts-card"><div class="eyebrow">Support coverage</div><div class="meta-stack"><span class="muted">Flight attendants and other support roles remain pooled in this first pass.</span>${context.supportCoverageBody}</div></section>`;
+    if (!offer) {
+        return `<div class="aircraft-detail-stack"><section class="aircraft-facts-card"><div class="eyebrow">Hiring detail</div><div class="empty-state compact"><strong>No pilot candidate is selected.</strong><div class="muted">This market only shows named pilots who are available now.</div></div></section>${renderStaffingCoverageCard(context.coverage, "single_turboprop_utility", context.namedPilots, context.staffingState, { impactDetail: "Use the coverage posture here to understand current roster pressure while the market refreshes." })}${supportCoverageCard}</div>`;
+    }
+    const actionPath = context.api
+        ? `/api/save/${encodeURIComponent(saveId)}/actions/hire-pilot-candidate`
+        : "/actions/hire-pilot-candidate";
+    const currentAirport = offer.currentAirportId ? describeAirport(offer.currentAirportId) : null;
+    const availabilityLabel = formatStaffingAvailabilityLabel(offer.candidateState, offer.startsAtUtc);
+    const portraitSeed = resolveCandidatePortraitSeed(offer);
+    const contractEndRow = offer.employmentModel === "contract_hire" && offer.endsAtUtc
+        ? renderStaffingFactRow("Contract end", formatDate(offer.endsAtUtc), "This first-pass contract hire ends at the listed sim time.")
+        : "";
+    return `<div class="aircraft-detail-stack" data-staffing-selected-detail="hire"><section class="aircraft-facts-card"><div class="staff-identity-card">${renderStaffPortrait(portraitSeed, "hire-detail", { size: "detail" })}<div class="meta-stack"><div class="eyebrow">Pilot candidate</div><strong data-staffing-selected-candidate>${escapeHtml(offer.displayName ?? "Unnamed candidate")}</strong><span class="muted">${escapeHtml(formatEmploymentModelLabel(offer.employmentModel))} | ${escapeHtml(formatPilotCertificationList(offer.certifications ?? []))}</span><div class="pill-row">${renderBadge("available")}</div></div></div></section><section class="aircraft-facts-card"><div class="eyebrow">Hiring brief</div><div class="aircraft-facts-list">${renderStaffingFactRow("Certifications", formatPilotCertificationList(offer.certifications ?? []), `${humanize(offer.qualificationGroup)} lane`) + renderStaffingFactRow("Hire type", formatEmploymentModelLabel(offer.employmentModel), offer.employmentModel === "contract_hire"
+        ? "Fixed-term named pilot hire."
+        : "Open-ended named pilot hire.") + renderStaffingFactRow("Base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned base", currentAirport?.secondaryLabel ?? "Current operating base for this candidate.") + renderStaffingFactRow("Cost", `${formatMoney(offer.fixedCostAmount)}/mo`, "Monthly fixed staffing cost for this named hire.") + renderStaffingFactRow("Availability", availabilityLabel, "Hiring activates this candidate into the roster at the listed availability window.") + contractEndRow}</div></section>${renderStaffingCoverageCard(context.coverage, offer.qualificationGroup, context.namedPilots, context.staffingState, { impactDetail: "Hiring this candidate adds one active named pilot to the matching certification lane." })}<section class="aircraft-facts-card"><div class="eyebrow">Hire</div><form method="post" action="${actionPath}" class="market-confirm-form" ${context.api ? "data-api-form" : ""}>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="staffingOfferId" value="${escapeHtml(offer.staffingOfferId)}" /><button type="submit" data-pending-label="Hiring..." data-pilot-candidate-hire="${escapeHtml(offer.staffingOfferId)}">Hire pilot</button><span class="muted">Type and availability are fixed by this staffing offer.</span></form></section>${supportCoverageCard}</div>`;
+}
+function renderPilotRosterTable(namedPilots, selectedPilotId, aircraftById) {
+    return `<div class="aircraft-table-wrap" data-staffing-roster data-staffing-scroll-region="employees:list"><table><thead><tr><th>Pilot</th><th>Certifications</th><th>Status</th><th>Context</th></tr></thead><tbody>${namedPilots.map((pilot) => {
+        const isSelected = pilot.namedPilotId === selectedPilotId;
+        const portraitSeed = resolveEmployeePortraitSeed(pilot);
+        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-staffing-pilot-row="${escapeHtml(pilot.namedPilotId)}" data-staffing-row-select="employees" data-staffing-detail-id="${escapeHtml(pilot.namedPilotId)}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "employees-row")}<div class="meta-stack"><strong>${escapeHtml(pilot.displayName)}</strong><span class="muted">${escapeHtml(formatEmploymentModelLabel(pilot.employmentModel))}</span></div></div></td><td><div class="meta-stack"><span>${escapeHtml(formatPilotCertificationList(pilot.certifications ?? []))}</span><span class="muted">${escapeHtml(humanize(pilot.qualificationGroup))}</span></div></td><td><div class="pill-row">${renderBadge(pilot.availabilityState)}${pilot.packageStatus === "pending" ? renderBadge(pilot.packageStatus) : ""}</div></td><td>${escapeHtml(buildPilotContextParts(pilot, aircraftById).join(" | "))}</td></tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+function renderStaffingDetailTemplate(view, detailId, title, body) {
+    return `<template data-staffing-detail-template="${escapeHtml(view)}" data-staffing-detail-id="${escapeHtml(detailId)}" data-staffing-detail-title="${escapeHtml(title)}">${body}</template>`;
 }
 function renderMetricStrip(model) {
     const company = model.companyContext;
@@ -634,6 +995,7 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       overflow: hidden;
     }
     .view-grid.two-up { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .view-grid.staffing-three-up { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1.1fr) minmax(300px, .85fr); }
     .view-grid.sidebar-wide { grid-template-columns: minmax(320px, .78fr) minmax(0, 1.22fr); }
     .view-grid.stack-and-side { grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr); }
     .stack-column {
@@ -704,7 +1066,42 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
     .badge.warn { background: var(--warn-soft); color: var(--warn); }
     .badge.danger { background: var(--danger-soft); color: var(--danger); }
     .route { font-weight: 600; }
-    .meta-stack { display: grid; gap: 4px; }
+    .meta-stack { display: grid; gap: 4px; min-width: 0; }
+    .staff-identity {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      min-width: 0;
+    }
+    .staff-identity-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 14px;
+      align-items: center;
+      min-width: 0;
+    }
+    .staff-portrait-frame {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 86%, white), var(--panel));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.28);
+      flex: 0 0 auto;
+    }
+    .staff-portrait-frame.detail {
+      width: 72px;
+      height: 72px;
+      border-radius: 20px;
+    }
+    .staff-portrait-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
     .summary-list { display: grid; gap: 12px; }
     .summary-item {
       padding: 12px 14px;
@@ -732,6 +1129,39 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       background: var(--panel-strong);
       color: var(--muted);
       font-size: 13px;
+    }
+    .workspace-toggle-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .workspace-toggle-button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 10px 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font: inherit;
+      cursor: pointer;
+      transition: border-color .16s ease, color .16s ease, background .16s ease, transform .16s ease;
+    }
+    .workspace-toggle-button.current {
+      border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+      background: color-mix(in srgb, var(--accent-soft) 72%, var(--panel-strong));
+      color: var(--text);
+    }
+    .workspace-toggle-button:hover {
+      transform: translateY(-1px);
+    }
+    .workspace-panel-group {
+      min-height: 0;
+      display: grid;
+      gap: 18px;
     }
     .contracts-app-shell {
       min-height: 0;
@@ -949,6 +1379,7 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       .metrics-strip,
       .context-rail,
       .view-grid.two-up,
+      .view-grid.staffing-three-up,
       .view-grid.sidebar-wide,
       .view-grid.stack-and-side,
       .contracts-grid,
@@ -1650,9 +2081,88 @@ async function handleAddStaffing(response, form) {
     });
     redirect(response, saveRoute(saveId, {
         tab,
+      flash: result.success
+          ? { notice: `Activated ${preset.label}.` }
+          : { error: result.hardBlockers[0] ?? "Could not add staffing." },
+  }));
+}
+async function handleHirePilotCandidate(response, form) {
+    const saveId = form.get("saveId") ?? "";
+    const tab = normalizeTab(form.get("tab"));
+    const staffingOfferId = form.get("staffingOfferId") ?? "";
+    const market = await backend.loadActiveStaffingMarket(saveId);
+    const offer = market?.offers.find((entry) => entry.staffingOfferId === staffingOfferId && entry.offerStatus === "available" && entry.laborCategory === "pilot");
+    if (!offer) {
+        redirect(response, saveRoute(saveId, { tab, flash: { error: "That pilot candidate is no longer available." } }));
+        return;
+    }
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_hire_pilot"),
+        saveId,
+        commandName: "ActivateStaffingPackage",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            laborCategory: offer.laborCategory,
+            employmentModel: offer.employmentModel,
+            qualificationGroup: offer.qualificationGroup,
+            coverageUnits: offer.coverageUnits,
+            fixedCostAmount: offer.fixedCostAmount,
+            variableCostRate: offer.variableCostRate,
+            startsAtUtc: offer.startsAtUtc,
+            endsAtUtc: offer.endsAtUtc,
+            sourceOfferId: offer.staffingOfferId,
+        },
+    });
+    redirect(response, saveRoute(saveId, {
+        tab,
         flash: result.success
-            ? { notice: `Activated ${preset.label}.` }
-            : { error: result.hardBlockers[0] ?? "Could not add staffing." },
+            ? { notice: result.validationMessages[0] ?? `Hired ${offer.displayName ?? "pilot"}.` }
+            : { error: result.hardBlockers[0] ?? "Could not hire that pilot candidate." },
+    }));
+}
+async function handleStartPilotTraining(response, form) {
+    const saveId = form.get("saveId") ?? "";
+    const tab = normalizeTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_training"),
+        saveId,
+        commandName: "StartNamedPilotTraining",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+        },
+    });
+    redirect(response, saveRoute(saveId, {
+        tab,
+        flash: result.success
+            ? { notice: result.validationMessages[0] ?? "Started pilot training." }
+            : { error: result.hardBlockers[0] ?? "Could not start pilot training." },
+    }));
+}
+async function handleStartPilotTransfer(response, form) {
+    const saveId = form.get("saveId") ?? "";
+    const tab = normalizeTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const destinationAirportId = form.get("destinationAirportId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_transfer"),
+        saveId,
+        commandName: "StartNamedPilotTransfer",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+            destinationAirportId,
+        },
+    });
+    redirect(response, saveRoute(saveId, {
+        tab,
+        flash: result.success
+            ? { notice: result.validationMessages[0] ?? "Started pilot transfer." }
+            : { error: result.hardBlockers[0] ?? "Could not start pilot transfer." },
     }));
 }
 async function handleRefreshContractBoard(response, form) {
@@ -1983,6 +2493,9 @@ const actionHandlers = {
     "/actions/create-company": handleCreateCompany,
     "/actions/acquire-aircraft": handleAcquireAircraft,
     "/actions/add-staffing": handleAddStaffing,
+    "/actions/hire-pilot-candidate": handleHirePilotCandidate,
+    "/actions/start-pilot-training": handleStartPilotTraining,
+    "/actions/start-pilot-transfer": handleStartPilotTransfer,
     "/actions/refresh-contract-board": handleRefreshContractBoard,
     "/actions/accept-contract": handleAcceptContract,
     "/actions/auto-plan-contract": handleAutoPlanContract,
@@ -2054,6 +2567,15 @@ async function handleRequest(request, response) {
         response.end(assetSource);
         return;
     }
+    if (request.method === "GET" && pathname === "/assets/staffing-tab-client.js") {
+        const assetSource = await readFile(staffingTabClientAssetUrl, "utf8");
+        response.writeHead(200, {
+            "content-type": "text/javascript; charset=utf-8",
+            "cache-control": "no-store",
+        });
+        response.end(assetSource);
+        return;
+    }
     if (request.method === "GET" && pathname === "/assets/contracts-tab-client.js") {
         const assetSource = await readFile(contractsTabClientAssetUrl, "utf8");
         response.writeHead(200, {
@@ -2065,6 +2587,15 @@ async function handleRequest(request, response) {
     }
     if (request.method === "GET" && pathname === "/assets/open-save-client.js") {
         const assetSource = await readFile(openSaveClientAssetUrl, "utf8");
+        response.writeHead(200, {
+            "content-type": "text/javascript; charset=utf-8",
+            "cache-control": "no-store",
+        });
+        response.end(assetSource);
+        return;
+    }
+    if (request.method === "GET" && pathname === "/domain/staffing/pilot-certifications.js") {
+        const assetSource = await readFile(pilotCertificationsModuleAssetUrl, "utf8");
         response.writeHead(200, {
             "content-type": "text/javascript; charset=utf-8",
             "cache-control": "no-store",
@@ -2161,6 +2692,15 @@ async function handleRequest(request, response) {
                 return;
             case "add-staffing":
                 await withUiTiming(`action save=${saveId} name=add-staffing`, () => handleAddStaffingApi(response, saveId, form));
+                return;
+            case "hire-pilot-candidate":
+                await withUiTiming(`action save=${saveId} name=hire-pilot-candidate`, () => handleHirePilotCandidateApi(response, saveId, form));
+                return;
+            case "start-pilot-training":
+                await withUiTiming(`action save=${saveId} name=start-pilot-training`, () => handleStartPilotTrainingApi(response, saveId, form));
+                return;
+            case "start-pilot-transfer":
+                await withUiTiming(`action save=${saveId} name=start-pilot-transfer`, () => handleStartPilotTransferApi(response, saveId, form));
                 return;
             case "auto-plan-contract":
                 await withUiTiming(`action save=${saveId} name=auto-plan-contract`, () => handleAutoPlanContractApi(response, saveId, form));
@@ -2316,10 +2856,52 @@ const saveShellRenderers = {
     },
     renderStaffing(saveId, tabId, source) {
         const staffingState = source.staffingState;
+        const staffingMarket = source.staffingMarket;
         const coverage = staffingState?.coverageSummaries ?? [];
         const packages = staffingState?.staffingPackages ?? [];
-        const actionButtons = Object.entries(staffingPresets).map(([presetKey, preset]) => `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/add-staffing" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="presetKey" value="${escapeHtml(presetKey)}" /><button type="submit" data-pending-label="Activating staffing...">${escapeHtml(preset.label)}</button></form>`).join("");
-        return `<div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Activate Staffing</h3></div><div class="panel-body"><div class="actions"><div class="action-group tight">${actionButtons}</div></div></div></section><section class="panel"><div class="panel-head"><h3>Coverage Summary</h3></div><div class="panel-body">${coverage.length === 0 ? `<div class="empty-state">No staffing coverage is active yet.</div>` : `<div class="table-wrap"><table><thead><tr><th>Category</th><th>Qualification</th><th>Active</th><th>Pending</th></tr></thead><tbody>${coverage.map((summary) => `<tr><td>${escapeHtml(summary.laborCategory)}</td><td>${escapeHtml(summary.qualificationGroup)}</td><td>${formatNumber(summary.activeCoverageUnits)}</td><td>${formatNumber(summary.pendingCoverageUnits)}</td></tr>`).join("")}</tbody></table></div>`}</div></section></div><section class="panel"><div class="panel-head"><h3>Packages</h3></div><div class="panel-body">${packages.length === 0 ? `<div class="empty-state">Activate packages to create labor capacity.</div>` : `<div class="table-wrap"><table><thead><tr><th>Category</th><th>Model</th><th>Coverage</th><th>Cost</th></tr></thead><tbody>${packages.map((pkg) => `<tr><td>${escapeHtml(pkg.laborCategory)}</td><td>${escapeHtml(pkg.qualificationGroup)}</td><td>${formatNumber(pkg.coverageUnits)}</td><td>${formatMoney(pkg.fixedCostAmount)}</td></tr>`).join("")}</tbody></table></div>`}</div></section>`;
+        const namedPilots = staffingState?.namedPilots ?? [];
+        const pilotPackages = packages.filter((pkg) => pkg.laborCategory === "pilot");
+        const availablePilotOffers = (staffingMarket?.offers ?? []).filter((offer) => offer.laborCategory === "pilot" && offer.candidateState === "available_now");
+        const availablePilotOfferCount = availablePilotOffers.length;
+        const hasPendingPilotCoverage = pilotPackages.some((pkg) => pkg.status === "pending");
+        const defaultWorkspaceTab = namedPilots.length > 0 ? "employees" : "hire";
+        const fleetAircraft = source.fleetState?.aircraft ?? [];
+        const aircraftById = new Map(fleetAircraft.map((aircraft) => [aircraft.aircraftId, aircraft]));
+        const supportCoverageBody = renderSupportCoverageActions(saveId, tabId, { api: true });
+        const homeBaseAirportId = source.companyContext?.homeBaseAirportId;
+        const transferDestinationCatalog = buildTransferDestinationCatalog(source.companyContext, fleetAircraft);
+        const defaultEmployeeId = preferredNamedPilotId(namedPilots);
+        const defaultHireId = preferredPilotOfferId(availablePilotOffers);
+        const pilotDetailContext = {
+            aircraftById,
+            coverage,
+            namedPilots,
+            staffingState,
+            homeBaseAirportId,
+            transferDestinationCatalog,
+        };
+        const hireDetailContext = {
+            api: true,
+            coverage,
+            namedPilots,
+            staffingState,
+            supportCoverageBody,
+        };
+        const selectedPilot = namedPilots.find((pilot) => pilot.namedPilotId === defaultEmployeeId) ?? null;
+        const selectedOffer = availablePilotOffers.find((offer) => offer.staffingOfferId === defaultHireId) ?? null;
+        const rosterBody = namedPilots.length === 0
+            ? `<div class="empty-state" data-staffing-roster-empty><strong>No pilot roster yet.</strong><div class="muted">${hasPendingPilotCoverage
+                ? "Hired pilots with future starts will appear here as they move toward active duty."
+                : "Hire an individual pilot candidate to create the first named roster entry."} Training, transfer, and return-home actions will appear here once the roster is live.</div></div>`
+            : renderPilotRosterTable(namedPilots, defaultEmployeeId, aircraftById);
+        const hireStaffBody = renderPilotHiringMarket(saveId, tabId, source, { api: true, selectedOfferId: defaultHireId });
+        const employeeDetailTitle = selectedPilot?.displayName ?? "Employee Detail";
+        const employeeDetailBody = renderNamedPilotDetail(saveId, tabId, selectedPilot, pilotDetailContext);
+        const employeeTemplates = namedPilots.map((pilot) => renderStaffingDetailTemplate("employees", pilot.namedPilotId, pilot.displayName, renderNamedPilotDetail(saveId, tabId, pilot, pilotDetailContext))).join("");
+        const hireDetailTitle = selectedOffer?.displayName ?? "Hiring Detail";
+        const hireDetailBody = renderHireCandidateDetail(saveId, tabId, selectedOffer, hireDetailContext);
+        const hireTemplates = availablePilotOffers.map((offer) => renderStaffingDetailTemplate("hire", offer.staffingOfferId, offer.displayName ?? "Pilot candidate", renderHireCandidateDetail(saveId, tabId, offer, hireDetailContext))).join("");
+        return `<div class="staffing-tab-host staffing-workspace-host" data-staffing-tab-host data-staffing-save-id="${escapeHtml(saveId)}" data-staffing-default-view="${escapeHtml(defaultWorkspaceTab)}" data-staffing-default-employee-id="${escapeHtml(defaultEmployeeId)}" data-staffing-default-hire-id="${escapeHtml(defaultHireId)}"><section class="panel staffing-workspace-panel"><div class="panel-head"><h3>Staff Workspace</h3><div class="contracts-board-tabs" role="tablist" aria-label="Staff workspace"><button type="button" class="contracts-board-tab ${defaultWorkspaceTab === "employees" ? "current" : ""}" data-staffing-workspace-tab="employees" role="tab" aria-selected="${defaultWorkspaceTab === "employees" ? "true" : "false"}">Employees<span class="contracts-board-tab-count">${escapeHtml(String(namedPilots.length))}</span></button><button type="button" class="contracts-board-tab ${defaultWorkspaceTab === "hire" ? "current" : ""}" data-staffing-workspace-tab="hire" role="tab" aria-selected="${defaultWorkspaceTab === "hire" ? "true" : "false"}">Hire<span class="contracts-board-tab-count">${escapeHtml(String(availablePilotOfferCount))}</span></button></div></div><div class="panel-body staffing-workspace-shell"><section class="aircraft-workspace-body" data-staffing-workspace-panel="employees"${defaultWorkspaceTab === "employees" ? "" : " hidden"}><div class="aircraft-workbench"><section class="panel aircraft-fleet-panel"><div class="panel-head"><h3>Pilot Roster</h3></div><div class="panel-body aircraft-fleet-body"><div class="meta-stack"><strong>Employees</strong><span class="muted">Select a pilot to review certifications, availability, and employee actions.</span></div>${rosterBody}</div></section><section class="panel aircraft-detail-panel" data-staffing-detail-panel="employees"><div class="panel-head"><h3 data-staffing-detail-title="employees">${escapeHtml(employeeDetailTitle)}</h3></div><div class="panel-body aircraft-detail-body" data-staffing-detail-body="employees" data-staffing-scroll-region="employees:detail">${employeeDetailBody}</div><div hidden data-staffing-detail-bank="employees">${employeeTemplates}</div></section></div></section><section class="aircraft-workspace-body" data-staffing-workspace-panel="hire"${defaultWorkspaceTab === "hire" ? "" : " hidden"}><div class="aircraft-workbench"><section class="panel aircraft-fleet-panel"><div class="panel-head"><h3>Hire Staff</h3></div><div class="panel-body aircraft-fleet-body"><div class="meta-stack"><strong>Pilot Candidates</strong><span class="muted">Choose a direct or contract pilot hire. This market only shows candidates available now.</span></div>${hireStaffBody}</div></section><section class="panel aircraft-detail-panel" data-staffing-detail-panel="hire"><div class="panel-head"><h3 data-staffing-detail-title="hire">${escapeHtml(hireDetailTitle)}</h3></div><div class="panel-body aircraft-detail-body" data-staffing-detail-body="hire" data-staffing-scroll-region="hire:detail">${hireDetailBody}</div><div hidden data-staffing-detail-bank="hire">${hireTemplates}</div></section></div></section></div></section></div>`;
     },
     renderDispatch(saveId, tabId, source, airportRepo) {
         void saveId;
@@ -2536,6 +3118,75 @@ async function handleAddStaffingApi(response, saveId, form) {
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: `Activated ${preset.label}.`, notificationLevel: "routine" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not add staffing." });
+}
+async function handleHirePilotCandidateApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const staffingOfferId = form.get("staffingOfferId") ?? "";
+    const market = await backend.loadActiveStaffingMarket(saveId);
+    const offer = market?.offers.find((entry) => entry.staffingOfferId === staffingOfferId && entry.offerStatus === "available" && entry.laborCategory === "pilot");
+    if (!offer) {
+        await sendShellActionResponse(response, saveId, tab, { success: false, error: "That pilot candidate is no longer available." });
+        return;
+    }
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_hire_pilot_api"),
+        saveId,
+        commandName: "ActivateStaffingPackage",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            laborCategory: offer.laborCategory,
+            employmentModel: offer.employmentModel,
+            qualificationGroup: offer.qualificationGroup,
+            coverageUnits: offer.coverageUnits,
+            fixedCostAmount: offer.fixedCostAmount,
+            variableCostRate: offer.variableCostRate,
+            startsAtUtc: offer.startsAtUtc,
+            endsAtUtc: offer.endsAtUtc,
+            sourceOfferId: offer.staffingOfferId,
+        },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: result.validationMessages[0] ?? `Hired ${offer.displayName ?? "pilot"}.`, notificationLevel: "important" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not hire that pilot candidate." });
+}
+async function handleStartPilotTrainingApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const targetCertificationCode = form.get("targetCertificationCode")?.trim() || undefined;
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_training_api"),
+        saveId,
+        commandName: "StartNamedPilotTraining",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+            targetCertificationCode,
+        },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: result.validationMessages[0] ?? "Started pilot training.", notificationLevel: "routine" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not start pilot training." });
+}
+async function handleStartPilotTransferApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const destinationAirportId = form.get("destinationAirportId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_transfer_api"),
+        saveId,
+        commandName: "StartNamedPilotTransfer",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+            destinationAirportId,
+        },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: result.validationMessages[0] ?? "Started pilot transfer.", notificationLevel: "routine" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not start pilot transfer." });
 }
 async function handleCommitScheduleApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));

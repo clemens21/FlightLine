@@ -2,7 +2,7 @@
  * Keeps the persisted aircraft market aligned with the latest generated market state.
  * It handles offer reuse, expiration, and refresh behavior so the UI can treat the market as stable save data.
  * The generator makes candidate listings; this file decides what actually lives in the save by expiring old offers,
- * preserving unaffected ones, and topping the market back up without reshuffling everything.
+ * preserving unaffected ones, and adding new arrivals as simulated time advances.
  */
 
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
@@ -15,6 +15,7 @@ import { generateAircraftMarket } from "./aircraft-market-generator.js";
 interface ActiveWindowRow extends Record<string, unknown> {
   offerWindowId: string;
   companyId: string;
+  generatedAtUtc: string;
 }
 
 interface AircraftLocationRow extends Record<string, unknown> {
@@ -31,8 +32,9 @@ interface AvailableCountRow extends Record<string, unknown> {
   countValue: number;
 }
 
-interface MarketTargetProfile {
-  totalCount: number;
+interface MarketHistoryRow extends Record<string, unknown> {
+  totalOfferCount: number;
+  earliestListedAtUtc: string | null;
 }
 
 export interface ReconcileAircraftMarketResult {
@@ -47,12 +49,7 @@ export interface ReconcileAircraftMarketResult {
 }
 
 const perpetualWindowDays = 3650;
-
-function marketTargetProfile(totalModelCount: number): MarketTargetProfile {
-  return {
-    totalCount: Math.max(180, Math.min(240, totalModelCount * 4)),
-  };
-}
+const millisecondsPerDay = 24 * 60 * 60 * 1000;
 
 // Reuses the current active window when possible and self-heals duplicate active windows if earlier runs left stale state behind.
 function loadOrCreateActiveWindow(
@@ -60,11 +57,12 @@ function loadOrCreateActiveWindow(
   companyId: string,
   currentTimeUtc: string,
   refreshReason: string,
-): { offerWindowId: string; createdWindow: boolean } {
+): { offerWindowId: string; createdWindow: boolean; generatedAtUtc: string } {
   const existingWindows = saveDatabase.all<ActiveWindowRow>(
     `SELECT
       offer_window_id AS offerWindowId,
-      company_id AS companyId
+      company_id AS companyId,
+      generated_at_utc AS generatedAtUtc
     FROM offer_window
     WHERE company_id = $company_id
       AND window_type = 'aircraft_market'
@@ -99,6 +97,7 @@ function loadOrCreateActiveWindow(
     return {
       offerWindowId: activeWindow.offerWindowId,
       createdWindow: false,
+      generatedAtUtc: activeWindow.generatedAtUtc,
     };
   }
 
@@ -139,6 +138,7 @@ function loadOrCreateActiveWindow(
   return {
     offerWindowId,
     createdWindow: true,
+    generatedAtUtc: currentTimeUtc,
   };
 }
 
@@ -148,7 +148,105 @@ function addUtcDays(utcIsoString: string, days: number): string {
   return next.toISOString();
 }
 
-// Expires old listings and inserts only the replacement offers needed to keep the rolling market at its target size.
+function stableHash(input: string): number {
+  let hash = 2166136261;
+
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function randomUnit(seed: string): number {
+  return stableHash(seed) / 4294967295;
+}
+
+function daysBetweenUtc(startUtc: string, endUtc: string): number {
+  const deltaMs = Date.parse(endUtc) - Date.parse(startUtc);
+  if (!Number.isFinite(deltaMs) || deltaMs <= 0) {
+    return 0;
+  }
+
+  return deltaMs / millisecondsPerDay;
+}
+
+function companyPhaseMarketFactor(companyPhase: string): number {
+  switch (companyPhase) {
+    case "startup":
+      return 0.95;
+    case "small_operator":
+      return 1.05;
+    case "regional_carrier":
+      return 1.12;
+    case "expanding":
+      return 1.2;
+    default:
+      return 1;
+  }
+}
+
+function estimateInitialListingCount(params: {
+  aircraftModelCount: number;
+  rolePoolCount: number;
+  candidateAirportCount: number;
+  footprintAirportCount: number;
+  companyPhase: string;
+  progressionTier: number;
+}): number {
+  const catalogBreadth = params.aircraftModelCount * 0.85;
+  const roleBreadth = params.rolePoolCount * 0.9;
+  const geographyBreadth = Math.log2(params.candidateAirportCount + 1) * 1.5;
+  const progressionFactor = 1 + Math.max(0, params.progressionTier - 1) * 0.08;
+  const footprintFactor = 1 + Math.min(0.18, Math.max(0, params.footprintAirportCount - 1) * 0.03);
+  const weightedCount =
+    (catalogBreadth + roleBreadth + geographyBreadth)
+    * companyPhaseMarketFactor(params.companyPhase)
+    * progressionFactor
+    * footprintFactor;
+
+  return Math.max(params.aircraftModelCount, Math.round(weightedCount));
+}
+
+function determineArrivalCount(params: {
+  createdWindow: boolean;
+  currentTimeUtc: string;
+  previousGeneratedAtUtc: string;
+  historyRow: MarketHistoryRow | null;
+  initialListingCount: number;
+  offerWindowId: string;
+}): number {
+  if (params.createdWindow || (params.historyRow?.totalOfferCount ?? 0) <= 0) {
+    return params.initialListingCount;
+  }
+
+  const elapsedDays = daysBetweenUtc(params.previousGeneratedAtUtc, params.currentTimeUtc);
+  if (elapsedDays <= 0) {
+    return 0;
+  }
+
+  const earliestListedAtUtc = params.historyRow?.earliestListedAtUtc ?? params.previousGeneratedAtUtc;
+  const historyDays = Math.max(daysBetweenUtc(earliestListedAtUtc, params.currentTimeUtc), 1);
+  const historicalArrivalRatePerDay = (params.historyRow?.totalOfferCount ?? 0) / historyDays;
+  const expectedArrivals = historicalArrivalRatePerDay * elapsedDays;
+  const wholeArrivals = Math.floor(expectedArrivals);
+  const remainder = expectedArrivals - wholeArrivals;
+
+  if (remainder <= 0) {
+    return wholeArrivals;
+  }
+
+  const seededBonus = randomUnit(
+    `${params.offerWindowId}|${params.previousGeneratedAtUtc}|${params.currentTimeUtc}|${params.historyRow?.totalOfferCount ?? 0}`,
+  ) < remainder
+    ? 1
+    : 0;
+
+  return wholeArrivals + seededBonus;
+}
+
+// Expires listings that time has moved past and only adds new arrivals when simulated time has advanced enough to justify them.
 export function reconcileAircraftMarket(params: {
   saveDatabase: SqliteFileDatabase;
   saveId: string;
@@ -193,7 +291,7 @@ export function reconcileAircraftMarket(params: {
   };
 
   params.saveDatabase.transaction(() => {
-    const { offerWindowId, createdWindow } = loadOrCreateActiveWindow(
+    const { offerWindowId, createdWindow, generatedAtUtc: previousGeneratedAtUtc } = loadOrCreateActiveWindow(
       params.saveDatabase,
       companyContext.companyId,
       companyContext.currentTimeUtc,
@@ -229,20 +327,36 @@ export function reconcileAircraftMarket(params: {
       );
     }
 
-    const availableCountRow = params.saveDatabase.getOne<AvailableCountRow>(
-      `SELECT COUNT(*) AS countValue
+    const historyRow = params.saveDatabase.getOne<MarketHistoryRow>(
+      `SELECT
+         COUNT(*) AS totalOfferCount,
+         MIN(listed_at_utc) AS earliestListedAtUtc
        FROM aircraft_offer
-       WHERE offer_window_id = $offer_window_id
-         AND offer_status = 'available'`,
+       WHERE offer_window_id = $offer_window_id`,
       { $offer_window_id: offerWindowId },
     );
 
-    const targetProfile = marketTargetProfile(params.aircraftReference.listModels().length);
-    const availableCount = availableCountRow?.countValue ?? 0;
-    const missingCount = Math.max(0, targetProfile.totalCount - availableCount);
-
     let insertedOfferCount = 0;
-    if (missingCount > 0) {
+    const aircraftModels = params.aircraftReference.listModels();
+    const marketAirports = params.airportReference.listContractMarketAirports();
+    const initialListingCount = estimateInitialListingCount({
+      aircraftModelCount: aircraftModels.length,
+      rolePoolCount: new Set(aircraftModels.map((model) => model.marketRolePool)).size,
+      candidateAirportCount: marketAirports.length,
+      footprintAirportCount: Math.max(1, companyContext.baseAirportIds.length),
+      companyPhase: companyContext.companyPhase,
+      progressionTier: companyContext.progressionTier,
+    });
+    const arrivalCount = determineArrivalCount({
+      createdWindow,
+      currentTimeUtc: companyContext.currentTimeUtc,
+      previousGeneratedAtUtc,
+      historyRow,
+      initialListingCount,
+      offerWindowId,
+    });
+
+    if (arrivalCount > 0) {
       const aircraftLocationRows = params.saveDatabase.all<AircraftLocationRow>(
         `SELECT current_airport_id AS currentAirportId, aircraft_model_id AS aircraftModelId
          FROM company_aircraft
@@ -268,8 +382,6 @@ export function reconcileAircraftMarket(params: {
         .map((airportId) => params.airportReference.findAirport(airportId))
         .filter((airport): airport is NonNullable<typeof airport> => airport != null && airport.accessibleNow);
 
-      const aircraftModels = params.aircraftReference.listModels();
-      const marketAirports = params.airportReference.listContractMarketAirports();
       const defaultLayoutsByModelId = new Map(
         aircraftModels.map((model) => [model.modelId, params.aircraftReference.findDefaultLayoutForModel(model.modelId)]),
       );
@@ -277,7 +389,6 @@ export function reconcileAircraftMarket(params: {
         .map((row) => params.aircraftReference.findModel(row.aircraftModelId))
         .filter((model): model is NonNullable<typeof model> => model != null);
       const previousModelCounts = new Map(previousOfferRows.map((row) => [row.aircraftModelId, row.listingCount]));
-      const hasAnyHistoricalOffers = previousOfferRows.length > 0;
 
       const generatedMarket = generateAircraftMarket({
         companyContext,
@@ -290,8 +401,8 @@ export function reconcileAircraftMarket(params: {
         ownedRolePools: new Set(ownedModels.map((model) => model.marketRolePool)),
         ownedPilotQualifications: new Set(ownedModels.map((model) => model.pilotQualificationGroup)),
         previousModelCounts,
-        targetCount: missingCount,
-        ageProfile: !hasAnyHistoricalOffers && availableCount === 0 ? "initial" : "replacement",
+        targetCount: arrivalCount,
+        ageProfile: (historyRow?.totalOfferCount ?? 0) <= 0 ? "initial" : "replacement",
       });
 
       for (const generatedOffer of generatedMarket.offers) {

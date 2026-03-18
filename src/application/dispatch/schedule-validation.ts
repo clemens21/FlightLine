@@ -8,9 +8,14 @@
 import type { AirportId, CompanyContractId, JsonObject } from "../../domain/common/primitives.js";
 import type { FlightLegType, ValidationMessage } from "../../domain/dispatch/types.js";
 import type { LaborCategory } from "../../domain/staffing/types.js";
+import { requiredCertificationForQualificationGroup } from "../../domain/staffing/pilot-certifications.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftModelRecord, AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository, AirportRecord } from "../../infrastructure/reference/airport-reference.js";
+import {
+  deriveNamedPilotRequirements,
+  selectNamedPilotsForRequirements,
+} from "../staffing/named-pilot-roster.js";
 
 export interface ProposedScheduleLegInput {
   legType: FlightLegType;
@@ -124,6 +129,7 @@ interface ValidateProposedScheduleDependencies {
   airportReference: AirportReferenceRepository;
   aircraftReference: AircraftReferenceRepository;
   companyId: string;
+  currentTimeUtc: string;
 }
 
 interface StaffingRequirement {
@@ -225,6 +231,9 @@ function findAvailableStaffingPackages(
   reservedFromUtc: string,
   reservedToUtc: string,
 ): StaffingPackageRow[] {
+  const qualificationClause = laborCategory === "pilot"
+    ? ""
+    : "AND qualification_group = $qualification_group";
   return saveDatabase.all<StaffingPackageRow>(
     `SELECT
       staffing_package_id AS staffingPackageId,
@@ -232,7 +241,7 @@ function findAvailableStaffingPackages(
     FROM staffing_package
     WHERE company_id = $company_id
       AND labor_category = $labor_category
-      AND qualification_group = $qualification_group
+      ${qualificationClause}
       AND status IN ('active', 'pending')
       AND starts_at_utc <= $reserved_from_utc
       AND (ends_at_utc IS NULL OR ends_at_utc >= $reserved_to_utc)
@@ -629,6 +638,12 @@ export function validateProposedSchedule(
   }
 
   for (const requirement of staffingRequirements) {
+    const requiredCertificationCode = requirement.laborCategory === "pilot"
+      ? requiredCertificationForQualificationGroup(requirement.qualificationGroup)
+      : undefined;
+    const staffingLabel = requirement.laborCategory === "pilot"
+      ? `pilot coverage${requiredCertificationCode ? ` for ${requiredCertificationCode}` : ""}`
+      : `${requirement.laborCategory} coverage for ${requirement.qualificationGroup}`;
     const candidatePackages = findAvailableStaffingPackages(
       dependencies.saveDatabase,
       dependencies.companyId,
@@ -639,7 +654,7 @@ export function validateProposedSchedule(
     );
 
     if (candidatePackages.length === 0) {
-      pushMessage(messages, "blocker", "staffing.missing_package", `No ${requirement.laborCategory} coverage is available for ${requirement.qualificationGroup}.`, `leg_${requirement.sequenceNumber}`);
+      pushMessage(messages, "blocker", "staffing.missing_package", `No ${staffingLabel} is available.`, `leg_${requirement.sequenceNumber}`);
       continue;
     }
 
@@ -659,12 +674,12 @@ export function validateProposedSchedule(
     }
 
     if (totalAvailableUnits < requirement.unitsRequired) {
-      pushMessage(messages, "blocker", "staffing.coverage_gap", `Not enough ${requirement.laborCategory} coverage is available for ${requirement.qualificationGroup}.`, `leg_${requirement.sequenceNumber}`);
+      pushMessage(messages, "blocker", "staffing.coverage_gap", `Not enough ${staffingLabel} is available.`, `leg_${requirement.sequenceNumber}`);
       continue;
     }
 
     if (totalAvailableUnits === requirement.unitsRequired) {
-      pushMessage(messages, "warning", "staffing.last_spare_unit", `This schedule uses the last available ${requirement.laborCategory} coverage for ${requirement.qualificationGroup}.`, `leg_${requirement.sequenceNumber}`);
+      pushMessage(messages, "warning", "staffing.last_spare_unit", `This schedule uses the last available ${staffingLabel}.`, `leg_${requirement.sequenceNumber}`);
     }
 
     for (const candidatePackage of candidatePackages) {
@@ -690,6 +705,83 @@ export function validateProposedSchedule(
         reservedFromUtc: requirement.reservedFromUtc,
         reservedToUtc: requirement.reservedToUtc,
       });
+    }
+  }
+
+  const namedPilotRequirements = deriveNamedPilotRequirements(laborReservations);
+  if (namedPilotRequirements.length > 0) {
+    const namedPilotSelection = selectNamedPilotsForRequirements(
+      dependencies.saveDatabase,
+      dependencies.companyId,
+      proposedSchedule.scheduleId ?? "__draft_preview__",
+      namedPilotRequirements,
+      {
+        currentTimeUtc: dependencies.currentTimeUtc,
+        airportReference: dependencies.airportReference,
+        ...(resolvedLegs[0]?.originAirportId ? { requiredOriginAirportId: resolvedLegs[0].originAirportId } : {}),
+      },
+    );
+
+    for (const assessment of namedPilotSelection.assessments) {
+      const requiredCertificationLabel = assessment.requiredCertificationCode
+        ? `${assessment.requiredCertificationCode} certification`
+        : assessment.qualificationGroup;
+      if (assessment.availableCandidateCount < assessment.unitsRequired) {
+        const blockerSummary = assessment.blockedByCertificationCount > 0
+          ? `Not enough named pilots are currently available for ${requiredCertificationLabel}; `
+            + `${assessment.blockedByCertificationCount} lack that certification.`
+          : assessment.blockedByTrainingCount > 0
+          ? `Not enough named pilots are currently available for ${requiredCertificationLabel}; `
+            + `${assessment.blockedByTrainingCount} in training.`
+          : assessment.blockedByRestingCount > 0
+            ? `Not enough named pilots are currently available for ${requiredCertificationLabel}; `
+              + `${assessment.blockedByRestingCount} still resting.`
+            : assessment.blockedByTravelCount > 0
+              ? `Not enough named pilots are currently available for ${requiredCertificationLabel}; `
+                + `${assessment.blockedByTravelCount} cannot reach ${resolvedLegs[0]?.originAirportId ?? "the first-leg origin"} in time.`
+            : `Not enough named pilots are currently available for ${requiredCertificationLabel}; `
+              + `need ${assessment.unitsRequired}, found ${assessment.availableCandidateCount}.`;
+        const recoveryAction = assessment.blockedByCertificationCount > 0
+          ? "Hire or train a pilot with the required certification."
+          : assessment.blockedByTrainingCount > 0
+          ? "Wait for training to complete or use a different pilot qualification group."
+          : assessment.blockedByRestingCount > 0
+            ? "Wait for a resting pilot to become ready or free another qualified pilot."
+            : assessment.blockedByTravelCount > 0
+              ? "Delay the schedule or use a pilot who is already at the first-leg origin."
+            : "Free an overlapping assignment or wait until a resting pilot becomes ready.";
+        pushMessage(
+          messages,
+          "blocker",
+          "staffing.named_pilot_gap",
+          blockerSummary,
+          undefined,
+          recoveryAction,
+        );
+        continue;
+      }
+
+      if (assessment.selectedTravelCount > 0) {
+        pushMessage(
+          messages,
+          "warning",
+          "staffing.named_pilot_travel_required",
+          `${assessment.selectedTravelCount} named pilot${assessment.selectedTravelCount === 1 ? "" : "s"} would need to travel to ${resolvedLegs[0]?.originAirportId ?? "the first-leg origin"} before this schedule starts.`,
+          undefined,
+          "Commit only if that reposition window is acceptable for this schedule.",
+        );
+      }
+
+      if (assessment.availableCandidateCount === assessment.unitsRequired) {
+        pushMessage(
+          messages,
+          "warning",
+          "staffing.named_pilot_last_ready",
+          `This schedule would use the last ready named pilot coverage for ${requiredCertificationLabel}.`,
+          undefined,
+          "Commit only if you can afford to leave no ready reserve in this qualification group.",
+        );
+      }
     }
   }
 

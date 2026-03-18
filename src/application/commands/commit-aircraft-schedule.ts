@@ -14,6 +14,11 @@ import type { AircraftReferenceRepository } from "../../infrastructure/reference
 import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
 import type { FlightLegType } from "../../domain/dispatch/types.js";
 import type { JsonObject } from "../../domain/common/primitives.js";
+import {
+  deriveNamedPilotRequirements,
+  reconcileNamedPilots,
+  selectNamedPilotsForRequirements,
+} from "../staffing/named-pilot-roster.js";
 
 interface CommitAircraftScheduleDependencies {
   saveDatabase: SqliteFileDatabase;
@@ -169,6 +174,7 @@ export async function handleCommitAircraftSchedule(
     airportReference: dependencies.airportReference,
     aircraftReference: dependencies.aircraftReference,
     companyId: companyContext.companyId,
+    currentTimeUtc: companyContext.currentTimeUtc,
   });
 
   const hardBlockers = validation.snapshot.validationMessages
@@ -195,9 +201,47 @@ export async function handleCommitAircraftSchedule(
     };
   }
 
+  reconcileNamedPilots(
+    dependencies.saveDatabase,
+    companyContext.companyId,
+    companyContext.homeBaseAirportId,
+    companyContext.currentTimeUtc,
+  );
+
+  const namedPilotRequirements = deriveNamedPilotRequirements(validation.laborReservations);
+  const namedPilotSelection = selectNamedPilotsForRequirements(
+    dependencies.saveDatabase,
+    companyContext.companyId,
+    scheduleRow.scheduleId,
+    namedPilotRequirements,
+    {
+      currentTimeUtc: companyContext.currentTimeUtc,
+      airportReference: dependencies.airportReference,
+      ...(validation.resolvedLegs[0]?.originAirportId ? { requiredOriginAirportId: validation.resolvedLegs[0].originAirportId } : {}),
+    },
+  );
+
+  if (namedPilotSelection.hardBlockers.length > 0) {
+    return {
+      success: false,
+      commandId: command.commandId,
+      changedAggregateIds: [scheduleRow.scheduleId],
+      validationMessages: [...namedPilotSelection.hardBlockers, ...warnings],
+      hardBlockers: namedPilotSelection.hardBlockers,
+      warnings,
+      emittedEventIds: [],
+      emittedLedgerEntryIds: [],
+      metadata: {
+        scheduleId: scheduleRow.scheduleId,
+        validationSnapshot: validation.snapshot,
+      },
+    };
+  }
+
   const eventLogEntryId = createPrefixedId("event");
   const flightLegIds = new Map<number, string>();
   const laborAllocationIds: string[] = [];
+  const namedPilotAssignmentIds: string[] = [];
   const scheduledEventIds: string[] = [];
 
   validation.resolvedLegs.forEach((leg) => {
@@ -238,6 +282,11 @@ export async function handleCommitAircraftSchedule(
 
     dependencies.saveDatabase.run(
       `DELETE FROM labor_allocation WHERE schedule_id = $schedule_id`,
+      { $schedule_id: scheduleRow.scheduleId },
+    );
+
+    dependencies.saveDatabase.run(
+      `DELETE FROM named_pilot_assignment WHERE schedule_id = $schedule_id`,
       { $schedule_id: scheduleRow.scheduleId },
     );
 
@@ -421,6 +470,67 @@ export async function handleCommitAircraftSchedule(
       );
     }
 
+    for (const selectedAssignment of namedPilotSelection.selectedAssignments) {
+      if (selectedAssignment.travelUntilUtc) {
+        dependencies.saveDatabase.run(
+          `UPDATE named_pilot
+          SET travel_origin_airport_id = $travel_origin_airport_id,
+              travel_destination_airport_id = $travel_destination_airport_id,
+              travel_started_at_utc = $travel_started_at_utc,
+              travel_until_utc = $travel_until_utc,
+              updated_at_utc = $updated_at_utc
+          WHERE named_pilot_id = $named_pilot_id`,
+          {
+            $named_pilot_id: selectedAssignment.namedPilotId,
+            $travel_origin_airport_id: selectedAssignment.travelOriginAirportId ?? null,
+            $travel_destination_airport_id: selectedAssignment.travelDestinationAirportId ?? null,
+            $travel_started_at_utc: selectedAssignment.travelStartedAtUtc ?? null,
+            $travel_until_utc: selectedAssignment.travelUntilUtc,
+            $updated_at_utc: companyContext.currentTimeUtc,
+          },
+        );
+      }
+
+      const namedPilotAssignmentId = createPrefixedId("pilot_assign");
+      namedPilotAssignmentIds.push(namedPilotAssignmentId);
+      dependencies.saveDatabase.run(
+        `INSERT INTO named_pilot_assignment (
+          named_pilot_assignment_id,
+          named_pilot_id,
+          aircraft_id,
+          schedule_id,
+          qualification_group,
+          assigned_from_utc,
+          assigned_to_utc,
+          status,
+          created_at_utc,
+          updated_at_utc
+        ) VALUES (
+          $named_pilot_assignment_id,
+          $named_pilot_id,
+          $aircraft_id,
+          $schedule_id,
+          $qualification_group,
+          $assigned_from_utc,
+          $assigned_to_utc,
+          'reserved',
+          $created_at_utc,
+          $updated_at_utc
+        )`,
+        {
+          $named_pilot_assignment_id: namedPilotAssignmentId,
+          $named_pilot_id: selectedAssignment.namedPilotId,
+          $aircraft_id: scheduleRow.aircraftId,
+          $schedule_id: scheduleRow.scheduleId,
+          $qualification_group: selectedAssignment.qualificationGroup,
+          $assigned_from_utc: selectedAssignment.assignedFromUtc,
+          $assigned_to_utc: selectedAssignment.assignedToUtc,
+          $created_at_utc: companyContext.currentTimeUtc,
+          $updated_at_utc: companyContext.currentTimeUtc,
+        },
+      );
+    }
+
     if (uniqueContractIds.length > 0) {
       const placeholders = uniqueContractIds.map((_, index) => `$contract_id_${index}`).join(", ");
       const params: Record<string, string> = {
@@ -531,6 +641,7 @@ export async function handleCommitAircraftSchedule(
           aircraftId: scheduleRow.aircraftId,
           contractIdsAttached: uniqueContractIds,
           laborAllocationCount: laborAllocationIds.length,
+          namedPilotAssignmentCount: namedPilotAssignmentIds.length,
           scheduledEventCount: scheduledEventIds.length,
           validationSnapshot: validation.snapshot,
         }),
@@ -588,6 +699,7 @@ export async function handleCommitAircraftSchedule(
       aircraftId: scheduleRow.aircraftId,
       contractIdsAttached: uniqueContractIds,
       laborAllocationIds,
+      namedPilotAssignmentIds,
       validationSnapshot: validation.snapshot,
     },
   };

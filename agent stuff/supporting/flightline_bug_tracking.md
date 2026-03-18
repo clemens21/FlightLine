@@ -4,6 +4,9 @@
 
 GitHub Issues is the default durable tracker for FlightLine bugs, regressions, and QA findings.
 
+Use the internal `Bug Report` issue form for contributor, QA, and agent findings.
+Use the player-facing `Defect Report` issue form when the report is coming from someone playing the game.
+
 Use issues to keep bugs out of chat history and out of the intake-brief folder.
 
 Intake briefs are for framing non-trivial bug work.
@@ -27,7 +30,7 @@ They are not the bug database.
 Use a small label set.
 Do not build a large issue bureaucracy.
 
-### Required labels
+### Required labels for internal bug work
 
 - `bug`
 - one severity label:
@@ -46,6 +49,14 @@ Do not build a large issue bureaucracy.
   - `area:finance`
   - `area:tests`
   - `area:docs`
+
+### Player-reported defect intake label
+
+- `defect`
+
+Use `defect` on player-facing reports when the issue has been reported but not yet fully triaged.
+Add the normal severity and `area:*` labels during triage.
+If the report is confirmed as an engineering bug that should follow the standard bug workflow, add `bug` as well.
 
 ### Optional workflow labels
 
@@ -69,7 +80,7 @@ Create one when the bug needs framing.
 
 ## Minimal Workflow
 
-1. Open a GitHub issue using the bug template.
+1. Open a GitHub issue using the `Bug Report` or `Defect Report` form.
 2. Add the recommended labels.
 3. If the bug is non-trivial, create a Mara intake brief and link the issue.
 4. Mara decides whether the work stays in `Single-Agent Mode`, goes straight to Eli, or needs broader framing.

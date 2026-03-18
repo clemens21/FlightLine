@@ -8,8 +8,14 @@
 import type { AdvanceTimeCommand, CommandResult } from "./types.js";
 import { createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
+import { deriveNamedPilotRestUntil } from "../staffing/named-pilot-roster.js";
+import {
+  applyCertificationTrainingAward,
+  parsePilotCertificationsJson,
+} from "../../domain/staffing/pilot-certifications.js";
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { AdvanceTimeStopCondition } from "../../domain/simulation/types.js";
+import type { EmploymentModel, LaborCategory, PilotCertificationCode } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 
@@ -41,6 +47,7 @@ interface FlightLegExecutionRow extends Record<string, unknown> {
   sequenceNumber: number;
   legType: string;
   linkedCompanyContractId: string | null;
+  assignedQualificationGroup: string | null;
   originAirportId: string;
   destinationAirportId: string;
   plannedDepartureUtc: string;
@@ -76,6 +83,59 @@ interface MaintenanceProgramRow extends Record<string, unknown> {
 
 interface CountRow extends Record<string, unknown> {
   countValue: number;
+}
+
+interface NamedPilotAssignmentStateRow extends Record<string, unknown> {
+  namedPilotAssignmentId: string;
+  namedPilotId: string;
+  displayName: string;
+  aircraftId: string;
+  scheduleId: string;
+  qualificationGroup: string;
+  assignedFromUtc: string;
+  assignedToUtc: string;
+  status: "reserved" | "flying" | "completed" | "cancelled";
+  currentAirportId: string | null;
+  restingUntilUtc: string | null;
+  travelDestinationAirportId: string | null;
+  travelStartedAtUtc: string | null;
+  travelUntilUtc: string | null;
+}
+
+interface CompletedTrainingRow extends Record<string, unknown> {
+  namedPilotId: string;
+  displayName: string;
+  qualificationGroup: string;
+  certificationsJson: string | null;
+  trainingProgramKind: string | null;
+  trainingTargetCertificationCode: string | null;
+  trainingStartedAtUtc: string | null;
+  trainingUntilUtc: string;
+}
+
+interface CompletedTravelRow extends Record<string, unknown> {
+  namedPilotId: string;
+  displayName: string;
+  travelOriginAirportId: string | null;
+  travelDestinationAirportId: string;
+  travelStartedAtUtc: string | null;
+  travelUntilUtc: string;
+}
+
+interface ExpiringStaffingPackageRow extends Record<string, unknown> {
+  staffingPackageId: string;
+  laborCategory: LaborCategory;
+  employmentModel: EmploymentModel;
+  qualificationGroup: string;
+  startsAtUtc: string;
+  endsAtUtc: string;
+  status: "pending" | "active";
+  recurringObligationId: string | null;
+}
+
+interface StaffingPackagePilotRow extends Record<string, unknown> {
+  namedPilotId: string;
+  displayName: string;
 }
 
 interface ContractDeadlineRow extends Record<string, unknown> {
@@ -146,6 +206,10 @@ function normalizeStopConditions(stopConditions: AdvanceTimeStopCondition[] | un
 
 function hoursBetween(startUtc: string, endUtc: string): number {
   return Math.max(0, (new Date(endUtc).getTime() - new Date(startUtc).getTime()) / 3_600_000);
+}
+
+function humanizeIdentifier(value: string): string {
+  return value.replaceAll("_", " ");
 }
 
 function deriveConditionBandInput(conditionValue: number): string {
@@ -424,6 +488,7 @@ export async function handleAdvanceTime(
           fl.sequence_number AS sequenceNumber,
           fl.leg_type AS legType,
           fl.linked_company_contract_id AS linkedCompanyContractId,
+          fl.assigned_qualification_group AS assignedQualificationGroup,
           fl.origin_airport_id AS originAirportId,
           fl.destination_airport_id AS destinationAirportId,
           fl.planned_departure_utc AS plannedDepartureUtc,
@@ -472,6 +537,189 @@ export async function handleAdvanceTime(
       )
     );
 
+    const loadNamedPilotAssignments = (
+      scheduleId: string,
+      qualificationGroup: string,
+      eventTimeUtc: string,
+    ): NamedPilotAssignmentStateRow[] => (
+      dependencies.saveDatabase.all<NamedPilotAssignmentStateRow>(
+        `SELECT
+          npa.named_pilot_assignment_id AS namedPilotAssignmentId,
+          npa.named_pilot_id AS namedPilotId,
+          np.display_name AS displayName,
+          npa.aircraft_id AS aircraftId,
+          npa.schedule_id AS scheduleId,
+          npa.qualification_group AS qualificationGroup,
+          npa.assigned_from_utc AS assignedFromUtc,
+          npa.assigned_to_utc AS assignedToUtc,
+          npa.status AS status,
+          np.current_airport_id AS currentAirportId,
+          np.resting_until_utc AS restingUntilUtc,
+          np.travel_destination_airport_id AS travelDestinationAirportId,
+          np.travel_started_at_utc AS travelStartedAtUtc,
+          np.travel_until_utc AS travelUntilUtc
+        FROM named_pilot_assignment AS npa
+        JOIN named_pilot AS np ON np.named_pilot_id = npa.named_pilot_id
+        WHERE npa.schedule_id = $schedule_id
+          AND npa.qualification_group = $qualification_group
+          AND npa.status IN ('reserved', 'flying')
+          AND npa.assigned_from_utc <= $event_time_utc
+          AND npa.assigned_to_utc > $event_time_utc
+        ORDER BY npa.named_pilot_assignment_id ASC`,
+        {
+          $schedule_id: scheduleId,
+          $qualification_group: qualificationGroup,
+          $event_time_utc: eventTimeUtc,
+        },
+      )
+    );
+
+    const cancelNamedPilotAssignments = (scheduleId: string, eventTimeUtc: string): void => {
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot_assignment
+        SET status = 'cancelled',
+            updated_at_utc = $updated_at_utc
+        WHERE schedule_id = $schedule_id
+          AND status IN ('reserved', 'flying')`,
+        {
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+        },
+      );
+    };
+
+    const setNamedPilotAssignmentsInFlight = (
+      scheduleId: string,
+      qualificationGroup: string,
+      eventTimeUtc: string,
+    ): void => {
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot_assignment
+        SET status = 'flying',
+            updated_at_utc = $updated_at_utc
+        WHERE schedule_id = $schedule_id
+          AND qualification_group = $qualification_group
+          AND status = 'reserved'
+          AND assigned_from_utc <= $event_time_utc
+          AND assigned_to_utc > $event_time_utc`,
+        {
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+          $qualification_group: qualificationGroup,
+          $event_time_utc: eventTimeUtc,
+        },
+      );
+
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot
+        SET resting_until_utc = NULL,
+            travel_origin_airport_id = NULL,
+            travel_destination_airport_id = NULL,
+            travel_started_at_utc = NULL,
+            travel_until_utc = NULL,
+            updated_at_utc = $updated_at_utc
+        WHERE named_pilot_id IN (
+          SELECT named_pilot_id
+          FROM named_pilot_assignment
+          WHERE schedule_id = $schedule_id
+            AND qualification_group = $qualification_group
+            AND assigned_from_utc <= $event_time_utc
+            AND assigned_to_utc > $event_time_utc
+        )`,
+        {
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+          $qualification_group: qualificationGroup,
+          $event_time_utc: eventTimeUtc,
+        },
+      );
+    };
+
+    const setNamedPilotAssignmentsReserved = (
+      scheduleId: string,
+      qualificationGroup: string,
+      destinationAirportId: string,
+      eventTimeUtc: string,
+    ): void => {
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot_assignment
+        SET status = 'reserved',
+            updated_at_utc = $updated_at_utc
+        WHERE schedule_id = $schedule_id
+          AND qualification_group = $qualification_group
+          AND status = 'flying'`,
+        {
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+          $qualification_group: qualificationGroup,
+        },
+      );
+
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot
+        SET current_airport_id = $current_airport_id,
+            resting_until_utc = NULL,
+            travel_origin_airport_id = NULL,
+            travel_destination_airport_id = NULL,
+            travel_started_at_utc = NULL,
+            travel_until_utc = NULL,
+            updated_at_utc = $updated_at_utc
+        WHERE named_pilot_id IN (
+          SELECT named_pilot_id
+          FROM named_pilot_assignment
+          WHERE schedule_id = $schedule_id
+            AND qualification_group = $qualification_group
+        )`,
+        {
+          $current_airport_id: destinationAirportId,
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+          $qualification_group: qualificationGroup,
+        },
+      );
+    };
+
+    const completeNamedPilotAssignments = (
+      scheduleId: string,
+      destinationAirportId: string,
+      eventTimeUtc: string,
+    ): void => {
+      const restingUntilUtc = deriveNamedPilotRestUntil(eventTimeUtc);
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot_assignment
+        SET status = 'completed',
+            updated_at_utc = $updated_at_utc
+        WHERE schedule_id = $schedule_id
+          AND status IN ('reserved', 'flying')`,
+        {
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+        },
+      );
+
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot
+        SET current_airport_id = $current_airport_id,
+            resting_until_utc = $resting_until_utc,
+            travel_origin_airport_id = NULL,
+            travel_destination_airport_id = NULL,
+            travel_started_at_utc = NULL,
+            travel_until_utc = NULL,
+            updated_at_utc = $updated_at_utc
+        WHERE named_pilot_id IN (
+          SELECT named_pilot_id
+          FROM named_pilot_assignment
+          WHERE schedule_id = $schedule_id
+        )`,
+        {
+          $current_airport_id: destinationAirportId,
+          $resting_until_utc: restingUntilUtc,
+          $updated_at_utc: eventTimeUtc,
+          $schedule_id: scheduleId,
+        },
+      );
+    };
+
     const markScheduleBlocked = (
       eventTimeUtc: string,
       scheduleId: string,
@@ -514,6 +762,8 @@ export async function handleAdvanceTime(
           $aircraft_id: aircraftId,
         },
       );
+
+      cancelNamedPilotAssignments(scheduleId, eventTimeUtc);
 
       insertEventLog(
         eventTimeUtc,
@@ -608,6 +858,59 @@ export async function handleAdvanceTime(
         blockerReasons.push(`linked contract is ${legRow.contractState ?? "missing"}`);
       }
 
+      const aircraftModel = dependencies.aircraftReference.findModel(legRow.aircraftModelId);
+      const assignedQualificationGroup = legRow.assignedQualificationGroup ?? aircraftModel?.pilotQualificationGroup;
+
+      if (!aircraftModel) {
+        blockerReasons.push(`aircraft model ${legRow.aircraftModelId} is missing`);
+      }
+
+      if (assignedQualificationGroup && aircraftModel) {
+        const namedPilotAssignments = loadNamedPilotAssignments(
+          legRow.scheduleId,
+          assignedQualificationGroup,
+          eventTimeUtc,
+        );
+
+        if (namedPilotAssignments.length < aircraftModel.pilotsRequired) {
+          blockerReasons.push(`named pilot coverage is short for ${assignedQualificationGroup}`);
+        }
+
+        const restingPilots = namedPilotAssignments
+          .filter((assignment) =>
+            assignment.restingUntilUtc
+            && new Date(assignment.restingUntilUtc).getTime() > new Date(eventTimeUtc).getTime()
+          )
+          .map((assignment) => assignment.displayName);
+
+        if (restingPilots.length > 0) {
+          blockerReasons.push(`named pilots are still resting: ${restingPilots.join(", ")}`);
+        }
+
+        const travelingPilots = namedPilotAssignments
+          .filter((assignment) =>
+            assignment.travelUntilUtc
+            && new Date(assignment.travelUntilUtc).getTime() > new Date(eventTimeUtc).getTime()
+          )
+          .map((assignment) => assignment.displayName);
+
+        if (travelingPilots.length > 0) {
+          blockerReasons.push(`named pilots are still traveling: ${travelingPilots.join(", ")}`);
+        }
+
+        const offAirportPilots = namedPilotAssignments
+          .filter((assignment) =>
+            !assignment.travelUntilUtc
+            && assignment.currentAirportId
+            && assignment.currentAirportId !== legRow.originAirportId
+          )
+          .map((assignment) => `${assignment.displayName} at ${assignment.currentAirportId}`);
+
+        if (offAirportPilots.length > 0) {
+          blockerReasons.push(`named pilots are not at ${legRow.originAirportId}: ${offAirportPilots.join(", ")}`);
+        }
+      }
+
       if (blockerReasons.length > 0) {
         markScheduledEventProcessed(scheduledEvent.scheduledEventId);
         markScheduleBlocked(
@@ -623,6 +926,10 @@ export async function handleAdvanceTime(
         );
         batchOutcome.criticalAlertTriggered = true;
         return;
+      }
+
+      if (assignedQualificationGroup) {
+        setNamedPilotAssignmentsInFlight(legRow.scheduleId, assignedQualificationGroup, eventTimeUtc);
       }
 
       dependencies.saveDatabase.run(
@@ -753,6 +1060,7 @@ export async function handleAdvanceTime(
         batchOutcome.criticalAlertTriggered = true;
         return;
       }
+      const assignedQualificationGroup = legRow.assignedQualificationGroup ?? aircraftModel.pilotQualificationGroup;
 
       const maintenanceProgram = loadMaintenanceProgram(legRow.aircraftId);
       if (!maintenanceProgram) {
@@ -913,6 +1221,21 @@ export async function handleAdvanceTime(
             ? { statusInput: "idle", dispatchAvailable: 1, activeScheduleId: null as string | null }
             : { statusInput: "maintenance", dispatchAvailable: 0, activeScheduleId: null as string | null })
         : { statusInput: "scheduled", dispatchAvailable: 0, activeScheduleId: legRow.scheduleId };
+
+      if (remainingLegCount === 0) {
+        completeNamedPilotAssignments(
+          legRow.scheduleId,
+          legRow.destinationAirportId,
+          eventTimeUtc,
+        );
+      } else {
+        setNamedPilotAssignmentsReserved(
+          legRow.scheduleId,
+          assignedQualificationGroup,
+          legRow.destinationAirportId,
+          eventTimeUtc,
+        );
+      }
 
       dependencies.saveDatabase.run(
         `UPDATE company_aircraft
@@ -1077,6 +1400,272 @@ export async function handleAdvanceTime(
       changedAggregateIds.add(contractRow.companyContractId);
     };
 
+    let pilotTransitionCursorUtc = companyContext!.currentTimeUtc;
+
+    const completeDuePilotTraining = (fromUtc: string, toUtc: string): void => {
+      const completedTrainingRows = dependencies.saveDatabase.all<CompletedTrainingRow>(
+        `SELECT
+          np.named_pilot_id AS namedPilotId,
+          np.display_name AS displayName,
+          sp.qualification_group AS qualificationGroup,
+          np.certifications_json AS certificationsJson,
+          np.training_program_kind AS trainingProgramKind,
+          np.training_target_certification_code AS trainingTargetCertificationCode,
+          np.training_started_at_utc AS trainingStartedAtUtc,
+          np.training_until_utc AS trainingUntilUtc
+        FROM named_pilot AS np
+        JOIN staffing_package AS sp ON sp.staffing_package_id = np.staffing_package_id
+        WHERE np.company_id = $company_id
+          AND np.training_until_utc IS NOT NULL
+          AND np.training_until_utc > $from_utc
+          AND np.training_until_utc <= $to_utc
+        ORDER BY np.training_until_utc ASC, np.named_pilot_id ASC`,
+        {
+          $company_id: companyContext!.companyId,
+          $from_utc: fromUtc,
+          $to_utc: toUtc,
+        },
+      );
+
+      for (const completedTraining of completedTrainingRows) {
+        const updatedCertifications =
+          completedTraining.trainingProgramKind === "certification" && completedTraining.trainingTargetCertificationCode
+            ? applyCertificationTrainingAward(
+                parsePilotCertificationsJson(
+                  completedTraining.certificationsJson,
+                  completedTraining.qualificationGroup,
+                ),
+                completedTraining.trainingTargetCertificationCode as PilotCertificationCode,
+              )
+            : parsePilotCertificationsJson(
+                completedTraining.certificationsJson,
+                completedTraining.qualificationGroup,
+              );
+        const trainingMessage = completedTraining.trainingProgramKind === "certification"
+          && completedTraining.trainingTargetCertificationCode
+          ? `${completedTraining.displayName} completed ${completedTraining.trainingTargetCertificationCode} certification training.`
+          : `${completedTraining.displayName} completed recurrent training.`;
+        dependencies.saveDatabase.run(
+          `UPDATE named_pilot
+          SET training_program_kind = NULL,
+              training_target_certification_code = NULL,
+              certifications_json = $certifications_json,
+              training_started_at_utc = NULL,
+              training_until_utc = NULL,
+              updated_at_utc = $updated_at_utc
+          WHERE named_pilot_id = $named_pilot_id`,
+          {
+            $certifications_json: JSON.stringify(updatedCertifications),
+            $updated_at_utc: completedTraining.trainingUntilUtc,
+            $named_pilot_id: completedTraining.namedPilotId,
+          },
+        );
+
+        insertEventLog(
+          completedTraining.trainingUntilUtc,
+          "pilot_training_completed",
+          "named_pilot",
+          completedTraining.namedPilotId,
+          "info",
+          trainingMessage,
+          {
+            qualificationGroup: completedTraining.qualificationGroup,
+            trainingProgramKind: completedTraining.trainingProgramKind ?? "recurrent",
+            targetCertificationCode: completedTraining.trainingTargetCertificationCode ?? undefined,
+            certifications: updatedCertifications,
+            trainingStartedAtUtc: completedTraining.trainingStartedAtUtc ?? undefined,
+            trainingUntilUtc: completedTraining.trainingUntilUtc,
+          },
+        );
+
+        changedAggregateIds.add(completedTraining.namedPilotId);
+      }
+    };
+
+    const completeDuePilotTravel = (fromUtc: string, toUtc: string): void => {
+      const completedTravelRows = dependencies.saveDatabase.all<CompletedTravelRow>(
+        `SELECT
+          named_pilot_id AS namedPilotId,
+          display_name AS displayName,
+          travel_origin_airport_id AS travelOriginAirportId,
+          travel_destination_airport_id AS travelDestinationAirportId,
+          travel_started_at_utc AS travelStartedAtUtc,
+          travel_until_utc AS travelUntilUtc
+        FROM named_pilot
+        WHERE company_id = $company_id
+          AND travel_until_utc IS NOT NULL
+          AND travel_destination_airport_id IS NOT NULL
+          AND travel_until_utc > $from_utc
+          AND travel_until_utc <= $to_utc
+        ORDER BY travel_until_utc ASC, named_pilot_id ASC`,
+        {
+          $company_id: companyContext!.companyId,
+          $from_utc: fromUtc,
+          $to_utc: toUtc,
+        },
+      );
+
+      for (const completedTravel of completedTravelRows) {
+        dependencies.saveDatabase.run(
+          `UPDATE named_pilot
+          SET current_airport_id = $current_airport_id,
+              travel_origin_airport_id = NULL,
+              travel_destination_airport_id = NULL,
+              travel_started_at_utc = NULL,
+              travel_until_utc = NULL,
+              updated_at_utc = $updated_at_utc
+          WHERE named_pilot_id = $named_pilot_id`,
+          {
+            $current_airport_id: completedTravel.travelDestinationAirportId,
+            $updated_at_utc: completedTravel.travelUntilUtc,
+            $named_pilot_id: completedTravel.namedPilotId,
+          },
+        );
+
+        insertEventLog(
+          completedTravel.travelUntilUtc,
+          "pilot_travel_completed",
+          "named_pilot",
+          completedTravel.namedPilotId,
+          "info",
+          `${completedTravel.displayName} arrived at ${completedTravel.travelDestinationAirportId}.`,
+          {
+            travelOriginAirportId: completedTravel.travelOriginAirportId ?? undefined,
+            travelDestinationAirportId: completedTravel.travelDestinationAirportId,
+            travelStartedAtUtc: completedTravel.travelStartedAtUtc ?? undefined,
+            travelUntilUtc: completedTravel.travelUntilUtc,
+          },
+        );
+
+        changedAggregateIds.add(completedTravel.namedPilotId);
+      }
+    };
+
+    const expireDueStaffingPackages = (toUtc: string): void => {
+      const expiringPackages = dependencies.saveDatabase.all<ExpiringStaffingPackageRow>(
+        `SELECT
+          sp.staffing_package_id AS staffingPackageId,
+          sp.labor_category AS laborCategory,
+          sp.employment_model AS employmentModel,
+          sp.qualification_group AS qualificationGroup,
+          sp.starts_at_utc AS startsAtUtc,
+          sp.ends_at_utc AS endsAtUtc,
+          sp.status AS status,
+          ro.recurring_obligation_id AS recurringObligationId
+        FROM staffing_package AS sp
+        LEFT JOIN recurring_obligation AS ro
+          ON ro.source_object_type = 'staffing_package'
+         AND ro.source_object_id = sp.staffing_package_id
+         AND ro.status = 'active'
+        WHERE sp.company_id = $company_id
+          AND sp.status IN ('pending', 'active')
+          AND sp.ends_at_utc IS NOT NULL
+          AND sp.ends_at_utc <= $to_utc
+        ORDER BY sp.ends_at_utc ASC, sp.staffing_package_id ASC`,
+        {
+          $company_id: companyContext!.companyId,
+          $to_utc: toUtc,
+        },
+      );
+
+      for (const staffingPackage of expiringPackages) {
+        const packagePilots = staffingPackage.laborCategory === "pilot"
+          ? dependencies.saveDatabase.all<StaffingPackagePilotRow>(
+              `SELECT
+                named_pilot_id AS namedPilotId,
+                display_name AS displayName
+              FROM named_pilot
+              WHERE company_id = $company_id
+                AND staffing_package_id = $staffing_package_id
+              ORDER BY roster_slot_number ASC, named_pilot_id ASC`,
+              {
+                $company_id: companyContext!.companyId,
+                $staffing_package_id: staffingPackage.staffingPackageId,
+              },
+            )
+          : [];
+
+        dependencies.saveDatabase.run(
+          `UPDATE staffing_package
+          SET status = 'expired'
+          WHERE staffing_package_id = $staffing_package_id`,
+          { $staffing_package_id: staffingPackage.staffingPackageId },
+        );
+
+        if (staffingPackage.recurringObligationId) {
+          dependencies.saveDatabase.run(
+            `UPDATE recurring_obligation
+            SET status = 'expired',
+                end_at_utc = COALESCE(end_at_utc, $end_at_utc)
+            WHERE recurring_obligation_id = $recurring_obligation_id`,
+            {
+              $recurring_obligation_id: staffingPackage.recurringObligationId,
+              $end_at_utc: staffingPackage.endsAtUtc,
+            },
+          );
+          changedAggregateIds.add(staffingPackage.recurringObligationId);
+        }
+
+        if (packagePilots.length > 0) {
+          dependencies.saveDatabase.run(
+            `UPDATE named_pilot
+            SET resting_until_utc = NULL,
+                training_program_kind = NULL,
+                training_target_certification_code = NULL,
+                training_started_at_utc = NULL,
+                training_until_utc = NULL,
+                travel_origin_airport_id = NULL,
+                travel_destination_airport_id = NULL,
+                travel_started_at_utc = NULL,
+                travel_until_utc = NULL,
+                updated_at_utc = $updated_at_utc
+            WHERE company_id = $company_id
+              AND staffing_package_id = $staffing_package_id`,
+            {
+              $company_id: companyContext!.companyId,
+              $staffing_package_id: staffingPackage.staffingPackageId,
+              $updated_at_utc: staffingPackage.endsAtUtc,
+            },
+          );
+        }
+
+        const employmentLabel = humanizeIdentifier(staffingPackage.employmentModel);
+        const laborLabel = humanizeIdentifier(staffingPackage.laborCategory);
+        const qualificationLabel = humanizeIdentifier(staffingPackage.qualificationGroup);
+        insertEventLog(
+          staffingPackage.endsAtUtc,
+          "staffing_package_expired",
+          "staffing_package",
+          staffingPackage.staffingPackageId,
+          "info",
+          `${employmentLabel.charAt(0).toUpperCase() + employmentLabel.slice(1)} ${laborLabel} coverage for ${qualificationLabel} expired.`,
+          {
+            laborCategory: staffingPackage.laborCategory,
+            employmentModel: staffingPackage.employmentModel,
+            qualificationGroup: staffingPackage.qualificationGroup,
+            startsAtUtc: staffingPackage.startsAtUtc,
+            endsAtUtc: staffingPackage.endsAtUtc,
+            previousStatus: staffingPackage.status,
+            recurringObligationId: staffingPackage.recurringObligationId ?? undefined,
+            namedPilotIds: packagePilots.map((pilot) => pilot.namedPilotId),
+          },
+        );
+
+        changedAggregateIds.add(staffingPackage.staffingPackageId);
+        packagePilots.forEach((pilot) => changedAggregateIds.add(pilot.namedPilotId));
+      }
+    };
+
+    const resolveDuePilotTransitions = (toUtc: string): void => {
+      if (new Date(toUtc).getTime() <= new Date(pilotTransitionCursorUtc).getTime()) {
+        return;
+      }
+
+      completeDuePilotTraining(pilotTransitionCursorUtc, toUtc);
+      completeDuePilotTravel(pilotTransitionCursorUtc, toUtc);
+      pilotTransitionCursorUtc = toUtc;
+    };
+
     while (true) {
       const nextScheduledEvent = dependencies.saveDatabase.getOne<ScheduledEventRow>(
         `SELECT
@@ -1112,6 +1701,8 @@ export async function handleAdvanceTime(
         stoppedBecause = "target_time";
         break;
       }
+
+      resolveDuePilotTransitions(nextScheduledEvent.scheduledTimeUtc);
 
       const dueEvents = dependencies.saveDatabase.all<ScheduledEventRow>(
         `SELECT
@@ -1175,6 +1766,7 @@ export async function handleAdvanceTime(
         }
       }
 
+      expireDueStaffingPackages(nextScheduledEvent.scheduledTimeUtc);
       advancedToUtc = nextScheduledEvent.scheduledTimeUtc;
       const stopReason = determineStopReason(
         stopConditions,
@@ -1188,6 +1780,10 @@ export async function handleAdvanceTime(
         break;
       }
     }
+
+    resolveDuePilotTransitions(advancedToUtc);
+    expireDueStaffingPackages(advancedToUtc);
+
     const summary: JsonObject = {
       processedEventTypes,
       completedLegIds: [...completedLegIds],

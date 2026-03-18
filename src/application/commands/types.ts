@@ -12,6 +12,7 @@ import type {
   CompanyContractId,
   CurrencyAmount,
   JsonObject,
+  NamedPilotId,
   SaveId,
   UtcIsoString,
 } from "../../domain/common/primitives.js";
@@ -19,7 +20,12 @@ import type { FlightLegType } from "../../domain/dispatch/types.js";
 import type { BaseRole, CompanyPhase } from "../../domain/company/types.js";
 import type { OwnershipType } from "../../domain/fleet/types.js";
 import type { DifficultyProfile } from "../../domain/save-runtime/types.js";
-import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
+import type {
+  EmploymentModel,
+  LaborCategory,
+  NamedPilotTrainingProgramKind,
+  PilotCertificationCode,
+} from "../../domain/staffing/types.js";
 import type { AdvanceTimeStopCondition } from "../../domain/simulation/types.js";
 
 export type CommandName =
@@ -36,6 +42,8 @@ export type CommandName =
   | "CancelCompanyContract"
   | "SaveScheduleDraft"
   | "CommitAircraftSchedule"
+  | "StartNamedPilotTraining"
+  | "StartNamedPilotTransfer"
   | "ScheduleMaintenance"
   | "AdvanceTime";
 
@@ -118,11 +126,26 @@ export interface CommitAircraftSchedulePayload {
   scheduleId: string;
 }
 
+export interface StartNamedPilotTrainingPayload {
+  namedPilotId: NamedPilotId;
+  trainingProgramKind?: NamedPilotTrainingProgramKind;
+  targetCertificationCode?: PilotCertificationCode;
+}
+
+export interface StartNamedPilotTransferPayload {
+  namedPilotId: NamedPilotId;
+  destinationAirportId: AirportId;
+}
+
 export interface RefreshContractBoardPayload {
   refreshReason?: "scheduled" | "manual" | "bootstrap";
 }
 
 export interface RefreshAircraftMarketPayload {
+  refreshReason?: "scheduled" | "manual" | "bootstrap";
+}
+
+export interface RefreshStaffingMarketPayload {
   refreshReason?: "scheduled" | "manual" | "bootstrap";
 }
 
@@ -174,12 +197,24 @@ export type CommitAircraftScheduleCommand = CommandEnvelope<CommitAircraftSchedu
   commandName: "CommitAircraftSchedule";
 };
 
+export type StartNamedPilotTrainingCommand = CommandEnvelope<StartNamedPilotTrainingPayload> & {
+  commandName: "StartNamedPilotTraining";
+};
+
+export type StartNamedPilotTransferCommand = CommandEnvelope<StartNamedPilotTransferPayload> & {
+  commandName: "StartNamedPilotTransfer";
+};
+
 export type RefreshContractBoardCommand = CommandEnvelope<RefreshContractBoardPayload> & {
   commandName: "RefreshContractBoard";
 };
 
 export type RefreshAircraftMarketCommand = CommandEnvelope<RefreshAircraftMarketPayload> & {
   commandName: "RefreshAircraftMarket";
+};
+
+export type RefreshStaffingMarketCommand = CommandEnvelope<RefreshStaffingMarketPayload> & {
+  commandName: "RefreshStaffingMarket";
 };
 
 export type AcceptContractOfferCommand = CommandEnvelope<AcceptContractOfferPayload> & {
@@ -201,8 +236,11 @@ export type SupportedCommand =
   | ActivateStaffingPackageCommand
   | SaveScheduleDraftCommand
   | CommitAircraftScheduleCommand
+  | StartNamedPilotTrainingCommand
+  | StartNamedPilotTransferCommand
   | RefreshContractBoardCommand
   | RefreshAircraftMarketCommand
+  | RefreshStaffingMarketCommand
   | AcceptContractOfferCommand
   | CancelCompanyContractCommand
   | AdvanceTimeCommand;

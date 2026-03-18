@@ -12,6 +12,7 @@ import type { CompanyContext } from "../application/queries/company-state.js";
 import type { ContractBoardView } from "../application/queries/contract-board.js";
 import { loadFleetState, type FleetAircraftView, type FleetStateView } from "../application/queries/fleet-state.js";
 import { loadStaffingState, type StaffingStateView } from "../application/queries/staffing-state.js";
+import { pilotCertificationsSatisfyQualificationGroup } from "../domain/staffing/pilot-certifications.js";
 import type { AirportReferenceRepository, AirportRecord } from "../infrastructure/reference/airport-reference.js";
 import { ensureActiveContractBoard } from "./contracts-board-lifecycle.js";
 import {
@@ -63,6 +64,18 @@ function hasCoverageUnits(
 ): boolean {
   if (unitsRequired <= 0) {
     return true;
+  }
+
+  if (laborCategory === "pilot") {
+    const activePilotCoverageUnits = (staffingState?.coverageSummaries ?? [])
+      .filter((entry) => entry.laborCategory === "pilot")
+      .reduce((sum, entry) => sum + entry.activeCoverageUnits, 0);
+    const qualifiedActivePilots = (staffingState?.namedPilots ?? []).filter((pilot) =>
+      pilot.packageStatus === "active"
+      && pilotCertificationsSatisfyQualificationGroup(pilot.certifications, qualificationGroup)
+    ).length;
+
+    return activePilotCoverageUnits >= unitsRequired && qualifiedActivePilots >= unitsRequired;
   }
 
   const summary = staffingState?.coverageSummaries.find((entry) =>

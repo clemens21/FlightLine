@@ -50,6 +50,7 @@ The intake brief is the normal front door for framing, routing, and deciding whe
 
 If you are storing filled briefs on disk, use `../intake-briefs/incoming/` as the default inbox location.
 If Mara creates an execution-ready handoff artifact, store it in `../intake-briefs/framed/`.
+If a feature or workstream is complete and you want to preserve its artifacts without leaving them in an active lane, move the related intake and framed documents to `../intake-briefs/completed/`.
 
 ## Default Bug Tracker
 
@@ -118,6 +119,8 @@ Mara should decide:
 - owner
 - validation bar
 - whether Zoe or Nadia should be involved before implementation
+- whether the task should move into `Coordinated Delegation` instead of staying single-agent
+- the next paste-ready role prompts when delegation is the right mode
 
 ### 2. Frame
 
@@ -132,6 +135,8 @@ If the task is non-trivial, Mara should produce:
 - escalation triggers
 - deferred work
 
+If Mara recommends delegated follow-on work, she should also provide the next paste-ready role prompts by default instead of waiting to be asked.
+
 ### 3. Execute
 
 Eli owns scoped implementation unless the task stays in `Single-Agent Mode`.
@@ -140,6 +145,7 @@ Eli should:
 - challenge weak implementation direction before building
 - keep scope bounded
 - surface ambiguity immediately
+- stop and escalate when the current stream now needs re-framing, broader role support, or further decomposition instead of opening new sub-streams independently
 - use the closeout template when done
 
 ### 4. Challenge
@@ -198,6 +204,8 @@ Route:
 2. Eli implements
 3. Nadia reviews
 4. Owen only if landing risk justifies it
+
+If the task is ambiguous, cross-system, or red-flag enough that one role should not carry it by inertia, Mara should switch this route to explicit delegation and provide the next role prompts automatically.
 
 ### Scope question
 

@@ -58,9 +58,11 @@ That response should include:
 - escalation triggers
 - whether temporary builder authorization is unnecessary, possible later, or authorized now
 - deferred work or backlog capture
+- if coordinated delegation is recommended, the paste-ready next role prompts for the immediate downstream roles by default
 
 If the work is implementation-ready and the primary owner is Eli, Mara should also provide a paste-ready Eli prompt by default unless the human explicitly asks her not to.
 That prompt should reference `AGENTS.md` and any bounded handoff artifact instead of re-copying the full repo operating rules.
+By default, Mara should also include an escalation clause telling Eli to stop and surface the blocker if the stream now needs re-framing, more role support, or further decomposition instead of widening scope himself.
 
 If the intake is too vague for responsible routing, Mara should say what is missing and stop there.
 She should not pretend unclear work is implementation-ready.
@@ -106,6 +108,7 @@ Return:
 - escalation triggers
 - whether temporary builder authorization is needed
 - deferred work or backlog capture
+- if coordinated delegation is recommended, the paste-ready next role prompts
 - if implementation-ready for Eli, a paste-ready Eli prompt
 
 End with the required closeout template from AGENTS.md.

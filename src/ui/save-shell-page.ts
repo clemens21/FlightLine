@@ -905,6 +905,22 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: hidden;
     }
+    .staffing-workspace-host,
+    .staffing-workspace-panel,
+    .staffing-workspace-shell {
+      min-height: 0;
+      height: 100%;
+    }
+    .staffing-workspace-host {
+      display: grid;
+    }
+    .staffing-workspace-panel {
+      overflow: hidden;
+    }
+    .staffing-workspace-shell {
+      display: grid;
+      overflow: hidden;
+    }
     .aircraft-workbench {
       min-height: 0;
       height: 100%;

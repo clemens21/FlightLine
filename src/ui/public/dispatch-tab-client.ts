@@ -6,7 +6,9 @@
 import {
   applyDispatchWorkspaceViewState,
   type DispatchAircraftView,
+  type DispatchAssignedPilotView,
   type DispatchLegView,
+  type DispatchPilotReadinessView,
   type DispatchTabPayload,
   type DispatchValidationSnapshotView,
   type DispatchValidationMessageView,
@@ -241,11 +243,72 @@ function renderSelectedAircraftSummary(selectedAircraft: DispatchAircraftView | 
         <span class="muted">${formatHours(selectedAircraft.hoursToService)} to service | ${formatPercent(selectedAircraft.conditionValue)} condition</span>
       </article>
       <article class="summary-item compact">
-        <div class="eyebrow">Pilot Group</div>
-        <strong>${escapeHtml(humanize(selectedAircraft.pilotQualificationGroup))}</strong>
+        <div class="eyebrow">Required Cert</div>
+        <strong>${escapeHtml(selectedAircraft.requiredPilotCertificationCode ?? humanize(selectedAircraft.pilotQualificationGroup))}</strong>
         <span class="muted">${escapeHtml(String(selectedAircraft.pilotCoverageUnits))} active | ${escapeHtml(String(selectedAircraft.pendingPilotCoverageUnits))} pending units</span>
       </article>
+      <article class="summary-item compact" data-dispatch-pilot-assignment-summary>
+        <div class="eyebrow">Pilot Assignment</div>
+        <strong>${escapeHtml(describePilotAssignmentHeadline(selectedAircraft))}</strong>
+        <span class="muted">${escapeHtml(describePilotAssignmentNote(selectedAircraft))}</span>
+      </article>
+      <article class="summary-item compact" data-dispatch-pilot-readiness>
+        <div class="eyebrow">Readiness</div>
+        <strong>${escapeHtml(describePilotReadinessHeadline(selectedAircraft.pilotReadiness))}</strong>
+        <span class="muted">${escapeHtml(describePilotReadinessNote(selectedAircraft))}</span>
+      </article>
     </div>
+    ${renderAssignedPilotsSection(selectedAircraft)}
+  `;
+}
+
+function renderAssignedPilotsSection(selectedAircraft: DispatchAircraftView): string {
+  if (!selectedAircraft.schedule) {
+    return `
+      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+        <article class="dispatch-message-item info">
+          <div class="dispatch-message-head">${renderBadge("info")}<strong>No named-pilot assignment yet</strong></div>
+          <span class="muted">Stage or commit a schedule before Dispatch can show who is covering this aircraft.</span>
+        </article>
+      </section>
+    `;
+  }
+
+  if (selectedAircraft.schedule.isDraft) {
+    return `
+      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+        <article class="dispatch-message-item info">
+          <div class="dispatch-message-head">${renderBadge("info")}<strong>Named pilots are selected on commit</strong></div>
+          <span class="muted">This draft can show current pool pressure, but Dispatch should not pretend specific pilots are already locked.</span>
+        </article>
+      </section>
+    `;
+  }
+
+  if (selectedAircraft.assignedPilots.length === 0) {
+    return `
+      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+        <article class="dispatch-message-item warning">
+          <div class="dispatch-message-head">${renderBadge("warning")}<strong>No reserved named pilots are attached</strong></div>
+          <span class="muted">This committed schedule does not currently expose a named-pilot reservation. That should be treated as a truth gap.</span>
+        </article>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+      ${selectedAircraft.assignedPilots.map((pilot) => renderAssignedPilotCard(pilot)).join("")}
+    </section>
+  `;
+}
+
+function renderAssignedPilotCard(pilot: DispatchAssignedPilotView): string {
+  return `
+    <article class="dispatch-message-item info" data-dispatch-assigned-pilot="${escapeHtml(pilot.namedPilotId)}">
+      <div class="dispatch-message-head">${renderBadge(pilot.availabilityState)}<strong>${escapeHtml(pilot.displayName)}</strong></div>
+      <span class="muted">${escapeHtml(`${formatPilotCertifications(pilot.certifications)} | ${describeAssignedPilotContext(pilot)}`)}</span>
+    </article>
   `;
 }
 
@@ -330,8 +393,8 @@ function renderSelectedLeg(selectedLeg: DispatchLegView | undefined): string {
           <span class="muted">${selectedLeg.contractDeadlineUtc ? `Due ${escapeHtml(formatDate(selectedLeg.contractDeadlineUtc))}` : "Support leg"}</span>
         </article>
         <article class="summary-item compact">
-          <div class="eyebrow">Qualification</div>
-          <strong>${escapeHtml(humanize(selectedLeg.assignedQualificationGroup ?? "standard"))}</strong>
+          <div class="eyebrow">Pilot Cert</div>
+          <strong>${escapeHtml(selectedLeg.requiredPilotCertificationCode ?? humanize(selectedLeg.assignedQualificationGroup ?? "standard"))}</strong>
           <span class="muted">${selectedLeg.contractState ? `Contract ${escapeHtml(humanize(selectedLeg.contractState))}` : "No contract attached"}</span>
         </article>
       </section>
@@ -605,6 +668,96 @@ function renderCommitBar(payload: DispatchTabPayload, selectedAircraft: Dispatch
   `;
 }
 
+function describePilotAssignmentHeadline(selectedAircraft: DispatchAircraftView): string {
+  if (!selectedAircraft.schedule) {
+    return "No schedule staged";
+  }
+
+  if (selectedAircraft.schedule.isDraft) {
+    return "Reserved on commit";
+  }
+
+  if (selectedAircraft.assignedPilots.length === 0) {
+    return "No pilots shown";
+  }
+
+  return `${selectedAircraft.assignedPilots.length}/${selectedAircraft.pilotReadiness.pilotsRequired} named pilots`;
+}
+
+function describePilotAssignmentNote(selectedAircraft: DispatchAircraftView): string {
+  if (!selectedAircraft.schedule) {
+    return "Dispatch can only show named coverage once a schedule exists.";
+  }
+
+  if (selectedAircraft.schedule.isDraft) {
+    return "Drafts stay truthful by showing pool posture only until commit locks specific pilots.";
+  }
+
+  if (selectedAircraft.assignedPilots.length === 0) {
+    return "Committed schedules should normally show reserved named pilots here.";
+  }
+
+  return selectedAircraft.assignedPilots.map((pilot) => pilot.displayName).join(" | ");
+}
+
+function describePilotReadinessHeadline(readiness: DispatchPilotReadinessView): string {
+  return `${readiness.readyNowCount} ready | ${readiness.reservedNowCount + readiness.flyingNowCount} committed`;
+}
+
+function describePilotReadinessNote(selectedAircraft: DispatchAircraftView): string {
+  const readiness = selectedAircraft.pilotReadiness;
+  const parts = [
+    readiness.requiredCertificationCode ? `Requires ${readiness.requiredCertificationCode}` : undefined,
+    `${readiness.restingNowCount} resting`,
+  ];
+
+  if (readiness.trainingNowCount > 0) {
+    parts.push(`${readiness.trainingNowCount} training`);
+  }
+
+  if (readiness.travelingNowCount > 0) {
+    parts.push(`${readiness.travelingNowCount} traveling`);
+  }
+
+  if (readiness.pendingStartCount > 0) {
+    parts.push(`${readiness.pendingStartCount} pending start`);
+  }
+
+  if (selectedAircraft.schedule && !selectedAircraft.schedule.isDraft && selectedAircraft.assignedPilots.length > 0) {
+    parts.push(readiness.noReadyReserveRemaining
+      ? "No ready reserve remains"
+      : `${readiness.readyNowCount} ready reserve${readiness.readyNowCount === 1 ? "" : "s"} remain`);
+  }
+
+  return parts.filter((part): part is string => Boolean(part)).join(" | ");
+}
+
+function describeAssignedPilotContext(pilot: DispatchAssignedPilotView): string {
+  const parts: string[] = [];
+
+  if (pilot.packageStatus === "pending") {
+    parts.push(`Package starts ${formatDate(pilot.startsAtUtc)}`);
+  }
+
+  if (pilot.availabilityState === "training" && pilot.trainingUntilUtc) {
+    parts.push(`Training until ${formatDate(pilot.trainingUntilUtc)}`);
+  } else if (pilot.availabilityState === "traveling" && pilot.travelUntilUtc) {
+    parts.push(`Traveling to ${pilot.travelDestinationAirport?.code ?? pilot.currentAirport?.code ?? "assignment"} until ${formatDate(pilot.travelUntilUtc)}`);
+  } else if (pilot.availabilityState === "resting" && pilot.restingUntilUtc) {
+    parts.push(`Ready ${formatDate(pilot.restingUntilUtc)}`);
+  } else if ((pilot.availabilityState === "reserved" || pilot.availabilityState === "flying") && pilot.assignmentToUtc) {
+    parts.push(`${pilot.availabilityState === "flying" ? "Flying" : "Reserved"} until ${formatDate(pilot.assignmentToUtc)}`);
+  } else if (pilot.currentAirport) {
+    parts.push(`At ${pilot.currentAirport.code}`);
+  }
+
+  return parts.join(" | ") || "Assigned";
+}
+
+function formatPilotCertifications(certifications: string[]): string {
+  return certifications.length > 0 ? certifications.join(", ") : "Uncertified";
+}
+
 function describeValidationArea(
   validation: DispatchValidationSnapshotView | undefined,
   prefix: string,
@@ -641,10 +794,10 @@ function badgeClass(value: string): string {
   if (["critical", "failed", "blocked", "overdue", "aog", "grounded", "blocker", "candidate_stale"].includes(value)) {
     return "danger";
   }
-  if (["warning", "warn", "assigned", "due_soon", "tight", "watch", "maintenance", "candidate_available", "accepted_ready", "blocked_draft"].includes(value)) {
+  if (["warning", "warn", "assigned", "due_soon", "tight", "watch", "maintenance", "candidate_available", "accepted_ready", "blocked_draft", "reserved", "resting", "training", "traveling"].includes(value)) {
     return "warn";
   }
-  if (["active", "scheduled", "available", "draft_ready", "draft", "committed", "info"].includes(value)) {
+  if (["active", "scheduled", "available", "draft_ready", "draft", "committed", "info", "flying", "ready"].includes(value)) {
     return "accent";
   }
   return "neutral";

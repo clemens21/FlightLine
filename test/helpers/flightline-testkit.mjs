@@ -155,6 +155,19 @@ export async function refreshContractBoard(backend, saveId, startedAtUtc, refres
   });
 }
 
+export async function refreshStaffingMarket(backend, saveId, startedAtUtc, refreshReason = "bootstrap") {
+  return dispatchOrThrow(backend, {
+    commandId: `cmd_${saveId}_staffing_refresh_${refreshReason}`,
+    saveId,
+    commandName: "RefreshStaffingMarket",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      refreshReason,
+    },
+  });
+}
+
 export function haversineDistanceNm(origin, destination) {
   const toRadians = (degrees) => (degrees * Math.PI) / 180;
   const earthRadiusNm = 3440.065;

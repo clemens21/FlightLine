@@ -76,7 +76,7 @@ try {
     const startedAtUtc = await createCompanySave(backend, saveId, {
       startedAtUtc: "2026-03-16T13:00:00.000Z",
       displayName,
-      startingCashAmount: 50_000_000,
+      startingCashAmount: 500_000_000,
     });
 
     await acquireAircraft(backend, saveId, startedAtUtc, {
@@ -279,6 +279,33 @@ try {
   assert.equal(bootstrap.shell.tabCounts.aircraft, "1/3");
   assert.equal(bootstrap.shell.tabCounts.staffing, "3");
 
+  const staffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/staffing`);
+  assert.equal(staffingTab.tabId, "staffing");
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-default-view="employees"'), true);
+  assert.equal(staffingTab.contentHtml.includes("Pilot Roster"), true);
+  assert.equal(staffingTab.contentHtml.includes("data-staffing-roster"), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-detail-panel="employees"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-detail-body="employees"'), true);
+  assert.ok((staffingTab.contentHtml.match(/data-staffing-pilot-row=/g) ?? []).length >= 3);
+  assert.equal(staffingTab.contentHtml.includes("N208HT"), true);
+  assert.equal(staffingTab.contentHtml.includes("Direct hire"), true);
+  assert.equal(staffingTab.contentHtml.includes("Contract hire"), true);
+  assert.equal(staffingTab.contentHtml.includes("Immediate hire"), false);
+  assert.equal(staffingTab.contentHtml.includes("Contract end"), true);
+  const trainingMatch = staffingTab.contentHtml.match(/data-pilot-training-start="([^"]+)"/);
+  assert.ok(trainingMatch?.[1]);
+
+  const startTrainingResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/start-pilot-training`, {
+    tab: "staffing",
+    saveId,
+    namedPilotId: trainingMatch[1],
+    targetCertificationCode: "MEPL",
+  });
+  assert.equal(startTrainingResult.response.ok, true);
+  assert.equal(startTrainingResult.payload.success, true);
+  assert.equal(startTrainingResult.payload.tab.tabId, "staffing");
+  assert.equal(startTrainingResult.payload.tab.contentHtml.includes("training"), true);
+
   const aircraftTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/aircraft`);
   assert.equal(aircraftTab.tabId, "aircraft");
   assert.equal(aircraftTab.contentHtml.includes("data-aircraft-tab-host"), true);
@@ -307,6 +334,10 @@ try {
   assert.equal(acquireOfferResult.payload.tab.tabId, "aircraft");
   assert.ok(acquireOfferResult.payload.tab.aircraftPayload);
   assert.equal(acquireOfferResult.payload.tab.aircraftPayload.aircraft.length, 4);
+  assert.equal(
+    acquireOfferResult.payload.tab.aircraftPayload.marketWorkspace.offers.length,
+    aircraftTab.aircraftPayload.marketWorkspace.offers.length - 1,
+  );
   assert.equal(
     acquireOfferResult.payload.tab.aircraftPayload.marketWorkspace.offers.some((offer) => offer.aircraftOfferId === purchasableOffer.aircraftOfferId),
     false,
@@ -352,6 +383,13 @@ try {
   assert.equal(dispatchTab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft), true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedContracts.length >= 1, true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedReadyCount >= 1, true);
+  const committedDispatchAircraft = dispatchTab.dispatchPayload.aircraft.find((aircraft) => aircraft.registration === "N208HT");
+  assert.ok(committedDispatchAircraft);
+  assert.equal(committedDispatchAircraft.assignedPilots.length, 1);
+  assert.equal(typeof committedDispatchAircraft.assignedPilots[0]?.displayName, "string");
+  assert.equal(committedDispatchAircraft.pilotReadiness.assignedPilotCount, 1);
+  assert.equal(committedDispatchAircraft.pilotReadiness.readyNowCount, 1);
+  assert.equal(committedDispatchAircraft.pilotReadiness.trainingNowCount, 1);
   const acceptedDispatchContractId = dispatchTab.dispatchPayload.workInputs.acceptedContracts[0]?.companyContractId;
   assert.ok(acceptedDispatchContractId);
 

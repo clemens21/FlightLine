@@ -3,10 +3,21 @@
  * These files are intentionally descriptive rather than behavioral: they define the shapes that move through the simulation.
  */
 
-import type { AircraftId, CurrencyAmount, MaintenanceTaskId, ScheduleId, StaffingPackageId, UtcIsoString } from "../common/primitives.js";
+import type {
+  AircraftId,
+  CurrencyAmount,
+  MaintenanceTaskId,
+  NamedPilotAssignmentId,
+  NamedPilotId,
+  ScheduleId,
+  StaffingPackageId,
+  UtcIsoString,
+} from "../common/primitives.js";
 
 export type LaborCategory = "pilot" | "flight_attendant" | "mechanic" | "ops_support";
-export type EmploymentModel = "direct_hire" | "contract_pool" | "service_agreement";
+export type EmploymentModel = "direct_hire" | "contract_hire" | "contract_pool" | "service_agreement";
+export type PilotCertificationCode = "SEPL" | "SEPS" | "MEPL" | "MEPS" | "JET";
+export type NamedPilotTrainingProgramKind = "recurrent" | "certification";
 
 export interface StaffingPackage {
   staffingPackageId: StaffingPackageId;
@@ -35,4 +46,41 @@ export interface LaborAllocation {
   reservedFromUtc: UtcIsoString;
   reservedToUtc: UtcIsoString;
   status: "reserved" | "consumed" | "released";
+}
+
+export type NamedPilotAvailabilityState = "ready" | "reserved" | "flying" | "resting" | "training" | "traveling";
+
+export interface NamedPilot {
+  namedPilotId: NamedPilotId;
+  companyId: string;
+  staffingPackageId: StaffingPackageId;
+  rosterSlotNumber: number;
+  displayName: string;
+  certifications: PilotCertificationCode[];
+  homeAirportId?: string;
+  currentAirportId?: string;
+  restingUntilUtc?: UtcIsoString;
+  trainingProgramKind?: NamedPilotTrainingProgramKind;
+  trainingTargetCertificationCode?: PilotCertificationCode;
+  trainingStartedAtUtc?: UtcIsoString;
+  trainingUntilUtc?: UtcIsoString;
+  travelOriginAirportId?: string;
+  travelDestinationAirportId?: string;
+  travelStartedAtUtc?: UtcIsoString;
+  travelUntilUtc?: UtcIsoString;
+  createdAtUtc: UtcIsoString;
+  updatedAtUtc: UtcIsoString;
+}
+
+export interface NamedPilotAssignment {
+  namedPilotAssignmentId: NamedPilotAssignmentId;
+  namedPilotId: NamedPilotId;
+  aircraftId: AircraftId;
+  scheduleId: ScheduleId;
+  qualificationGroup: string;
+  assignedFromUtc: UtcIsoString;
+  assignedToUtc: UtcIsoString;
+  status: "reserved" | "flying" | "completed" | "cancelled";
+  createdAtUtc: UtcIsoString;
+  updatedAtUtc: UtcIsoString;
 }

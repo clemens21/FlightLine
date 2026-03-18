@@ -9,7 +9,8 @@ Use the subfolders to separate raw intake from framed execution handoffs and der
 ## Folder Structure
 
 - `incoming/`: default drop location for filled task intake briefs
-- `framed/`: Mara-created framed-delivery handoffs and other execution-ready routing artifacts
+- `framed/`: Mara-created execution-ready routing artifacts for active or upcoming work
+- `completed/`: completed or landed feature artifacts that should stay on disk for reference without cluttering active lanes
 - `design-briefs/`: derivative product or design briefs created from an intake
 - `_templates/`: blank starters and similar scaffolding files
 
@@ -20,6 +21,7 @@ Use the subfolders to separate raw intake from framed execution handoffs and der
 - If you want a model, use `../supporting/flightline_task_intake_brief_example.md`.
 - Save completed new intake briefs in `incoming/`.
 - Save Mara-authored execution handoffs in `framed/`.
+- When a feature or workstream is actually complete, move its intake and framed artifacts into `completed/`.
 - Save derivative product or design artifacts in `design-briefs/`.
 - Keep each file focused on one task or one intended workstream.
 - Mark unknowns directly instead of padding the file with guesswork.
@@ -58,5 +60,8 @@ A good intake brief should usually contain:
 ## Final Guidance
 
 Keep the structure light.
+
+Do not move work into `completed/` just because implementation started.
+Use it when the feature or workstream is genuinely done enough that it should no longer live in an active lane.
 
 If one of these subfolders starts accumulating stale material, add a light archive convention inside that lane instead of flattening everything back into one directory or adding deeper nesting everywhere.

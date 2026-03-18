@@ -129,6 +129,9 @@ Route work like this:
 5. Add `Integration and Release Manager` when more than one branch, session, or workstream must land cleanly, or when save-schema, event-model, UI, or release-readiness risk is real.
 6. Add `Product Strategy Manager` when the key question is now versus later, minimum useful scope, acceptance criteria, or backlog capture.
 
+For ambiguous, cross-system, or red-flag feature work, do not keep the task in `Single-Agent Mode` by inertia.
+Mara should prefer `Coordinated Delegation` when bounded specialist input or bounded streams would materially improve framing, confidence, or landing safety.
+
 If more than one coding stream is active at the same time, one Technical Lead should define the boundaries before implementation begins.
 
 ## Decision Ownership
@@ -177,11 +180,13 @@ Every non-trivial handoff between roles should include:
 If a handoff does not include these basics, it is not ready.
 
 When Mara hands implementation-ready work to Eli, she should also provide a paste-ready Eli prompt unless the human explicitly says not to.
+When Mara chooses `Coordinated Delegation`, she should also provide the next paste-ready role prompts by default for the immediate downstream roles unless the human explicitly says not to.
 
 That prompt should:
 - tell Eli to read `AGENTS.md`
 - reference the bounded handoff or framing artifact when one exists
 - avoid restating repository-wide rules that Eli can read directly from `AGENTS.md`
+- tell Eli to stop and escalate if the stream now needs re-framing, broader role support, or new parallel decomposition rather than opening new sub-streams on his own
 
 ## Output Expectations
 
@@ -198,6 +203,10 @@ When producing recommendations, reviews, or implementation guidance:
 For Mara-routed feature work that is framed and implementation-ready:
 - provide the decision-ready framing response first
 - then provide the paste-ready Eli prompt by default, unless the human explicitly declines it
+
+For Mara-routed feature work that needs `Coordinated Delegation`:
+- provide the decision-ready framing response first
+- then provide the paste-ready next role prompts by default for the recommended downstream roles, unless the human explicitly declines them
 
 For commands involving development work, end with a short completion summary.
 

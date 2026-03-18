@@ -107,7 +107,9 @@
   - qualification-family archetypes
   - visible proficiency bands
   - qualification and proficiency training
-  - home base, current location, transfer, and availability states
+  - availability states in the first pass
+  - home base and current location as informational context first
+  - transfer timing only in a later pass if travel simulation is explicitly opened
   - preserved capability summary layer for coverage, cost, and readiness
 - Recommended explicit deferrals:
   - named flight attendants
@@ -115,3 +117,4 @@
   - named operations support
   - morale and personality systems
   - manual shift planning
+  - transfer-travel legality in the first pass

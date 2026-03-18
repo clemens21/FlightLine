@@ -7,6 +7,11 @@ This brief defines the minimum time-advance and dispatch support FlightLine need
 It is a design-boundary brief for future Mara framing.
 It is not implementation authorization on its own.
 
+Related upstream artifacts:
+
+- [2026-03-17_staffing-roster-and-training-evolution.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/incoming/2026-03-17_staffing-roster-and-training-evolution.md)
+- [2026-03-17_dispatch-workspace-revitalization.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/completed/2026-03-17_dispatch-workspace-revitalization.md)
+
 ## 1. Main Conclusion
 
 FlightLine does not need full crew-duty simulation before named pilots can work.
@@ -308,6 +313,31 @@ This brief is ready to hand back to Mara only if future framing preserves these 
 - richer travel and relocation timing is out
 - non-pilot named labor is out
 - advanced crew optimization is out
+
+## 8A. Mara Handoff Notes
+
+This brief should inform Mara's framing as a named-pilot dependency slice, not as a standalone staffing rewrite.
+
+Affected systems and surfaces first:
+
+- Dispatch legality, reservation, and blocked-leg handling
+- Staffing availability display and pilot-state explainability
+- time-advance stop behavior for blocked committed legs
+- readiness summaries shown in Dispatch first, with lighter rollups in Aircraft and Contracts later
+
+Required validation in future framing:
+
+- a pilot shown as `Ready` is always legally dispatchable
+- a committed leg with invalid pilot coverage does not depart silently
+- blocked departure explanation and stop-condition behavior are player-visible and consistent
+- qualification-family rollups match underlying pilot availability state
+
+Escalation triggers Mara should treat as red flags:
+
+- any proposal that introduces hidden fatigue math or opaque legality rules
+- any proposal that makes pilot location or home base a first-pass legal blocker without opening travel simulation explicitly
+- any proposal that requires manual roster planning or explicit pair-building to make the first pass usable
+- any UI/state mismatch where Staffing says a pilot is usable and Dispatch rejects them
 
 ## 9. Deferred Backlog
 

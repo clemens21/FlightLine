@@ -18,7 +18,10 @@ import { handleCreateCompany } from "./commands/create-company.js";
 import { handleCreateSaveGame } from "./commands/create-save-game.js";
 import { handleRefreshAircraftMarket } from "./commands/refresh-aircraft-market.js";
 import { handleRefreshContractBoard } from "./commands/refresh-contract-board.js";
+import { handleRefreshStaffingMarket } from "./commands/refresh-staffing-market.js";
 import { handleSaveScheduleDraft } from "./commands/save-schedule-draft.js";
+import { handleStartNamedPilotTransfer } from "./commands/start-named-pilot-transfer.js";
+import { handleStartNamedPilotTraining } from "./commands/start-named-pilot-training.js";
 import type { CommandResult, SupportedCommand } from "./commands/types.js";
 import { loadActiveAircraftMarket, type AircraftMarketView } from "./queries/aircraft-market.js";
 import { loadActiveCompanyContext, type CompanyContext } from "./queries/company-state.js";
@@ -27,12 +30,14 @@ import { loadActiveContractBoard, type ContractBoardView } from "./queries/contr
 import { loadRecentEventLog, type EventLogView } from "./queries/event-log.js";
 import { loadFleetState, type FleetStateView } from "./queries/fleet-state.js";
 import { loadAircraftSchedules, type AircraftScheduleView } from "./queries/schedule-state.js";
+import { loadActiveStaffingMarket, type StaffingMarketView } from "./queries/staffing-market.js";
 import { loadStaffingState, type StaffingStateView } from "./queries/staffing-state.js";
 import { applySaveMigrations } from "../infrastructure/persistence/sqlite/migrations.js";
 import { SqliteFileDatabase } from "../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import { reconcileAircraftMarket } from "./aircraft/aircraft-market-reconciler.js";
+import { reconcileNamedPilots } from "./staffing/named-pilot-roster.js";
 
 // These types capture the long-lived backend configuration and the per-save session context handed to readers and commands.
 export interface FlightLineBackendConfig {
@@ -158,6 +163,21 @@ export class FlightLineBackend {
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
 
+      case "StartNamedPilotTraining": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleStartNamedPilotTraining(command, {
+          saveDatabase: context.saveDatabase,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
+
+      case "StartNamedPilotTransfer": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleStartNamedPilotTransfer(command, {
+          saveDatabase: context.saveDatabase,
+          airportReference: this.airportReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
+
       case "RefreshContractBoard": {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshContractBoard(command, {
           saveDatabase: context.saveDatabase,
@@ -170,6 +190,14 @@ export class FlightLineBackend {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshAircraftMarket(command, {
           saveDatabase: context.saveDatabase,
           airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
+
+      case "RefreshStaffingMarket": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshStaffingMarket(command, {
+          saveDatabase: context.saveDatabase,
           aircraftReference: this.aircraftReference,
         }));
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
@@ -236,6 +264,10 @@ export class FlightLineBackend {
     return this.withExistingSaveDatabase(saveId, (context) => loadActiveAircraftMarket(context.saveDatabase, saveId));
   }
 
+  async loadActiveStaffingMarket(saveId: string): Promise<StaffingMarketView | null> {
+    return this.withExistingSaveDatabase(saveId, (context) => loadActiveStaffingMarket(context.saveDatabase, saveId));
+  }
+
   // Reconciles the rolling aircraft market from simulated time so listings can expire and be replaced individually.
   async reconcileAircraftMarket(
     saveId: string,
@@ -257,6 +289,63 @@ export class FlightLineBackend {
       }, {
         saveDatabase: context.saveDatabase,
         airportReference: this.airportReference,
+        aircraftReference: this.aircraftReference,
+      });
+
+      return result.success
+        ? {
+            success: true,
+            changed: Boolean(result.metadata?.changed),
+            offerCount: Number(result.metadata?.offerCount ?? 0),
+          }
+        : {
+            success: false,
+            changed: false,
+            offerCount: Number(result.metadata?.offerCount ?? 0),
+          };
+    });
+  }
+
+  async reconcileStaffingMarket(
+    saveId: string,
+    refreshReason: "scheduled" | "manual" | "bootstrap" = "scheduled",
+  ) {
+    const [companyContext, staffingMarket] = await Promise.all([
+      this.loadCompanyContext(saveId),
+      this.loadActiveStaffingMarket(saveId),
+    ]);
+
+    if (!companyContext) {
+      return null;
+    }
+
+    const requiresRefresh = !staffingMarket
+      || staffingMarket.offers.length === 0
+      || new Date(staffingMarket.expiresAtUtc).getTime() <= new Date(companyContext.currentTimeUtc).getTime();
+
+    if (!requiresRefresh) {
+      return {
+        success: true,
+        changed: false,
+        offerCount: staffingMarket.offers.length,
+      };
+    }
+
+    return this.withExistingSaveDatabase(saveId, async (context) => {
+      const commandId = `cmd_staffing_market_${Date.now()}`;
+      const issuedAtUtc = new Date().toISOString();
+
+      const result = await handleRefreshStaffingMarket({
+        commandId,
+        saveId,
+        commandName: "RefreshStaffingMarket",
+        issuedAtUtc,
+        actorType: "system",
+        payload: {
+          refreshReason,
+        },
+      }, {
+        saveDatabase: context.saveDatabase,
         aircraftReference: this.aircraftReference,
       });
 
@@ -381,6 +470,19 @@ export class FlightLineBackend {
         enableWriteOptimizations: true,
       });
       await applySaveMigrations(saveDatabase);
+      const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
+      if (companyContext) {
+        const reconcileResult = reconcileNamedPilots(
+          saveDatabase,
+          companyContext.companyId,
+          companyContext.homeBaseAirportId,
+          companyContext.currentTimeUtc,
+        );
+
+        if (reconcileResult.changed) {
+          await saveDatabase.persist();
+        }
+      }
       return {
         saveId,
         saveFilePath,

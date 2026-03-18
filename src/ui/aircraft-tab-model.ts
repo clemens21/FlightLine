@@ -12,6 +12,10 @@ import type { FleetAircraftView, FleetStateView } from "../application/queries/f
 import type { MaintenanceTaskView } from "../application/queries/maintenance-tasks.js";
 import type { AircraftScheduleView, ScheduleLegView } from "../application/queries/schedule-state.js";
 import type { StaffingStateView } from "../application/queries/staffing-state.js";
+import {
+  pilotCertificationsSatisfyQualificationGroup,
+  requiredCertificationForQualificationGroup,
+} from "../domain/staffing/pilot-certifications.js";
 import type { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository, AirportRecord } from "../infrastructure/reference/airport-reference.js";
 import { aircraftImageAssetPathForModel } from "./aircraft-image-sources.js";
@@ -1359,16 +1363,33 @@ function deriveStaffingFlag(
   const coverageSummaries = staffingState?.coverageSummaries ?? [];
   const coverageByKey = new Map(coverageSummaries.map((summary) => [`${summary.laborCategory}:${summary.qualificationGroup}`, summary.activeCoverageUnits]));
   const ownReservations = primarySchedule ? reservedByScheduleQualification.get(primarySchedule.scheduleId) ?? new Map<string, number>() : new Map<string, number>();
+  const activePilotCoverageUnits = coverageSummaries
+    .filter((summary) => summary.laborCategory === "pilot")
+    .reduce((sum, summary) => sum + summary.activeCoverageUnits, 0);
+  const reservedPilotUnits = [...reservedByQualification.entries()]
+    .filter(([qualificationGroup]) => Boolean(requiredCertificationForQualificationGroup(qualificationGroup)))
+    .reduce((sum, [, reservedUnits]) => sum + reservedUnits, 0);
+  const ownReservedPilotUnits = [...ownReservations.entries()]
+    .filter(([qualificationGroup]) => Boolean(requiredCertificationForQualificationGroup(qualificationGroup)))
+    .reduce((sum, [, reservedUnits]) => sum + reservedUnits, 0);
+  const qualifiedActivePilotCount = (staffingState?.namedPilots ?? []).filter((pilot) =>
+    pilot.packageStatus === "active"
+    && pilotCertificationsSatisfyQualificationGroup(pilot.certifications, aircraft.pilotQualificationGroup)
+  ).length;
   const requirements = [
     {
       key: `pilot:${aircraft.pilotQualificationGroup}`,
       requirement: aircraft.pilotsRequired,
       qualificationGroup: aircraft.pilotQualificationGroup,
+      availableUnits: activePilotCoverageUnits - (reservedPilotUnits - ownReservedPilotUnits),
+      availableQualifiedPilots: qualifiedActivePilotCount,
     },
     {
       key: "flight_attendant:cabin_general",
       requirement: aircraft.flightAttendantsRequired,
       qualificationGroup: "cabin_general",
+      availableUnits: undefined,
+      availableQualifiedPilots: undefined,
     },
   ].filter((entry) => entry.requirement > 0);
 
@@ -1381,13 +1402,23 @@ function deriveStaffingFlag(
     const totalCoverage = coverageByKey.get(requirement.key) ?? 0;
     const reservedUnits = reservedByQualification.get(requirement.qualificationGroup) ?? 0;
     const ownReservedUnits = ownReservations.get(requirement.qualificationGroup) ?? 0;
-    const availableUnits = totalCoverage - (reservedUnits - ownReservedUnits);
+    const availableUnits = requirement.key.startsWith("pilot:")
+      ? requirement.availableUnits ?? 0
+      : totalCoverage - (reservedUnits - ownReservedUnits);
 
     if (availableUnits < requirement.requirement) {
       return "uncovered";
     }
 
+    if ((requirement.availableQualifiedPilots ?? requirement.requirement) < requirement.requirement) {
+      return "uncovered";
+    }
+
     if (availableUnits <= requirement.requirement) {
+      hasTightCoverage = true;
+    }
+
+    if (requirement.availableQualifiedPilots !== undefined && requirement.availableQualifiedPilots <= requirement.requirement) {
       hasTightCoverage = true;
     }
   }
@@ -1404,6 +1435,18 @@ function describeStaffingSupport(
   const currentAirport = airportReference.findAirport(aircraft.currentAirportId);
   const currentRegion = currentAirport?.isoRegion;
   const locationLabel = currentAirport?.identCode || currentAirport?.airportKey || aircraft.currentAirportId;
+  const activeLocalPilotCoverageUnits = (staffingState?.staffingPackages ?? [])
+    .filter((staffingPackage) =>
+      staffingPackage.status === "active"
+      && staffingPackage.laborCategory === "pilot"
+      && (!staffingPackage.serviceRegionCode || !currentRegion || staffingPackage.serviceRegionCode === currentRegion)
+    )
+    .reduce((sum, staffingPackage) => sum + staffingPackage.coverageUnits, 0);
+  const localQualifiedPilotCount = (staffingState?.namedPilots ?? []).filter((pilot) =>
+    pilot.packageStatus === "active"
+    && pilot.currentAirportId === aircraft.currentAirportId
+    && pilotCertificationsSatisfyQualificationGroup(pilot.certifications, aircraft.pilotQualificationGroup)
+  ).length;
   const requirements = [
     {
       laborCategory: "pilot",
@@ -1443,6 +1486,10 @@ function describeStaffingSupport(
   }
 
   const hasLocalCoverage = requirements.every((entry) => {
+    if (entry.laborCategory === "pilot") {
+      return activeLocalPilotCoverageUnits >= entry.unitsRequired && localQualifiedPilotCount >= entry.unitsRequired;
+    }
+
     const key = `${entry.laborCategory}:${entry.qualificationGroup}`;
     return (localCoverageByKey.get(key) ?? 0) >= entry.unitsRequired;
   });

@@ -81,6 +81,7 @@ Turn a clearly defined task into working code with minimal unnecessary motion.
 - surface ambiguities and follow-on work discovered during implementation
 - complete local validation when that validation is straightforward and local to the change
 - challenge flawed implementation direction when the handoff would create obvious debt or risk
+- stop and escalate when the bounded stream now needs re-framing, broader role support, or further decomposition instead of self-managing new sub-streams
 
 ### This role should not
 
@@ -88,6 +89,7 @@ Turn a clearly defined task into working code with minimal unnecessary motion.
 - silently expand scope
 - treat every task as an excuse to refactor broadly
 - accept a handoff that is too ambiguous to execute responsibly
+- decide on new delegated sub-streams without Mara explicitly reframing the work
 
 ### Typical outputs
 

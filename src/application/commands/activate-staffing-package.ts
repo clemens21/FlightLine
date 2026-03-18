@@ -6,12 +6,32 @@
 import type { CommandResult, ActivateStaffingPackageCommand } from "./types.js";
 import { addUtcMonths, createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
+import { reconcileNamedPilots } from "../staffing/named-pilot-roster.js";
+import { parsePilotCertificationsJson, pilotCertificationsToJson } from "../../domain/staffing/pilot-certifications.js";
+import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 
 interface ActivateStaffingPackageDependencies {
   saveDatabase: SqliteFileDatabase;
   aircraftReference: AircraftReferenceRepository;
+}
+
+interface StaffingMarketOfferRow extends Record<string, unknown> {
+  staffingOfferId: string;
+  companyId: string;
+  laborCategory: LaborCategory;
+  employmentModel: EmploymentModel;
+  qualificationGroup: string;
+  coverageUnits: number;
+  fixedCostAmount: number;
+  variableCostRate: number | null;
+  startsAtUtc: string | null;
+  endsAtUtc: string | null;
+  displayName: string | null;
+  certificationsJson: string | null;
+  currentAirportId: string | null;
+  offerStatus: string;
 }
 
 const recommendedCabinQualificationGroups = new Set([
@@ -45,25 +65,69 @@ export async function handleActivateStaffingPackage(
     hardBlockers.push(`Save ${command.saveId} does not have an active company.`);
   }
 
-  const qualificationGroup = command.payload.qualificationGroup.trim();
+  const marketOffer = command.payload.sourceOfferId
+    ? dependencies.saveDatabase.getOne<StaffingMarketOfferRow>(
+        `SELECT
+          staffing_offer_id AS staffingOfferId,
+          company_id AS companyId,
+          labor_category AS laborCategory,
+          employment_model AS employmentModel,
+          qualification_group AS qualificationGroup,
+          coverage_units AS coverageUnits,
+          fixed_cost_amount AS fixedCostAmount,
+          variable_cost_rate AS variableCostRate,
+          starts_at_utc AS startsAtUtc,
+          ends_at_utc AS endsAtUtc,
+          display_name AS displayName,
+          certifications_json AS certificationsJson,
+          current_airport_id AS currentAirportId,
+          offer_status AS offerStatus
+        FROM staffing_offer
+        WHERE staffing_offer_id = $staffing_offer_id
+        LIMIT 1`,
+        { $staffing_offer_id: command.payload.sourceOfferId },
+      )
+    : null;
+
+  if (command.payload.sourceOfferId && !marketOffer) {
+    hardBlockers.push(`Staffing offer ${command.payload.sourceOfferId} was not found.`);
+  }
+
+  const effectiveLaborCategory = marketOffer?.laborCategory ?? command.payload.laborCategory;
+  const effectiveEmploymentModel = marketOffer?.employmentModel ?? command.payload.employmentModel;
+  const qualificationGroup = (marketOffer?.qualificationGroup ?? command.payload.qualificationGroup).trim();
+  const effectiveCoverageUnits = marketOffer?.coverageUnits ?? command.payload.coverageUnits;
+  const effectiveFixedCostAmount = marketOffer?.fixedCostAmount ?? command.payload.fixedCostAmount;
+  const effectiveVariableCostRate = marketOffer?.variableCostRate ?? command.payload.variableCostRate ?? null;
+  const effectiveServiceRegionCode = command.payload.serviceRegionCode?.trim() || null;
 
   if (!qualificationGroup) {
     hardBlockers.push("Staffing qualification group is required.");
   }
 
-  if (!Number.isInteger(command.payload.coverageUnits) || command.payload.coverageUnits <= 0) {
+  if (!Number.isInteger(effectiveCoverageUnits) || effectiveCoverageUnits <= 0) {
     hardBlockers.push("Staffing coverage units must be a positive whole number.");
   }
 
-  if (command.payload.fixedCostAmount < 0) {
+  if (effectiveFixedCostAmount < 0) {
     hardBlockers.push("Staffing fixed cost amount cannot be negative.");
   }
 
-  if ((command.payload.variableCostRate ?? 0) < 0) {
+  if ((effectiveVariableCostRate ?? 0) < 0) {
     hardBlockers.push("Staffing variable cost rate cannot be negative.");
   }
 
-  switch (command.payload.laborCategory) {
+  if (marketOffer) {
+    if (companyContext && marketOffer.companyId !== companyContext.companyId) {
+      hardBlockers.push(`Staffing offer ${marketOffer.staffingOfferId} does not belong to this company market.`);
+    }
+
+    if (marketOffer.offerStatus !== "available") {
+      hardBlockers.push(`Staffing offer ${marketOffer.staffingOfferId} is no longer available.`);
+    }
+  }
+
+  switch (effectiveLaborCategory) {
     case "pilot": {
       if (qualificationGroup && !dependencies.aircraftReference.pilotQualificationGroupExists(qualificationGroup)) {
         hardBlockers.push(`Pilot qualification group ${qualificationGroup} is not supported by the aircraft reference catalog.`);
@@ -93,8 +157,9 @@ export async function handleActivateStaffingPackage(
     }
   }
 
-  const startsAtUtc = command.payload.startsAtUtc ?? companyContext?.currentTimeUtc ?? command.issuedAtUtc;
-  const endsAtUtc = command.payload.endsAtUtc ?? null;
+  const startsAtUtc = marketOffer?.startsAtUtc ?? command.payload.startsAtUtc ?? companyContext?.currentTimeUtc ?? command.issuedAtUtc;
+  const endsAtUtc = marketOffer?.endsAtUtc ?? command.payload.endsAtUtc ?? null;
+  const hiredAtUtc = companyContext?.currentTimeUtc ?? command.issuedAtUtc;
 
   if (companyContext && isIsoUtcEarlier(startsAtUtc, companyContext.currentTimeUtc)) {
     hardBlockers.push("Staffing package start time cannot be earlier than the current game time.");
@@ -104,12 +169,12 @@ export async function handleActivateStaffingPackage(
     hardBlockers.push("Staffing package end time must be later than the start time.");
   }
 
-  if (command.payload.employmentModel === "service_agreement" && !command.payload.serviceRegionCode?.trim()) {
+  if (effectiveEmploymentModel === "service_agreement" && !effectiveServiceRegionCode) {
     warnings.push("Service-agreement staffing was activated without a service region code.");
   }
 
   const initialStatus = companyContext && startsAtUtc > companyContext.currentTimeUtc ? "pending" : "active";
-  const upfrontChargeAmount = initialStatus === "active" ? command.payload.fixedCostAmount : 0;
+  const upfrontChargeAmount = initialStatus === "active" ? effectiveFixedCostAmount : 0;
 
   if (companyContext && upfrontChargeAmount > companyContext.currentCashAmount) {
     hardBlockers.push(`Company does not have enough cash to activate this staffing package for ${upfrontChargeAmount}.`);
@@ -129,7 +194,7 @@ export async function handleActivateStaffingPackage(
   }
 
   const staffingPackageId = createPrefixedId("staff");
-  const recurringObligationId = command.payload.fixedCostAmount > 0 ? createPrefixedId("obligation") : null;
+  const recurringObligationId = effectiveFixedCostAmount > 0 ? createPrefixedId("obligation") : null;
   const ledgerEntryId = upfrontChargeAmount > 0 ? createPrefixedId("ledger") : null;
   const eventLogEntryId = createPrefixedId("event");
   const updatedCashAmount = companyContext!.currentCashAmount - upfrontChargeAmount;
@@ -170,13 +235,13 @@ export async function handleActivateStaffingPackage(
         $staffing_package_id: staffingPackageId,
         $company_id: companyContext!.companyId,
         $source_offer_id: command.payload.sourceOfferId ?? null,
-        $labor_category: command.payload.laborCategory,
-        $employment_model: command.payload.employmentModel,
+        $labor_category: effectiveLaborCategory,
+        $employment_model: effectiveEmploymentModel,
         $qualification_group: qualificationGroup,
-        $coverage_units: command.payload.coverageUnits,
-        $fixed_cost_amount: command.payload.fixedCostAmount,
-        $variable_cost_rate: command.payload.variableCostRate ?? null,
-        $service_region_code: command.payload.serviceRegionCode?.trim() || null,
+        $coverage_units: effectiveCoverageUnits,
+        $fixed_cost_amount: effectiveFixedCostAmount,
+        $variable_cost_rate: effectiveVariableCostRate,
+        $service_region_code: effectiveServiceRegionCode,
         $starts_at_utc: startsAtUtc,
         $ends_at_utc: endsAtUtc,
         $status: initialStatus,
@@ -196,6 +261,38 @@ export async function handleActivateStaffingPackage(
         $company_id: companyContext!.companyId,
       },
     );
+
+    if (effectiveLaborCategory === "pilot") {
+      reconcileNamedPilots(
+        dependencies.saveDatabase,
+        companyContext!.companyId,
+        companyContext!.homeBaseAirportId,
+        companyContext!.currentTimeUtc,
+      );
+
+      if (marketOffer && marketOffer.displayName) {
+        dependencies.saveDatabase.run(
+          `UPDATE named_pilot
+          SET display_name = $display_name,
+              certifications_json = $certifications_json,
+              home_airport_id = $home_airport_id,
+              current_airport_id = $current_airport_id,
+              updated_at_utc = $updated_at_utc
+          WHERE staffing_package_id = $staffing_package_id
+            AND roster_slot_number = 1`,
+          {
+            $display_name: marketOffer.displayName,
+            $certifications_json: pilotCertificationsToJson(
+              parsePilotCertificationsJson(marketOffer.certificationsJson, qualificationGroup),
+            ),
+            $home_airport_id: companyContext!.homeBaseAirportId,
+            $current_airport_id: marketOffer.currentAirportId ?? companyContext!.homeBaseAirportId,
+            $updated_at_utc: hiredAtUtc,
+            $staffing_package_id: staffingPackageId,
+          },
+        );
+      }
+    }
 
     if (recurringObligationId) {
       dependencies.saveDatabase.run(
@@ -225,9 +322,9 @@ export async function handleActivateStaffingPackage(
         {
           $recurring_obligation_id: recurringObligationId,
           $company_id: companyContext!.companyId,
-          $obligation_type: command.payload.employmentModel === "service_agreement" ? "service_agreement" : "staffing",
+          $obligation_type: effectiveEmploymentModel === "service_agreement" ? "service_agreement" : "staffing",
           $source_object_id: staffingPackageId,
-          $amount: command.payload.fixedCostAmount,
+          $amount: effectiveFixedCostAmount,
           $next_due_at_utc: initialStatus === "active" ? addUtcMonths(startsAtUtc, 1) : startsAtUtc,
           $end_at_utc: endsAtUtc,
         },
@@ -265,12 +362,26 @@ export async function handleActivateStaffingPackage(
           $entry_time_utc: startsAtUtc,
           $amount: upfrontChargeAmount * -1,
           $source_object_id: staffingPackageId,
-          $description: `Activated ${command.payload.laborCategory} staffing package ${qualificationGroup}.`,
+          $description: `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`,
           $metadata_json: JSON.stringify({
-            employmentModel: command.payload.employmentModel,
-            coverageUnits: command.payload.coverageUnits,
-            fixedCostAmount: command.payload.fixedCostAmount,
+            employmentModel: effectiveEmploymentModel,
+            coverageUnits: effectiveCoverageUnits,
+            fixedCostAmount: effectiveFixedCostAmount,
           }),
+        },
+      );
+    }
+
+    if (marketOffer) {
+      dependencies.saveDatabase.run(
+        `UPDATE staffing_offer
+        SET offer_status = 'acquired',
+            closed_at_utc = $closed_at_utc,
+            close_reason = 'acquired'
+        WHERE staffing_offer_id = $staffing_offer_id`,
+        {
+          $staffing_offer_id: marketOffer.staffingOfferId,
+          $closed_at_utc: hiredAtUtc,
         },
       );
     }
@@ -305,15 +416,18 @@ export async function handleActivateStaffingPackage(
         $company_id: companyContext!.companyId,
         $event_time_utc: startsAtUtc,
         $source_object_id: staffingPackageId,
-        $message: `Activated ${command.payload.laborCategory} staffing package ${qualificationGroup}.`,
+        $message: marketOffer?.displayName
+          ? `Hired ${marketOffer.displayName} for ${qualificationGroup}.`
+          : `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`,
         $metadata_json: JSON.stringify({
-          laborCategory: command.payload.laborCategory,
-          employmentModel: command.payload.employmentModel,
+          laborCategory: effectiveLaborCategory,
+          employmentModel: effectiveEmploymentModel,
           qualificationGroup,
-          coverageUnits: command.payload.coverageUnits,
+          coverageUnits: effectiveCoverageUnits,
           startsAtUtc,
           endsAtUtc,
           recurringObligationId,
+          sourceOfferId: marketOffer?.staffingOfferId,
         }),
       },
     );
@@ -347,10 +461,15 @@ export async function handleActivateStaffingPackage(
         $completed_at_utc: startsAtUtc,
         $payload_json: JSON.stringify({
           ...command.payload,
+          laborCategory: effectiveLaborCategory,
+          employmentModel: effectiveEmploymentModel,
           qualificationGroup,
           staffingPackageId,
           recurringObligationId,
           initialStatus,
+          coverageUnits: effectiveCoverageUnits,
+          fixedCostAmount: effectiveFixedCostAmount,
+          variableCostRate: effectiveVariableCostRate,
         }),
       },
     );
@@ -362,7 +481,9 @@ export async function handleActivateStaffingPackage(
     success: true,
     commandId: command.commandId,
     changedAggregateIds: [staffingPackageId, ...(recurringObligationId ? [recurringObligationId] : [])],
-    validationMessages: [`Activated ${command.payload.laborCategory} staffing package ${qualificationGroup}.`, ...warnings],
+    validationMessages: [marketOffer?.displayName
+      ? `Hired ${marketOffer.displayName} for ${qualificationGroup}.`
+      : `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`, ...warnings],
     hardBlockers: [],
     warnings,
     emittedEventIds: [eventLogEntryId],

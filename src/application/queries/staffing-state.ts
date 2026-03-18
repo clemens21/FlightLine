@@ -4,8 +4,15 @@
  */
 
 import type { SaveId, UtcIsoString } from "../../domain/common/primitives.js";
-import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
+import type {
+  EmploymentModel,
+  LaborCategory,
+  NamedPilotAvailabilityState,
+  NamedPilotTrainingProgramKind,
+  PilotCertificationCode,
+} from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
+import { loadNamedPilotRoster } from "../staffing/named-pilot-roster.js";
 import { loadActiveCompanyContext } from "./company-state.js";
 
 interface StaffingPackageRow extends Record<string, unknown> {
@@ -51,11 +58,42 @@ export interface StaffingCoverageSummaryView {
   pendingPackageCount: number;
 }
 
+export interface NamedPilotView {
+  namedPilotId: string;
+  staffingPackageId: string;
+  sourceOfferId: string | undefined;
+  rosterSlotNumber: number;
+  displayName: string;
+  qualificationGroup: string;
+  certifications: PilotCertificationCode[];
+  employmentModel: EmploymentModel;
+  packageStatus: "pending" | "active" | "expired" | "cancelled";
+  startsAtUtc: UtcIsoString;
+  endsAtUtc: UtcIsoString | undefined;
+  homeAirportId: string | undefined;
+  currentAirportId: string | undefined;
+  restingUntilUtc: UtcIsoString | undefined;
+  trainingProgramKind: NamedPilotTrainingProgramKind | undefined;
+  trainingTargetCertificationCode: PilotCertificationCode | undefined;
+  trainingStartedAtUtc: UtcIsoString | undefined;
+  trainingUntilUtc: UtcIsoString | undefined;
+  travelOriginAirportId: string | undefined;
+  travelDestinationAirportId: string | undefined;
+  travelStartedAtUtc: UtcIsoString | undefined;
+  travelUntilUtc: UtcIsoString | undefined;
+  availabilityState: NamedPilotAvailabilityState;
+  assignedScheduleId: string | undefined;
+  assignedAircraftId: string | undefined;
+  assignmentFromUtc: UtcIsoString | undefined;
+  assignmentToUtc: UtcIsoString | undefined;
+}
+
 export interface StaffingStateView {
   saveId: SaveId;
   companyId: string;
   staffingPackages: StaffingPackageView[];
   coverageSummaries: StaffingCoverageSummaryView[];
+  namedPilots: NamedPilotView[];
   totalActiveCoverageUnits: number;
   totalPendingCoverageUnits: number;
   totalMonthlyFixedCostAmount: number;
@@ -144,12 +182,14 @@ export function loadStaffingState(saveDatabase: SqliteFileDatabase, saveId: Save
 
     return left.laborCategory.localeCompare(right.laborCategory);
   });
+  const namedPilots = loadNamedPilotRoster(saveDatabase, companyContext.companyId, companyContext.currentTimeUtc);
 
   return {
     saveId,
     companyId: companyContext.companyId,
     staffingPackages,
     coverageSummaries,
+    namedPilots,
     totalActiveCoverageUnits: staffingPackages
       .filter((entry) => entry.status === "active")
       .reduce((sum, entry) => sum + entry.coverageUnits, 0),

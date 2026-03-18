@@ -181,7 +181,7 @@ try {
       laborCategory: "pilot",
       employmentModel: "direct_hire",
       qualificationGroup: "single_turboprop_utility",
-      coverageUnits: 2,
+      coverageUnits: 1,
       fixedCostAmount: 12_000,
     },
   });
@@ -223,9 +223,11 @@ try {
   const staffingState = await backend.loadStaffingState(saveId);
   assert.ok(staffingState);
   assert.equal(staffingState.staffingPackages.length, 2);
+  assert.equal(staffingState.namedPilots.length, 1);
+  assert.equal(staffingState.namedPilots.every((pilot) => pilot.availabilityState === "ready"), true);
   const pilotCoverageSummary = staffingState.coverageSummaries.find((summary) => summary.laborCategory === "pilot");
   const cabinCoverageSummary = staffingState.coverageSummaries.find((summary) => summary.laborCategory === "flight_attendant");
-  assert.equal(pilotCoverageSummary?.activeCoverageUnits, 2);
+  assert.equal(pilotCoverageSummary?.activeCoverageUnits, 1);
   assert.equal(cabinCoverageSummary?.activeCoverageUnits, 1);
 
   const refreshBoardResult = await backend.dispatch({
@@ -372,6 +374,13 @@ try {
   assert.equal(committedSchedules[0]?.scheduleState, "committed");
   assert.equal(committedSchedules[0]?.laborAllocations.length >= 1, true);
   assert.equal(committedSchedules[0]?.legs.at(-1)?.linkedCompanyContractId, String(acceptOfferResult.metadata?.companyContractId));
+  const staffingStateAfterCommit = await backend.loadStaffingState(saveId);
+  assert.ok(staffingStateAfterCommit);
+  assert.equal(staffingStateAfterCommit.namedPilots.some((pilot) => pilot.availabilityState === "reserved"), true);
+  assert.equal(
+    staffingStateAfterCommit.namedPilots.some((pilot) => pilot.availabilityState === "reserved" && pilot.assignedScheduleId === draftScheduleId),
+    true,
+  );
 
   const fleetStateAfterCommit = await backend.loadFleetState(saveId);
   assert.ok(fleetStateAfterCommit);
@@ -430,6 +439,14 @@ try {
   assert.equal(schedulesAfterAdvance[0]?.legs.at(-1)?.actualDepartureUtc, departureUtc);
   assert.equal(schedulesAfterAdvance[0]?.legs.at(-1)?.actualArrivalUtc, arrivalUtc);
   assert.equal(schedulesAfterAdvance[0]?.laborAllocations.at(-1)?.status, "consumed");
+  const staffingStateAfterAdvance = await backend.loadStaffingState(saveId);
+  assert.ok(staffingStateAfterAdvance);
+  assert.equal(staffingStateAfterAdvance.namedPilots.some((pilot) => pilot.availabilityState === "resting"), true);
+  assert.equal(
+    staffingStateAfterAdvance.namedPilots.some((pilot) =>
+      pilot.availabilityState === "resting" && pilot.currentAirportId === selectedOffer.destinationAirportId),
+    true,
+  );
 
   const fleetStateAfterAdvance = await backend.loadFleetState(saveId);
   assert.ok(fleetStateAfterAdvance);
@@ -442,6 +459,180 @@ try {
   assert.equal(companyContextAfterAdvance.activeContractCount, 0);
   assert.equal(companyContextAfterAdvance.currentTimeUtc, arrivalUtc);
   assert.notEqual(companyContextAfterAdvance.currentCashAmount, companyContextAfterAccept.currentCashAmount);
+
+  const recoveryDestinationAirportId = selectedOffer.destinationAirportId === "KDEN" ? "KCOS" : "KDEN";
+  const recoveryDepartureUtc = addHours(arrivalUtc, 2);
+  const recoveryArrivalUtc = addMinutes(
+    recoveryDepartureUtc,
+    estimateFlightMinutes(airportReference, selectedOffer.destinationAirportId, recoveryDestinationAirportId, 180),
+  );
+  const postRestDraftResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_draft_rest_blocked`,
+    saveId,
+    commandName: "SaveScheduleDraft",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: fleetState.aircraft[0].aircraftId,
+      scheduleKind: "operational",
+      legs: [
+        {
+          legType: "reposition",
+          originAirportId: selectedOffer.destinationAirportId,
+          destinationAirportId: recoveryDestinationAirportId,
+          plannedDepartureUtc: recoveryDepartureUtc,
+          plannedArrivalUtc: recoveryArrivalUtc,
+        },
+      ],
+    },
+  });
+
+  assert.equal(postRestDraftResult.success, true);
+  const postRestScheduleId = String(postRestDraftResult.metadata?.scheduleId ?? "");
+  assert.ok(postRestScheduleId);
+  const blockedByRestResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_commit_rest_blocked`,
+    saveId,
+    commandName: "CommitAircraftSchedule",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: postRestScheduleId,
+    },
+  });
+
+  assert.equal(blockedByRestResult.success, false);
+  assert.match(blockedByRestResult.hardBlockers[0] ?? "", /named pilots/i);
+
+  const postRestAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_advance_rest`,
+    saveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: addHours(arrivalUtc, 11),
+      stopConditions: ["target_time"],
+    },
+  });
+
+  assert.equal(postRestAdvanceResult.success, true);
+  const staffingStateAfterRest = await backend.loadStaffingState(saveId);
+  assert.ok(staffingStateAfterRest);
+  assert.equal(staffingStateAfterRest.namedPilots.every((pilot) => pilot.availabilityState === "ready"), true);
+  const trainingPilotId = staffingStateAfterRest.namedPilots[0]?.namedPilotId;
+  assert.ok(trainingPilotId);
+  const startTrainingResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_training_start`,
+    saveId,
+    commandName: "StartNamedPilotTraining",
+    issuedAtUtc: String(postRestAdvanceResult.metadata?.advancedToUtc ?? addHours(arrivalUtc, 11)),
+    actorType: "player",
+    payload: {
+      namedPilotId: trainingPilotId,
+      targetCertificationCode: "MEPL",
+    },
+  });
+
+  assert.equal(startTrainingResult.success, true);
+  const staffingStateDuringTraining = await backend.loadStaffingState(saveId);
+  assert.ok(staffingStateDuringTraining);
+  assert.equal(staffingStateDuringTraining.namedPilots.some((pilot) => pilot.availabilityState === "training"), true);
+  assert.equal(
+    staffingStateDuringTraining.namedPilots.some((pilot) =>
+      pilot.namedPilotId === trainingPilotId
+      && pilot.trainingUntilUtc
+      && pilot.trainingTargetCertificationCode === "MEPL"),
+    true,
+  );
+
+  const recoveredDepartureUtc = addHours(String(postRestAdvanceResult.metadata?.advancedToUtc ?? addHours(arrivalUtc, 11)), 1);
+  const recoveredArrivalUtc = addMinutes(
+    recoveredDepartureUtc,
+    estimateFlightMinutes(airportReference, selectedOffer.destinationAirportId, recoveryDestinationAirportId, 180),
+  );
+  const recoveredDraftResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_draft_rest_ready`,
+    saveId,
+    commandName: "SaveScheduleDraft",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: fleetState.aircraft[0].aircraftId,
+      scheduleKind: "operational",
+      legs: [
+        {
+          legType: "reposition",
+          originAirportId: selectedOffer.destinationAirportId,
+          destinationAirportId: recoveryDestinationAirportId,
+          plannedDepartureUtc: recoveredDepartureUtc,
+          plannedArrivalUtc: recoveredArrivalUtc,
+        },
+      ],
+    },
+  });
+
+  assert.equal(recoveredDraftResult.success, true);
+  assert.match(
+    JSON.stringify(recoveredDraftResult.metadata?.validationSnapshot ?? {}),
+    /training/i,
+  );
+  assert.equal(
+    recoveredDraftResult.hardBlockers.some((message) => /training/i.test(message)),
+    true,
+  );
+  const recoveredScheduleId = String(recoveredDraftResult.metadata?.scheduleId ?? "");
+  assert.ok(recoveredScheduleId);
+  const commitDuringTrainingResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_commit_training_blocked`,
+    saveId,
+    commandName: "CommitAircraftSchedule",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: recoveredScheduleId,
+    },
+  });
+
+  assert.equal(commitDuringTrainingResult.success, false);
+  assert.match(commitDuringTrainingResult.hardBlockers[0] ?? "", /training|named pilots/i);
+
+  const postTrainingAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_advance_training`,
+    saveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: addHours(String(postRestAdvanceResult.metadata?.advancedToUtc ?? addHours(arrivalUtc, 11)), 73),
+      stopConditions: ["target_time"],
+    },
+  });
+
+  assert.equal(postTrainingAdvanceResult.success, true);
+  const staffingStateAfterTraining = await backend.loadStaffingState(saveId);
+  assert.ok(staffingStateAfterTraining);
+  assert.equal(staffingStateAfterTraining.namedPilots.every((pilot) => pilot.availabilityState === "ready"), true);
+  assert.equal(
+    staffingStateAfterTraining.namedPilots.some((pilot) =>
+      pilot.namedPilotId === trainingPilotId
+      && pilot.certifications.includes("MEPL")
+      && pilot.certifications.includes("SEPL")),
+    true,
+  );
+
+  const commitAfterTrainingResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_commit_training_ready`,
+    saveId,
+    commandName: "CommitAircraftSchedule",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: recoveredScheduleId,
+    },
+  });
+
+  assert.equal(commitAfterTrainingResult.success, true);
 
   const duplicateAcceptResult = await backend.dispatch({
     commandId: `cmd_${saveId}_accept_duplicate`,

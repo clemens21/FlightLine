@@ -11,6 +11,8 @@ import {
   uniqueSaveId,
   acquireAircraft,
   activateStaffingPackage,
+  dispatchOrThrow,
+  saveAndCommitSchedule,
 } from "./helpers/flightline-testkit.mjs";
 import { buildBootstrapPayload, buildTabPayload, normalizeTab } from "../dist/ui/save-shell-fragments.js";
 import { buildDispatchTabPayload } from "../dist/ui/dispatch-tab-model.js";
@@ -85,6 +87,9 @@ try {
       coverageUnits: 2,
       fixedCostAmount: 12_000,
     });
+    const staffingState = await backend.loadStaffingState(saveId);
+    assert.ok(staffingState);
+    assert.equal(staffingState.namedPilots.length, 2);
 
     const bootstrap = await buildBootstrapPayload(backend, saveId, "dashboard");
     assert.ok(bootstrap);
@@ -232,6 +237,206 @@ try {
     });
     assert.equal(nextPayload.aircraft.length, 1);
     assert.equal(nextPayload.aircraft[0]?.schedule?.scheduleId, "schedule_next");
+  }
+
+  {
+    const saveId = uniqueSaveId("shell_named_pilot_visibility");
+    const startedAtUtc = await createCompanySave(backend, saveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+    });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N208NP" });
+    await activateStaffingPackage(backend, saveId, startedAtUtc, {
+      laborCategory: "pilot",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 2,
+      fixedCostAmount: 12_000,
+    });
+
+    const fleetState = await backend.loadFleetState(saveId);
+    assert.ok(fleetState);
+    const aircraft = fleetState.aircraft.find((entry) => entry.registration === "N208NP");
+    assert.ok(aircraft);
+
+    await saveAndCommitSchedule(
+      backend,
+      saveId,
+      startedAtUtc,
+      aircraft.aircraftId,
+      [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
+          plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
+        },
+      ],
+    );
+
+    const dispatchTab = await buildTabPayload(backend, saveId, "dispatch", renderers);
+    assert.ok(dispatchTab?.dispatchPayload);
+    const committedAircraft = dispatchTab.dispatchPayload.aircraft.find((entry) => entry.registration === "N208NP");
+    assert.ok(committedAircraft);
+    assert.equal(committedAircraft.assignedPilots.length, 1);
+    assert.equal(typeof committedAircraft.assignedPilots[0]?.displayName, "string");
+    assert.equal(committedAircraft.assignedPilots[0]?.availabilityState, "reserved");
+    assert.equal(committedAircraft.pilotReadiness.readyNowCount, 1);
+    assert.equal(committedAircraft.pilotReadiness.assignedPilotCount, 1);
+  }
+
+  {
+    const saveId = uniqueSaveId("shell_named_pilot_preview_warning");
+    const startedAtUtc = await createCompanySave(backend, saveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      startingCashAmount: 50_000_000,
+    });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N208PW" });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N20DPW" });
+    await activateStaffingPackage(backend, saveId, startedAtUtc, {
+      laborCategory: "pilot",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 2,
+      fixedCostAmount: 12_000,
+    });
+
+    const fleetState = await backend.loadFleetState(saveId);
+    assert.ok(fleetState);
+    const leadAircraft = fleetState.aircraft.find((entry) => entry.registration === "N208PW");
+    const draftAircraft = fleetState.aircraft.find((entry) => entry.registration === "N20DPW");
+    assert.ok(leadAircraft);
+    assert.ok(draftAircraft);
+
+    await saveAndCommitSchedule(
+      backend,
+      saveId,
+      startedAtUtc,
+      leadAircraft.aircraftId,
+      [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
+          plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
+        },
+      ],
+    );
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_draft_warning`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: draftAircraft.aircraftId,
+        scheduleKind: "operational",
+        legs: [
+          {
+            legType: "reposition",
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-16T15:30:00.000Z",
+            plannedArrivalUtc: "2026-03-16T16:40:00.000Z",
+          },
+        ],
+      },
+    });
+
+    const dispatchTab = await buildTabPayload(backend, saveId, "dispatch", renderers);
+    assert.ok(dispatchTab?.dispatchPayload);
+    const warningAircraft = dispatchTab.dispatchPayload.aircraft.find((entry) => entry.registration === "N20DPW");
+    assert.ok(warningAircraft?.schedule?.validation);
+    assert.equal(warningAircraft.schedule.validation.isCommittable, true);
+    assert.equal(
+      warningAircraft.schedule.validation.validationMessages.some((message) => message.code === "staffing.named_pilot_last_ready"),
+      true,
+    );
+  }
+
+  {
+    const saveId = uniqueSaveId("shell_named_pilot_preview_blocker");
+    const startedAtUtc = await createCompanySave(backend, saveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      startingCashAmount: 50_000_000,
+    });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N208PB" });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N20DPB" });
+    await activateStaffingPackage(backend, saveId, startedAtUtc, {
+      laborCategory: "pilot",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 1,
+      fixedCostAmount: 12_000,
+    });
+
+    const fleetState = await backend.loadFleetState(saveId);
+    assert.ok(fleetState);
+    const aircraftA = fleetState.aircraft.find((entry) => entry.registration === "N208PB");
+    const aircraftB = fleetState.aircraft.find((entry) => entry.registration === "N20DPB");
+    assert.ok(aircraftA);
+    assert.ok(aircraftB);
+
+    await saveAndCommitSchedule(
+      backend,
+      saveId,
+      startedAtUtc,
+      aircraftA.aircraftId,
+      [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: "2026-03-16T13:00:00.000Z",
+          plannedArrivalUtc: "2026-03-16T14:10:00.000Z",
+        },
+      ],
+    );
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_advance_rest_gap`,
+      saveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        targetTimeUtc: "2026-03-16T15:00:00.000Z",
+      },
+    });
+
+    const blockedDraft = await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_draft_blocked`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: aircraftB.aircraftId,
+        scheduleKind: "operational",
+        legs: [
+          {
+            legType: "reposition",
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-16T16:00:00.000Z",
+            plannedArrivalUtc: "2026-03-16T17:10:00.000Z",
+          },
+        ],
+      },
+    });
+    assert.equal(
+      blockedDraft.hardBlockers.some((message) => message.includes("Not enough named pilots are currently available")),
+      true,
+    );
+
+    const dispatchTab = await buildTabPayload(backend, saveId, "dispatch", renderers);
+    assert.ok(dispatchTab?.dispatchPayload);
+    const blockedAircraft = dispatchTab.dispatchPayload.aircraft.find((entry) => entry.registration === "N20DPB");
+    assert.ok(blockedAircraft?.schedule?.validation);
+    assert.equal(blockedAircraft.schedule.validation.isCommittable, false);
+    assert.equal(
+      blockedAircraft.schedule.validation.validationMessages.some((message) => message.code === "staffing.named_pilot_gap"),
+      true,
+    );
   }
 } finally {
   await harness.cleanup();

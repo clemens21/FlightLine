@@ -13,8 +13,12 @@ await import("./contracts-board-lifecycle.test.mjs");
 await import("./route-planner.test.mjs");
 
 await import("./aircraft-tab.test.mjs");
+await import("./aircraft-market-lifecycle.test.mjs");
 
 await import("./save-shell.test.mjs");
+await import("./named-pilot-travel.test.mjs");
+await import("./staffing-market.test.mjs");
+await import("./pilot-certifications.test.mjs");
 
 await import("./contracts-view.test.mjs");
 
@@ -24,4 +28,5 @@ await import("./route-plan-ops.test.mjs");
 
 await import("./offer-selection.test.mjs");
 
+await import("./ui-server-pilot-transfer.test.mjs");
 await import("./ui-server-smoke.test.mjs");

@@ -136,10 +136,11 @@ function haversineDistanceNm(origin: AirportRecord, destination: AirportRecord):
   return earthRadiusNm * c;
 }
 
-function listingCountProfile(targetCount = 180): ListingCountProfile {
+function listingCountProfile(targetCount = 0): ListingCountProfile {
+  const normalizedTargetCount = Math.max(0, Math.round(targetCount));
   return {
-    totalCount: targetCount,
-    newCount: Math.max(12, Math.round(targetCount * 0.20)),
+    totalCount: normalizedTargetCount,
+    newCount: Math.min(normalizedTargetCount, Math.max(3, Math.round(normalizedTargetCount * 0.20))),
   };
 }
 

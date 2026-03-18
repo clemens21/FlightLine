@@ -94,6 +94,7 @@ export async function handleSaveScheduleDraft(
       airportReference: dependencies.airportReference,
       aircraftReference: dependencies.aircraftReference,
       companyId: companyContext.companyId,
+      currentTimeUtc: companyContext.currentTimeUtc,
     },
   );
 

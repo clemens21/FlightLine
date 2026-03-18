@@ -13,11 +13,13 @@ import { loadRecentEventLog, type EventLogView } from "../application/queries/ev
 import { loadFleetState, type FleetStateView } from "../application/queries/fleet-state.js";
 import { loadMaintenanceTasks, type MaintenanceTaskView } from "../application/queries/maintenance-tasks.js";
 import { loadAircraftSchedules, type AircraftScheduleView } from "../application/queries/schedule-state.js";
+import { loadActiveStaffingMarket, type StaffingMarketView } from "../application/queries/staffing-market.js";
 import { loadStaffingState, type StaffingStateView } from "../application/queries/staffing-state.js";
 import type { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import { buildAircraftTabPayload } from "./aircraft-tab-model.js";
 import { buildDispatchTabPayload } from "./dispatch-tab-model.js";
 import { ensureActiveAircraftMarket } from "./aircraft-market-lifecycle.js";
+import { ensureActiveStaffingMarket } from "./staffing-market-lifecycle.js";
 import { loadContractsViewPayload } from "./contracts-view.js";
 import { loadRoutePlanState, type RoutePlanState } from "./route-plan-state.js";
 import type { SaveBootstrapPayload, SavePageTab, SaveTabPayload, ShellSummaryPayload } from "./save-shell-model.js";
@@ -38,6 +40,7 @@ interface ShellSummarySource {
   contractBoard: ContractBoardView | null;
   fleetState: FleetStateView | null;
   staffingState: StaffingStateView | null;
+  staffingMarket: StaffingMarketView | null;
   maintenanceTasks: MaintenanceTaskView[];
   schedules: AircraftScheduleView[];
   eventLog: EventLogView | null;
@@ -125,6 +128,13 @@ export async function buildTabPayload(
     });
   }
 
+  if (tabId === "staffing" && source.companyContext) {
+    const ensuredMarket = await ensureActiveStaffingMarket(backend, saveId, "scheduled");
+    if (ensuredMarket.refreshed) {
+      source = await loadShellSummarySource(backend, saveId, false) ?? source;
+    }
+  }
+
   return {
     saveId,
     tabId,
@@ -146,6 +156,7 @@ async function loadShellSummarySource(
     const companyContracts = loadCompanyContracts(context.saveDatabase, saveId);
     const fleetState = loadFleetState(context.saveDatabase, backend.getAircraftReference(), saveId);
     const staffingState = loadStaffingState(context.saveDatabase, saveId);
+    const staffingMarket = loadActiveStaffingMarket(context.saveDatabase, saveId);
     const maintenanceTasks = loadMaintenanceTasks(context.saveDatabase, saveId);
     const schedules = loadAircraftSchedules(context.saveDatabase, saveId);
     const eventLog = loadRecentEventLog(context.saveDatabase, saveId, 8);
@@ -158,6 +169,7 @@ async function loadShellSummarySource(
       contractBoard,
       fleetState,
       staffingState,
+      staffingMarket,
       maintenanceTasks,
       schedules,
       eventLog,

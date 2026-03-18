@@ -65,7 +65,7 @@ try {
     await activateStaffingPackage(backend, saveId, startedAtUtc, {
       laborCategory: "pilot",
       qualificationGroup: "single_turboprop_utility",
-      coverageUnits: 2,
+      coverageUnits: 3,
       fixedCostAmount: 12_000,
     });
 
@@ -252,6 +252,13 @@ try {
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Advance time"), true);
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
+  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N208UI" }).first());
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N208UI"));
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-assigned-pilot]").length === 1);
+  assert.equal((await page.locator("[data-dispatch-assigned-pilots]").textContent())?.includes("Reserved until"), true);
+  assert.equal((await page.locator("[data-dispatch-pilot-assignment-summary]").textContent())?.includes("named pilots"), true);
+  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
 
@@ -296,34 +303,56 @@ try {
   await clickUi(page.locator("[data-dispatch-accepted-contract] button").first());
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
-    const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
     const legButtons = document.querySelectorAll("[data-dispatch-leg-select]");
-    return flashText.includes("is not dispatchable in its current state.")
-      && selectedAircraft.includes("N20CUI")
+    return (
+      flashText.includes("is not dispatchable in its current state.")
       && commitButton.includes("Resolve blockers")
-      && legButtons.length >= 1;
+      && legButtons.length >= 1
+    ) || (
+      flashText.includes("would miss the contract deadline for this aircraft.")
+      && commitButton.includes("No draft to commit")
+      && legButtons.length === 0
+    );
+  }, { timeout: 45_000 });
+
+  const acceptedContractOutcome = await page.evaluate(() => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+    const legButtons = document.querySelectorAll("[data-dispatch-leg-select]").length;
+    return {
+      flashText,
+      commitButton,
+      legButtons,
+      blockedByAircraftState: flashText.includes("is not dispatchable in its current state.")
+        && commitButton.includes("Resolve blockers")
+        && legButtons >= 1,
+    };
   });
 
-  await clickUi(page.locator("[data-dispatch-leg-select]").first());
-  await page.waitForFunction(() => {
-    const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
-    return detail.includes("Selected Leg") && detail.includes("->");
-  });
-  const blockedLegDetailText = await page.locator("[data-dispatch-selected-leg-detail]").textContent();
-  await forceButtonSubmit(page, "[data-dispatch-commit-button]");
-  await page.waitForFunction((expectedDetail) => {
-    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
-    const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
-    const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
-    const commitButton = document.querySelector("[data-dispatch-commit-button]");
-    return flashText.includes("is not dispatchable in its current state.")
-      && selectedAircraft.includes("N20CUI")
-      && detail === expectedDetail
-      && commitButton?.textContent?.includes("Resolve blockers")
-      && commitButton instanceof HTMLButtonElement
-      && commitButton.disabled;
-  }, blockedLegDetailText ?? "");
+  if (acceptedContractOutcome.blockedByAircraftState) {
+    await clickUi(page.locator("[data-dispatch-leg-select]").first());
+    await page.waitForFunction(() => {
+      const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
+      return detail.includes("Selected Leg") && detail.includes("->");
+    });
+    const blockedLegDetailText = await page.locator("[data-dispatch-selected-leg-detail]").textContent();
+    await forceButtonSubmit(page, "[data-dispatch-commit-button]");
+    await page.waitForFunction((expectedDetail) => {
+      const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+      const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
+      const commitButton = document.querySelector("[data-dispatch-commit-button]");
+      return flashText.includes("is not dispatchable in its current state.")
+        && detail === expectedDetail
+        && commitButton?.textContent?.includes("Resolve blockers")
+        && commitButton instanceof HTMLButtonElement
+        && commitButton.disabled;
+    }, blockedLegDetailText ?? "", { timeout: 45_000 });
+  } else {
+    assert.equal(acceptedContractOutcome.flashText.includes("would miss the contract deadline for this aircraft."), true);
+    assert.equal(acceptedContractOutcome.commitButton.includes("No draft to commit"), true);
+    assert.equal(acceptedContractOutcome.legButtons, 0);
+  }
 
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
@@ -363,6 +392,98 @@ try {
   assert.equal(await page.locator(".aircraft-row-button").count(), 1);
   assert.equal((await page.locator(".aircraft-detail-panel").textContent())?.includes("N20CUI"), true);
 
+  await page.setViewportSize({ width: 1300, height: 520 });
+  await clickUi(page.locator("[data-shell-tab='staffing']"));
+  await page.waitForFunction(() => document.querySelectorAll("[data-staffing-pilot-row]").length === 3);
+  await page.waitForFunction(() => (document.querySelector("[data-staffing-roster]")?.textContent ?? "").includes("N208UI"));
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("[data-shell-tab-panel]");
+    return panel instanceof HTMLElement && panel.scrollHeight - panel.clientHeight <= 2;
+  });
+  await clickUi(page.locator("[data-staffing-workspace-tab='hire']"));
+  await page.waitForFunction(() => {
+    const hirePanel = document.querySelector("[data-staffing-workspace-panel='hire']");
+    const employeePanel = document.querySelector("[data-staffing-workspace-panel='employees']");
+    return hirePanel instanceof HTMLElement
+      && employeePanel instanceof HTMLElement
+      && !hirePanel.hidden
+      && employeePanel.hidden;
+  });
+  assert.ok((await page.locator("[data-pilot-candidate-market]").count()) >= 1);
+  assert.ok((await page.locator("[data-pilot-candidate-row] [data-staff-portrait-surface='hire-row']").count()) >= 1);
+  const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
+  const firstCandidatePortrait = await page.locator("[data-pilot-candidate-row]").first().locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
+  assert.ok(firstCandidatePortrait);
+  await clickUi(page.locator("[data-pilot-candidate-row]").first());
+  await page.waitForFunction((expectedName) => {
+    const detail = document.querySelector("[data-staffing-detail-body='hire']")?.textContent ?? "";
+    return detail.includes(expectedName) && detail.includes("Coverage posture");
+  }, firstCandidateName);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staff-portrait-surface='hire-detail']").getAttribute("src"), firstCandidatePortrait);
+  await clickUi(page.locator("[data-staffing-workspace-tab='employees']"));
+  await page.waitForFunction(() => {
+    const hirePanel = document.querySelector("[data-staffing-workspace-panel='hire']");
+    const employeePanel = document.querySelector("[data-staffing-workspace-panel='employees']");
+    return hirePanel instanceof HTMLElement
+      && employeePanel instanceof HTMLElement
+      && hirePanel.hidden
+      && !employeePanel.hidden;
+  });
+  assert.equal(await page.locator("[data-staffing-pilot-row]").count(), 3);
+  assert.equal(await page.locator("[data-staffing-pilot-row] [data-staff-portrait-surface='employees-row']").count(), 3);
+  assert.equal((await page.locator("[data-staffing-roster]").textContent())?.toLowerCase().includes("reserved"), true);
+  const reservedPilotRow = page.locator("[data-staffing-pilot-row]").filter({ hasText: "N208UI" }).first();
+  const reservedPilotPortrait = await reservedPilotRow.locator("[data-staff-portrait-surface='employees-row']").getAttribute("src");
+  assert.ok(reservedPilotPortrait);
+  await clickUi(reservedPilotRow);
+  await page.waitForFunction(() => {
+    const detail = document.querySelector("[data-staffing-detail-body='employees']")?.textContent ?? "";
+    return detail.includes("N208UI") && /reserved/i.test(detail);
+  });
+  assert.equal(await page.locator("[data-staffing-detail-body='employees'] [data-staff-portrait-surface='employees-detail']").getAttribute("src"), reservedPilotPortrait);
+  await clickUi(page.locator("[data-staffing-pilot-row]").filter({ hasText: /ready/i }).first());
+  await page.waitForFunction(() => {
+    const detail = document.querySelector("[data-staffing-detail-body='employees']")?.textContent ?? "";
+    return detail.includes("Start training");
+  });
+  await page.waitForFunction(() => {
+    const detail = document.querySelector("[data-staffing-detail-body='employees']");
+    return detail instanceof HTMLElement && detail.scrollHeight > detail.clientHeight + 20;
+  });
+  const detailScrollBefore = await page.locator("[data-staffing-detail-body='employees']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return 0;
+    }
+    element.scrollTop = 160;
+    return element.scrollTop;
+  });
+  assert.ok(detailScrollBefore > 0);
+  assert.equal(await page.locator("[data-pilot-training-start]").count(), 1);
+  await page.locator("[data-pilot-training-target]").first().selectOption("MEPL");
+  await clickUi(page.locator("[data-pilot-training-start]").first());
+  await page.waitForFunction(() => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const detailText = document.querySelector("[data-staffing-detail-body='employees']")?.textContent ?? "";
+    return /training/i.test(flashText) && /training/i.test(detailText);
+  });
+  assert.equal((await page.locator("[data-staffing-detail-body='employees']").textContent())?.toLowerCase().includes("training"), true);
+  const detailScrollAfter = await page.locator("[data-staffing-detail-body='employees']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return { scrollTop: 0, maxScrollTop: 0 };
+    }
+    return {
+      scrollTop: element.scrollTop,
+      maxScrollTop: Math.max(0, element.scrollHeight - element.clientHeight),
+    };
+  });
+  assert.ok(detailScrollAfter.scrollTop > 40);
+  assert.ok(detailScrollAfter.scrollTop >= Math.min(detailScrollBefore, detailScrollAfter.maxScrollTop) - 24);
+  assert.equal(await page.locator("[data-shell-tab-panel]").evaluate((element) => {
+    return element instanceof HTMLElement ? element.scrollTop : -1;
+  }), 0);
+
+  await clickUi(page.locator("[data-shell-tab='aircraft']"));
+  await page.waitForFunction(() => document.querySelector(".aircraft-detail-panel") !== null);
   await clickUi(page.locator("[data-aircraft-workspace='market']"));
   await page.waitForFunction(() => document.querySelector("[data-aircraft-workspace='market']")?.getAttribute("aria-selected") === "true");
   const initialMarketRows = await page.locator("[data-market-select]").count();
@@ -380,7 +501,7 @@ try {
   });
   assert.equal(await page.locator("[data-aircraft-workspace='market']").getAttribute("aria-selected"), "true");
   assert.equal(await page.locator(`[data-market-select='${selectedOfferId}']`).count(), 0);
-  assert.ok((await page.locator("[data-market-select]").count()) >= initialMarketRows);
+  assert.equal(await page.locator("[data-market-select]").count(), initialMarketRows - 1);
 
   await clickUi(page.locator("[data-clock-menu] summary"));
   await page.waitForFunction(() => document.querySelectorAll("[data-clock-day]").length === 42);

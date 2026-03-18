@@ -13,6 +13,11 @@ const SAVE_MIGRATION_FILES = [
   "0002_route_plan.sql",
   "0003_aircraft_market.sql",
   "0004_aircraft_market_lifecycle.sql",
+  "0005_named_pilots.sql",
+  "0006_named_pilot_training.sql",
+  "0007_named_pilot_travel.sql",
+  "0008_staffing_market.sql",
+  "0009_pilot_certifications.sql",
 ] as const;
 const saveSchemaDirectoryUrl = new URL("../save-schema/", import.meta.url);
 

@@ -103,6 +103,7 @@ At that checkpoint, produce:
 4. the main risks and tradeoffs
 5. the required validation
 6. the handoff contract if another role or stream will take over
+7. the paste-ready next role prompts if delegation is recommended
 
 ## Change Budget Rule
 
@@ -126,6 +127,8 @@ Move beyond `Single-Agent Mode` when one or more of the following is true:
 4. The task is ambiguous enough to benefit from framing or decomposition.
 5. Confidence matters more than raw speed.
 6. More than one active implementation stream is needed.
+
+For ambiguous, cross-system, or red-flag feature work, the bias should be toward explicit delegation rather than keeping one agent on the task by momentum alone.
 
 ## Distinct Review Lenses
 
@@ -163,6 +166,8 @@ Every non-trivial delegation should include:
 7. validation required before completion
 8. escalation triggers
 9. what should be deferred rather than folded in silently
+
+If Mara is the delegating lead, she should also provide the paste-ready next role prompts by default for the immediate downstream roles unless the human explicitly says not to.
 
 Sub-agents or downstream roles should not be asked to wander through ambiguity.
 

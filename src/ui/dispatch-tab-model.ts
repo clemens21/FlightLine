@@ -5,6 +5,10 @@
 
 import type { JsonObject } from "../domain/common/primitives.js";
 import type { ValidationMessage } from "../domain/dispatch/types.js";
+import {
+  pilotCertificationsSatisfyQualificationGroup,
+  requiredCertificationForQualificationGroup,
+} from "../domain/staffing/pilot-certifications.js";
 import type { CompanyContractView, CompanyContractsView } from "../application/queries/company-contracts.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
 import type { FleetAircraftView, FleetStateView } from "../application/queries/fleet-state.js";
@@ -54,6 +58,7 @@ export interface DispatchLegView {
   plannedArrivalUtc: string;
   linkedCompanyContractId?: string;
   assignedQualificationGroup?: string;
+  requiredPilotCertificationCode?: string;
   payloadLabel: string;
   durationMinutes: number;
   contractState?: string;
@@ -75,6 +80,38 @@ export interface DispatchScheduleView {
   laborAllocationCount: number;
 }
 
+export interface DispatchAssignedPilotView {
+  namedPilotId: string;
+  displayName: string;
+  certifications: string[];
+  availabilityState: StaffingStateView["namedPilots"][number]["availabilityState"];
+  packageStatus: StaffingStateView["namedPilots"][number]["packageStatus"];
+  startsAtUtc: string;
+  assignmentFromUtc?: string;
+  assignmentToUtc?: string;
+  restingUntilUtc?: string;
+  trainingUntilUtc?: string;
+  travelDestinationAirport?: DispatchAirportView;
+  travelStartedAtUtc?: string;
+  travelUntilUtc?: string;
+  currentAirport?: DispatchAirportView;
+}
+
+export interface DispatchPilotReadinessView {
+  qualificationGroup: string;
+  requiredCertificationCode?: string;
+  pilotsRequired: number;
+  readyNowCount: number;
+  reservedNowCount: number;
+  flyingNowCount: number;
+  restingNowCount: number;
+  trainingNowCount: number;
+  travelingNowCount: number;
+  pendingStartCount: number;
+  assignedPilotCount: number;
+  noReadyReserveRemaining: boolean;
+}
+
 export interface DispatchAircraftView {
   aircraftId: string;
   registration: string;
@@ -88,8 +125,12 @@ export interface DispatchAircraftView {
   maintenanceState: string;
   hoursToService: number;
   pilotQualificationGroup: string;
+  requiredPilotCertificationCode?: string;
+  pilotsRequired: number;
   pilotCoverageUnits: number;
   pendingPilotCoverageUnits: number;
+  pilotReadiness: DispatchPilotReadinessView;
+  assignedPilots: DispatchAssignedPilotView[];
   schedule?: DispatchScheduleView;
 }
 
@@ -178,11 +219,13 @@ export function buildDispatchTabPayload({
   const fleet = fleetState?.aircraft ?? [];
   const activeSchedules = schedules.filter((schedule) => schedule.scheduleState !== "completed" && schedule.scheduleState !== "cancelled");
   const contractsById = new Map(contracts.map((contract) => [contract.companyContractId, contract]));
-  const pilotCoverageByQualification = new Map(
-    (staffingState?.coverageSummaries ?? [])
-      .filter((summary) => summary.laborCategory === "pilot")
-      .map((summary) => [summary.qualificationGroup, summary]),
-  );
+  const allNamedPilots = staffingState?.namedPilots ?? [];
+  const pilotCoverageUnits = (staffingState?.coverageSummaries ?? [])
+    .filter((summary) => summary.laborCategory === "pilot")
+    .reduce((sum, summary) => sum + summary.activeCoverageUnits, 0);
+  const pendingPilotCoverageUnits = (staffingState?.coverageSummaries ?? [])
+    .filter((summary) => summary.laborCategory === "pilot")
+    .reduce((sum, summary) => sum + summary.pendingCoverageUnits, 0);
   const schedulesByAircraftId = new Map<string, AircraftScheduleView[]>();
 
   for (const schedule of activeSchedules) {
@@ -194,11 +237,13 @@ export function buildDispatchTabPayload({
   const aircraft = fleet.map((entry) =>
     buildDispatchAircraftView(
       entry,
-      choosePrimarySchedule(schedulesByAircraftId.get(entry.aircraftId) ?? [], companyContext.currentTimeUtc),
-      contractsById,
-      pilotCoverageByQualification.get(entry.pilotQualificationGroup),
-      airportReference,
-    ),
+        choosePrimarySchedule(schedulesByAircraftId.get(entry.aircraftId) ?? [], companyContext.currentTimeUtc),
+        contractsById,
+        pilotCoverageUnits,
+        pendingPilotCoverageUnits,
+        allNamedPilots,
+        airportReference,
+      ),
   );
 
   const routePlanItems = (routePlan?.items ?? []).map((item) => buildRoutePlanItemView(item, airportReference));
@@ -252,11 +297,39 @@ function buildDispatchAircraftView(
   aircraft: FleetAircraftView,
   schedule: AircraftScheduleView | undefined,
   contractsById: Map<string, CompanyContractView>,
-  pilotCoverageSummary: StaffingStateView["coverageSummaries"][number] | undefined,
+  pilotCoverageUnits: number,
+  pendingPilotCoverageUnits: number,
+  namedPilots: StaffingStateView["namedPilots"],
   airportReference: AirportReferenceRepository,
 ): DispatchAircraftView {
   const validation = parseValidationSnapshot(schedule?.validationSnapshot);
   const validationMessagesBySequence = buildValidationMessagesBySequence(validation?.validationMessages ?? []);
+  const requiredPilotCertificationCode = requiredCertificationForQualificationGroup(aircraft.pilotQualificationGroup);
+  const qualifiedNamedPilots = namedPilots.filter((pilot) =>
+    pilotCertificationsSatisfyQualificationGroup(pilot.certifications, aircraft.pilotQualificationGroup),
+  );
+  const activeNamedPilots = qualifiedNamedPilots.filter((pilot) => pilot.packageStatus === "active");
+  const assignedPilots = !schedule || schedule.isDraft
+    ? []
+    : namedPilots
+        .filter((pilot) => pilot.assignedScheduleId === schedule.scheduleId)
+        .sort((left, right) => left.displayName.localeCompare(right.displayName))
+        .map((pilot) => ({
+          namedPilotId: pilot.namedPilotId,
+          displayName: pilot.displayName,
+          certifications: pilot.certifications,
+          availabilityState: pilot.availabilityState,
+          packageStatus: pilot.packageStatus,
+          startsAtUtc: pilot.startsAtUtc,
+          ...(pilot.assignmentFromUtc ? { assignmentFromUtc: pilot.assignmentFromUtc } : {}),
+          ...(pilot.assignmentToUtc ? { assignmentToUtc: pilot.assignmentToUtc } : {}),
+          ...(pilot.restingUntilUtc ? { restingUntilUtc: pilot.restingUntilUtc } : {}),
+          ...(pilot.trainingUntilUtc ? { trainingUntilUtc: pilot.trainingUntilUtc } : {}),
+          ...(pilot.travelDestinationAirportId ? { travelDestinationAirport: describeAirport(pilot.travelDestinationAirportId, airportReference) } : {}),
+          ...(pilot.travelStartedAtUtc ? { travelStartedAtUtc: pilot.travelStartedAtUtc } : {}),
+          ...(pilot.travelUntilUtc ? { travelUntilUtc: pilot.travelUntilUtc } : {}),
+          ...(pilot.currentAirportId ? { currentAirport: describeAirport(pilot.currentAirportId, airportReference) } : {}),
+        }));
 
   return {
     aircraftId: aircraft.aircraftId,
@@ -271,8 +344,25 @@ function buildDispatchAircraftView(
     maintenanceState: aircraft.maintenanceStateInput,
     hoursToService: aircraft.hoursToService,
     pilotQualificationGroup: aircraft.pilotQualificationGroup,
-    pilotCoverageUnits: pilotCoverageSummary?.activeCoverageUnits ?? 0,
-    pendingPilotCoverageUnits: pilotCoverageSummary?.pendingCoverageUnits ?? 0,
+    ...(requiredPilotCertificationCode ? { requiredPilotCertificationCode } : {}),
+    pilotsRequired: aircraft.pilotsRequired,
+    pilotCoverageUnits,
+    pendingPilotCoverageUnits,
+    pilotReadiness: {
+      qualificationGroup: aircraft.pilotQualificationGroup,
+      ...(requiredPilotCertificationCode ? { requiredCertificationCode: requiredPilotCertificationCode } : {}),
+      pilotsRequired: aircraft.pilotsRequired,
+      readyNowCount: countPilotsByAvailability(activeNamedPilots, "ready"),
+      reservedNowCount: countPilotsByAvailability(activeNamedPilots, "reserved"),
+      flyingNowCount: countPilotsByAvailability(activeNamedPilots, "flying"),
+      restingNowCount: countPilotsByAvailability(activeNamedPilots, "resting"),
+      trainingNowCount: countPilotsByAvailability(activeNamedPilots, "training"),
+      travelingNowCount: countPilotsByAvailability(activeNamedPilots, "traveling"),
+      pendingStartCount: namedPilots.filter((pilot) => pilot.packageStatus === "pending").length,
+      assignedPilotCount: assignedPilots.length,
+      noReadyReserveRemaining: assignedPilots.length > 0 && countPilotsByAvailability(activeNamedPilots, "ready") === 0,
+    },
+    assignedPilots,
     ...(schedule ? {
       schedule: {
         scheduleId: schedule.scheduleId,
@@ -287,6 +377,13 @@ function buildDispatchAircraftView(
       },
     } : {}),
   };
+}
+
+function countPilotsByAvailability(
+  pilots: StaffingStateView["namedPilots"],
+  availabilityState: StaffingStateView["namedPilots"][number]["availabilityState"],
+): number {
+  return pilots.filter((pilot) => pilot.availabilityState === availabilityState).length;
 }
 
 function choosePrimarySchedule(
@@ -372,6 +469,12 @@ function buildDispatchLegView(
     plannedArrivalUtc: leg.plannedArrivalUtc,
     ...(leg.linkedCompanyContractId ? { linkedCompanyContractId: leg.linkedCompanyContractId } : {}),
     ...(leg.assignedQualificationGroup ? { assignedQualificationGroup: leg.assignedQualificationGroup } : {}),
+    ...(() => {
+      const requiredPilotCertificationCode = leg.assignedQualificationGroup
+        ? requiredCertificationForQualificationGroup(leg.assignedQualificationGroup)
+        : undefined;
+      return requiredPilotCertificationCode ? { requiredPilotCertificationCode } : {};
+    })(),
     payloadLabel: formatPayloadLabel(
       payload?.volumeType,
       payload?.passengerCount,
