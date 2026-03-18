@@ -1,0 +1,136 @@
+name: Defect Report
+description: Report something in FlightLine that felt broken, incorrect, or did not work the way you expected while playing.
+title: "[Defect] "
+labels:
+  - defect
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a defect.
+        Clear reports help the team reproduce the problem faster and fix the right thing.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Short Summary
+      description: One sentence describing the problem.
+      placeholder: The Dispatch screen shows the wrong schedule for my aircraft.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where did this happen?
+      description: Pick the part of the game that felt wrong.
+      options:
+        - Menus or shell UI
+        - Contracts board
+        - Dispatch planning
+        - Aircraft or fleet management
+        - Staffing
+        - Save or load
+        - Time or calendar
+        - Money or finance
+        - Tutorial, help, or docs
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: How much did this affect play?
+      description: Pick the option closest to the impact on your session.
+      options:
+        - I could not continue or had to stop playing
+        - A major feature was blocked or gave the wrong result
+        - I could keep playing, but it was confusing or frustrating
+        - It was minor or cosmetic
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_you_were_doing
+    attributes:
+      label: What were you trying to do?
+      description: Describe the goal or action you were taking before the problem showed up.
+      placeholder: I was trying to stage a contract in Dispatch after accepting it from the Contracts tab.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: Describe the actual result you saw in the game.
+      placeholder: Dispatch loaded a different schedule than the one I had just been working on.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_you_expected
+    attributes:
+      label: What did you expect to happen instead?
+      description: Describe the result you thought the game should show.
+      placeholder: Dispatch should have opened the draft schedule I had just created for that aircraft.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we reproduce it?
+      description: List the steps someone else should follow to see the same problem.
+      placeholder: |
+        1. Open the save.
+        2. Accept a contract from the Contracts tab.
+        3. Open Dispatch and select the aircraft.
+        4. Observe the issue.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does this happen?
+      options:
+        - Every time
+        - Sometimes
+        - Happened once
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: save_context
+    attributes:
+      label: Save or session details
+      description: If you know them, include the save name, company name, in-game date, or anything else that helps identify the session.
+      placeholder: Save "Mountain Cargo", company Front Range Freight, around Mar 16 2026 in game
+
+  - type: input
+    id: build_info
+    attributes:
+      label: Platform or build details
+      description: Include the platform, app version, branch, or commit if you know it.
+      placeholder: Windows desktop app, local build from Mar 18 2026
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, videos, or extra notes
+      description: Add anything that would help us understand the issue faster.
+      placeholder: |
+        - Screenshot of the screen
+        - Video clip
+        - Error message text
+        - Anything unusual that happened right before the issue
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Did anything help or work around it?
+      description: If you found a way to avoid the problem, note it here.
+      placeholder: Reloading the save did not help, but switching tabs and reopening Dispatch did.
