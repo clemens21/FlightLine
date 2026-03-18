@@ -4,8 +4,8 @@
 
 GitHub Issues is the default durable tracker for FlightLine bugs, regressions, and QA findings.
 
-Use the internal `Bug Report` issue form for contributor, QA, and agent findings.
-Use the player-facing `Defect Report` issue form when the report is coming from someone playing the game.
+The public GitHub issue chooser should expose `Defect Report` for players.
+Do not expose a public `Bug Report` form if bugs are intended to be created internally only.
 
 Use issues to keep bugs out of chat history and out of the intake-brief folder.
 
@@ -14,6 +14,7 @@ They are not the bug database.
 
 ## Default Rule
 
+- If a player or public user is reporting a problem, they should open a `Defect Report`, not a `Bug Report`.
 - If a bug should survive the current conversation, open a GitHub issue.
 - If the bug is non-trivial, cross-system, ambiguous, or red-flag, also create a Mara intake brief that links back to the issue.
 - If the bug is tiny and will be fixed immediately, an issue is optional.
@@ -80,13 +81,14 @@ Create one when the bug needs framing.
 
 ## Minimal Workflow
 
-1. Open a GitHub issue using the `Bug Report` or `Defect Report` form.
-2. Add the recommended labels.
-3. If the bug is non-trivial, create a Mara intake brief and link the issue.
-4. Mara decides whether the work stays in `Single-Agent Mode`, goes straight to Eli, or needs broader framing.
-5. Eli or the assigned owner executes the fix.
-6. Nadia verifies correctness when the risk justifies independent review.
-7. Close the issue only after validation is complete or validation gaps are called out explicitly.
+1. Public users open a GitHub issue using the `Defect Report` form.
+2. Internal bug issues are created by maintainers after triage or during internal review.
+3. Add the recommended labels.
+4. If the bug is non-trivial, create a Mara intake brief and link the issue.
+5. Mara decides whether the work stays in `Single-Agent Mode`, goes straight to Eli, or needs broader framing.
+6. Eli or the assigned owner executes the fix.
+7. Nadia verifies correctness when the risk justifies independent review.
+8. Close the issue only after validation is complete or validation gaps are called out explicitly.
 
 ## Nadia Findings
 
