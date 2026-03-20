@@ -32,6 +32,7 @@ Draft for user-plus-Mara review before workstream decomposition.
     - certifications and qualification lane
     - total flight time
     - company flight time once hired
+    - compact qualification-family experience breakdown
     - a small set of role-relevant pilot stats on a visible proficiency scale
   - recommended first-pass visible pilot stats:
     - operational reliability
@@ -70,6 +71,7 @@ Draft for user-plus-Mara review before workstream decomposition.
   - hiring must show the player the direct-hire versus contract-hire tradeoff before confirmation, not only after charges start appearing in the ledger
   - pilot pricing should be grounded in visible factors such as certification complexity, flight time, employment model, and standout pilot strengths; it should not rely on opaque hidden scoring
   - certification complexity and flight time should do more work in pricing than softer profile traits
+  - the full hiring workspace may carry rich candidate detail because it owns a full screen, but list-row scanning should stay tight and the deeper detail should live in the selected-candidate view
   - the visible stat set should stay small, pilot-relevant, and operationally meaningful
   - first-pass pilot stats should use broad visible proficiency bands rather than fake-precision decimals
   - `operational reliability` should be used instead of a raw `punctuality` stat so the player does not infer that all delay risk comes from the pilot alone
@@ -77,6 +79,8 @@ Draft for user-plus-Mara review before workstream decomposition.
     a pilot activity-and-cost ledger, not a generalized HR/payroll subsystem
   - first-pass contract usage billing should remain tied to completed flight-leg hours only
   - first-pass flight-time visibility should distinguish total career flight time from company-earned flight time
+  - first-pass pilot profile should keep all three experience views:
+    total career hours, company-earned hours, and a compact qualification-family experience breakdown
   - company-earned flight time should grow from completed company-operated legs, including reposition or ferry flying where the pilot actually flew
   - candidate-generated flight time should be plausible for the pilot's certifications and qualification band; obviously unrealistic rookie-versus-veteran combinations should be avoided
   - higher-complexity or broader-certification candidates should usually skew toward higher plausible hour bands than entry-level candidates
@@ -130,7 +134,6 @@ Draft for user-plus-Mara review before workstream decomposition.
   - Should the player see direct-hire and contract-hire side by side for the same candidate, or should different offers represent different employment paths?
   - What is the right larger market size: enough to feel like a pool, but not so many that the market becomes a wall of duplicates?
   - Should contractor conversion preserve the same pilot identity and history, or effectively replace the contract package with a new direct-hire package while preserving the pilot record?
-  - Should the first-pass pilot profile show only total career hours and company hours, or also show a compact qualification-family experience breakdown?
   - Should pricing explanation be shown as a short "why this pilot costs this much" driver list, a compact market-value summary, or both?
   - Are four visible proficiency bands enough, or does Mara want a different first-pass rating vocabulary?
   - How much of the pilot labor record belongs at the individual pilot level versus a company-level labor summary surface?
