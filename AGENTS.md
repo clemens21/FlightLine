@@ -6,20 +6,20 @@ This file is the canonical operating standard for Codex usage in FlightLine.
 
 If another supporting file conflicts with this file, this file wins.
 
-Supporting docs intentionally remain under `agent stuff/` so the repository root stays mostly clean.
+Supporting docs intentionally remain under `team-ops/` so the repository root stays mostly clean.
 
 Use these supporting files as references when deeper role or workflow detail is needed:
-- `agent stuff/supporting/flightline_shared_base_instructions.md`: shared product and engineering principles
-- `agent stuff/supporting/flightline_role_catalog.md`: detailed standing-role catalog and boundaries
-- `agent stuff/supporting/flightline_agent_delegation_policy.md`: routing, escalation, and multi-stream rules
-- `agent stuff/supporting/flightline_bug_tracking.md`: default durable bug-tracking approach and issue-versus-intake rules
-- `agent stuff/supporting/flightline_task_intake_brief.md`: standard intake brief for new Mara-routed work
-- `agent stuff/supporting/flightline_team_operations.md`: day-to-day dispatch and coordination for the standing team
-- `agent stuff/supporting/flightline_branch_promotion_rules.md`: rules for promoting work from `dev` to local `main` and from local `main` to GitHub `main`
-- `agent stuff/supporting/temporary_builder_authorization_template.md`: template for Mara-authorized temporary implementation sessions
-- `agent stuff/supporting/flightline_starter_operating_bundle.md`: recommended everyday prompt set
-- `agent stuff/supporting/flightline_role_prompt_pack.md`: paste-ready prompts and coordination overlays
-- `agent stuff/supporting/flightline_codex_automation_setup_sheet.md`: recurring review automation suggestions
+- `team-ops/supporting/flightline_shared_base_instructions.md`: shared product and engineering principles
+- `team-ops/supporting/flightline_role_catalog.md`: detailed standing-role catalog and boundaries
+- `team-ops/supporting/flightline_agent_delegation_policy.md`: routing, escalation, and multi-stream rules
+- `team-ops/supporting/flightline_bug_tracking.md`: default durable bug-tracking approach and issue-versus-intake rules
+- `team-ops/supporting/flightline_task_intake_brief.md`: standard intake brief for new Mara-routed work
+- `team-ops/supporting/flightline_team_operations.md`: day-to-day dispatch and coordination for the standing team
+- `team-ops/supporting/flightline_branch_promotion_rules.md`: rules for promoting work from `dev` to local `main` and from local `main` to GitHub `main`
+- `team-ops/supporting/temporary_builder_authorization_template.md`: template for Mara-authorized temporary implementation sessions
+- `team-ops/supporting/flightline_starter_operating_bundle.md`: recommended everyday prompt set
+- `team-ops/supporting/flightline_role_prompt_pack.md`: paste-ready prompts and coordination overlays
+- `team-ops/supporting/flightline_codex_automation_setup_sheet.md`: recurring review automation suggestions
 
 Product capabilities, requests, workstreams, and completed product artifacts now live under `product-work/`.
 
@@ -120,7 +120,7 @@ These are not standing roles:
 
 Start with one primary owner per task or per workstream.
 
-For most new non-trivial development work, use `agent stuff/supporting/flightline_task_intake_brief.md` and start with the `Technical Lead`.
+For most new non-trivial development work, use `team-ops/supporting/flightline_task_intake_brief.md` and start with the `Technical Lead`.
 
 Route work like this:
 
@@ -150,6 +150,9 @@ That means:
 Important nuance:
 - Mara is not a passive translator
 - if a capability is too broad, internally inconsistent, mistimed, or technically unsafe, Mara should push back and reframe it before implementation begins
+- Mara should not push ordinary smaller changes up into a capability brief unless the work genuinely needs player-facing product shaping, minimum useful scope design, or Zoe-level now-versus-later judgment
+- by default, one capability should have one canonical product-work document that remains the source of truth as Mara decomposes it into slices
+- standalone workstream documents should be exceptional, not the default
 - capability briefs are not implementation-ready by default
 - implementation should start only after Mara has turned the capability into one or more bounded feature streams with validation expectations
 

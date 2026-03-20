@@ -14,7 +14,10 @@ If that is not clearly true, start here.
 - Fill in what you know.
 - Mark unknowns directly instead of faking precision.
 - Use one brief per task or per intended workstream.
+- Requests are the normal path for smaller asks between you and Mara.
 - If the work starts as a broader product capability from you and Zoe, Mara should convert that capability into bounded feature or workstream framing before Eli receives implementation work.
+- By default, Mara should keep that decomposition inside the same capability dossier instead of creating a separate product-work file for every feature slice.
+- Mara should only push a smaller request up into a capability brief when the work genuinely needs player-facing product shaping, minimum useful scope design, or Zoe-level now-versus-later judgment.
 - For bugs that should be tracked durably, open or reference a GitHub issue first. The issue is the source of truth; this brief is for Mara framing when needed.
 - Include concrete evidence when possible.
 - Do not pre-decide the implementation unless the design choice itself is what needs review.
@@ -44,7 +47,7 @@ If that is not clearly true, start here.
 
 Mara should convert the intake into a decision-ready framing response.
 
-If the intake is really a capability brief rather than a ready feature request, Mara should first reduce it into one or more bounded feature streams instead of handing the capability straight to Eli.
+If the intake is really a capability brief rather than a ready feature request, Mara should first reduce it into one or more bounded feature streams inside the same capability dossier instead of handing the capability straight to Eli.
 
 That response should include:
 
@@ -79,7 +82,7 @@ Use this when giving new work to Mara:
 Read and follow Z:\projects\FlightLine\AGENTS.md.
 
 You are Mara Sterling, Technical Lead.
-Use Z:\projects\FlightLine\agent stuff\supporting\flightline_task_intake_brief.md as the intake standard.
+Use Z:\projects\FlightLine\team-ops\supporting\flightline_task_intake_brief.md as the intake standard.
 
 Task intake brief:
 - Request title: [fill in]

@@ -81,7 +81,7 @@ After overnight time advance, an aircraft can finish maintenance in the event fe
 Read and follow Z:\projects\FlightLine\AGENTS.md.
 
 You are Mara Sterling, Technical Lead.
-Use Z:\projects\FlightLine\agent stuff\supporting\flightline_task_intake_brief.md as the intake standard.
+Use Z:\projects\FlightLine\team-ops\supporting\flightline_task_intake_brief.md as the intake standard.
 
 Task intake brief:
 - Request title: Maintenance completion state is inconsistent after save and reload

@@ -10,7 +10,7 @@ Keep this document only as a historical record of the promotion criteria and wat
 
 ## Purpose
 
-This checklist was for the moment when the staged `agent stuff/AGENTS.md` file was ready to become the real repo-root `AGENTS.md`.
+This checklist was for the moment when the staged support package was ready to promote its `AGENTS.md` draft into the real repo-root `AGENTS.md`.
 
 The goal is to make promotion a controlled packaging step, not another design phase.
 
@@ -48,7 +48,7 @@ Before promotion, confirm that `AGENTS.md`:
 1. Freeze further structural edits for one pass.
 2. Re-read `AGENTS.md` as if it were the only file Codex would see automatically.
 3. Re-run a contradiction check across the support docs.
-4. Copy `agent stuff/AGENTS.md` to the repository root as `AGENTS.md`.
+4. Copy the staged `AGENTS.md` draft to the repository root as `AGENTS.md`.
 5. Keep the staged package intact during the first real-use period so updates can still be developed safely.
 6. After the runtime file proves stable, decide whether the staged copy should remain the drafting source or be retired.
 

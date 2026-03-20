@@ -50,8 +50,8 @@ The intake brief is the normal front door for framing, routing, and deciding whe
 
 If you are storing product-work artifacts on disk, use:
 - `product-work/requests/` for raw requests waiting on Mara framing
-- `product-work/capabilities/` for user-plus-Zoe capability briefs
-- `product-work/workstreams/` for Mara-framed implementation streams
+- `product-work/capabilities/` for user-plus-Zoe capability dossiers and their in-place Mara decomposition
+- `product-work/workstreams/` only for exceptional standalone implementation streams
 - `product-work/completed/` for completed product-work artifacts
 
 ## Capability To Feature Workflow
@@ -59,7 +59,7 @@ If you are storing product-work artifacts on disk, use:
 Use this split by default:
 
 1. You and Zoe define capabilities.
-2. Mara turns approved capabilities into bounded features or workstreams.
+2. Mara turns approved capabilities into bounded features and records that decomposition in the same capability dossier by default.
 3. Eli implements the bounded stream.
 4. Nadia and Owen join when risk, review need, or landing complexity justifies it.
 
@@ -71,6 +71,7 @@ What each step means:
   - why it matters now
   - minimum useful scope
   - explicit deferrals
+  - ongoing canonical record of decomposition, active slice, and deferred follow-ons
   - normal on-disk home: `product-work/capabilities/`
 
 - `feature` or `workstream`:
@@ -79,11 +80,18 @@ What each step means:
   - validation bar
   - stop conditions
   - landing sequence when needed
-  - normal on-disk home: `product-work/workstreams/`
+  - normal on-disk home: inside the capability dossier by default
+  - standalone on-disk home: `product-work/workstreams/` only when a separate artifact is justified
 
 Important rule:
 
 - Mara should not treat a capability brief as implementation-ready by default
+- smaller asks should normally stay in the `request` path instead of being inflated into capabilities
+- Mara should only push work up into a capability brief when it genuinely needs player-facing product shaping, minimum useful scope design, or Zoe-level now-versus-later judgment
+- if a request is reclassified upward into a broader capability, Mara should not leave a parallel active workstream draft live beside it before capability review is complete
+- by default, one active capability should have one canonical product-work document
+- Mara should append decomposition, active-slice status, and deferred slices into that same capability dossier instead of creating a new file for each slice
+- standalone workstream files are for exceptional execution complexity, not normal feature breakdown
 - if the capability is too broad, mistimed, inconsistent, or technically unsafe, Mara should reframe it before Eli receives anything
 - if the capability is already narrow and coherent, Mara may reduce it directly to one implementation-ready feature stream
 

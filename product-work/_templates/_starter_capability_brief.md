@@ -1,6 +1,10 @@
-# FlightLine Capability Brief
+# FlightLine Capability Dossier
 
-Use this file when you and Zoe are defining a player-facing capability before Mara breaks it into bounded workstreams.
+Use this file when you and Zoe are defining a player-facing capability.
+
+This file is the default single source of truth for that capability.
+
+Mara should update the same file as the capability is narrowed, decomposed, approved for slices, and eventually completed.
 
 Rename the file using the normal convention:
 
@@ -11,6 +15,12 @@ Example:
 `2026-03-19_staff-help-center-capability.md`
 
 Store the finished file in `product-work/capabilities/`.
+
+## Status
+
+- Status:
+- Current active slice:
+- Last updated:
 
 ## Capability Brief
 
@@ -27,8 +37,20 @@ Store the finished file in `product-work/capabilities/`.
 - What should stay later:
 - Open questions that actually matter:
 
+## Decomposition
+
+- Proposed slices:
+- Approved next slice:
+- Deferred slices:
+
+## Validation And Tracking
+
+- Validation bar for current approved slice:
+- Related GitHub issues:
+- Notes from Mara, Nadia, or Owen:
+
 ## Notes
 
 - Keep this player-facing.
-- This is not the implementation brief.
-- Mara should turn an approved capability into bounded workstreams before Eli receives implementation work.
+- This is the default capability source of truth.
+- Standalone workstream files are exceptional, not the default.

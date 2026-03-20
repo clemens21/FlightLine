@@ -1,6 +1,9 @@
 # FlightLine Workstream Brief
 
-Use this file when Mara converts a capability or request into a bounded implementation stream.
+Use this file only when Mara needs a standalone bounded implementation stream artifact.
+
+This is exceptional.
+By default, feature decomposition and active-slice framing should stay inside the capability dossier.
 
 Rename the file using the normal convention:
 
@@ -26,5 +29,6 @@ Store the finished file in `product-work/workstreams/`.
 
 ## Notes
 
-- This is the normal implementation-ready artifact for Eli-owned work.
+- This is not the default implementation-ready artifact anymore.
+- Use it only when a separate execution document is genuinely needed.
 - Keep the stream bounded enough that ownership, validation, and landing remain clear.
