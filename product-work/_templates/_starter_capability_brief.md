@@ -19,7 +19,10 @@ Store the finished file in `product-work/capabilities/`.
 ## Status
 
 - Status:
+- Workflow state:
+- Current owner:
 - Current active slice:
+- Next routing target:
 - Last updated:
 
 ## Capability Brief

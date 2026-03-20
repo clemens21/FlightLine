@@ -13,6 +13,7 @@ Use these supporting files as references when deeper role or workflow detail is 
 - `team-ops/supporting/flightline_role_catalog.md`: detailed standing-role catalog and boundaries
 - `team-ops/supporting/flightline_agent_delegation_policy.md`: routing, escalation, and multi-stream rules
 - `team-ops/supporting/flightline_bug_tracking.md`: default durable bug-tracking approach and issue-versus-intake rules
+- `team-ops/supporting/flightline_capability_notify_workflow.md`: capability-dossier status fields, workflow states, and notify-routing contract
 - `team-ops/supporting/flightline_task_intake_brief.md`: standard intake brief for new Mara-routed work
 - `team-ops/supporting/flightline_team_operations.md`: day-to-day dispatch and coordination for the standing team
 - `team-ops/supporting/flightline_branch_promotion_rules.md`: rules for promoting work from `dev` to local `main` and from local `main` to GitHub `main`
@@ -204,6 +205,7 @@ If a handoff does not include these basics, it is not ready.
 
 When Mara hands implementation-ready work to Eli, she should also provide a paste-ready Eli prompt unless the human explicitly says not to.
 When Mara chooses `Coordinated Delegation`, she should also provide the next paste-ready role prompts by default for the immediate downstream roles unless the human explicitly says not to.
+If the human explicitly authorizes automatic handoff in the active session, Mara may directly route the next step to Eli, Nadia, or Owen instead of stopping at prompt-drafting only.
 
 That prompt should:
 - tell Eli to read `AGENTS.md`

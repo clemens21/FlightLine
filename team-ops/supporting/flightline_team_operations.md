@@ -94,6 +94,7 @@ Important rule:
 - standalone workstream files are for exceptional execution complexity, not normal feature breakdown
 - if the capability is too broad, mistimed, inconsistent, or technically unsafe, Mara should reframe it before Eli receives anything
 - if the capability is already narrow and coherent, Mara may reduce it directly to one implementation-ready feature stream
+- active capability dossiers should keep a short status block with workflow state, current owner, current active slice, next routing target, and last updated so notify automation can route the next handoff cleanly
 
 ## Default Bug Tracker
 
@@ -249,6 +250,7 @@ Route:
 4. Owen only if landing risk justifies it
 
 If the task is ambiguous, cross-system, or red-flag enough that one role should not carry it by inertia, Mara should switch this route to explicit delegation and provide the next role prompts automatically.
+If the human explicitly authorizes automatic handoff in the active session, Mara may directly hand the next step to Eli, Nadia, or Owen instead of only drafting the prompt first.
 
 ### Scope question
 
@@ -296,6 +298,12 @@ Temporary builders are still Implementation Engineers.
 They are not new standing roles.
 
 ## Automation Routing
+
+For capability-development notify automation, use the workflow states defined in `flightline_capability_notify_workflow.md`.
+
+That automation should not self-start implementation.
+It should notify the human of the next routing action and provide the next prompt when the dossier state is clear.
+Direct agent handoff is for live sessions where the human has explicitly authorized it, not for unattended recurring automation.
 
 When daily automation outputs arrive, route them like this:
 

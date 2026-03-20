@@ -74,6 +74,16 @@ Capability dossier rule:
 
 - keep the capability, its approved decomposition, its active slice, and its deferred follow-ons in the same file by default
 - update the dossier instead of creating a new product-work file for every feature slice
+- keep a short machine-readable status block near the top of the dossier so notify automation can route the next handoff cleanly
+
+Recommended capability status block:
+
+- `Status:`
+- `Workflow state:`
+- `Current owner:`
+- `Current active slice:`
+- `Next routing target:`
+- `Last updated:`
 
 ### Use `requests/` when:
 
