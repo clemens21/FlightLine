@@ -702,6 +702,41 @@ function renderStaffingCoverageCard(coverage, qualificationGroup, namedPilots, s
     return `<section class="aircraft-facts-card"><div class="eyebrow">Coverage posture</div><div class="aircraft-facts-list">${renderStaffingCoverageRows(coverage, qualificationGroup, namedPilots, staffingState, options)}</div></section>`;
 }
 function renderNamedPilotActions(saveId, tabId, pilot, homeBaseAirportId, transferDestinationCatalog) {
+    const canConvertPilot = pilot.packageStatus === "active"
+        && pilot.employmentModel === "contract_hire"
+        && pilot.availabilityState !== "reserved"
+        && pilot.availabilityState !== "flying";
+    const convertAction = canConvertPilot
+        ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/convert-pilot-to-direct-hire" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="namedPilotId" value="${escapeHtml(pilot.namedPilotId)}" /><button type="submit" data-pending-label="Converting..." data-pilot-convert-direct="${escapeHtml(pilot.namedPilotId)}">Convert to direct hire</button></form>`
+        : "";
+    const convertNote = canConvertPilot
+        ? `<span class="muted">No upfront charge. Salary applies going forward and contract-hour billing stops.</span>`
+        : "";
+    const convertBlockedNote = pilot.packageStatus === "active"
+        && pilot.employmentModel === "contract_hire"
+        && (pilot.availabilityState === "reserved" || pilot.availabilityState === "flying")
+        ? `<span class="muted" data-pilot-convert-blocked="${escapeHtml(pilot.namedPilotId)}">${escapeHtml(pilot.availabilityState === "reserved"
+            ? "Conversion is unavailable while this pilot is reserved for committed contract work."
+            : "Conversion is unavailable while this pilot is flying committed contract work.")}</span>`
+        : "";
+    const canDismissPilot = pilot.packageStatus === "active"
+        && (pilot.availabilityState === "ready" || pilot.availabilityState === "resting");
+    const dismissAction = canDismissPilot
+        ? `<form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/dismiss-pilot" class="inline" data-api-form>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="namedPilotId" value="${escapeHtml(pilot.namedPilotId)}" /><button type="submit" data-pending-label="Dismissing..." data-pilot-dismiss="${escapeHtml(pilot.namedPilotId)}">Dismiss pilot</button></form>`
+        : "";
+    const dismissBlockedNote = pilot.packageStatus === "active"
+        && (pilot.availabilityState === "reserved"
+            || pilot.availabilityState === "flying"
+            || pilot.availabilityState === "training"
+            || pilot.availabilityState === "traveling")
+        ? `<span class="muted" data-pilot-dismiss-blocked="${escapeHtml(pilot.namedPilotId)}">${escapeHtml(pilot.availabilityState === "reserved"
+            ? "Dismissal is unavailable while this pilot is reserved for scheduled work."
+            : pilot.availabilityState === "flying"
+                ? "Dismissal is unavailable while this pilot is in flight."
+                : pilot.availabilityState === "training"
+                    ? "Dismissal is unavailable while this pilot is in training."
+                    : "Dismissal is unavailable while this pilot is traveling.")}</span>`
+        : "";
     const homeReturnAction = pilot.packageStatus === "active"
         && pilot.availabilityState === "ready"
         && pilot.currentAirportId
@@ -735,8 +770,10 @@ function renderNamedPilotActions(saveId, tabId, pilot, homeBaseAirportId, transf
                 ? "This pilot is still in post-flight rest."
                 : pilot.packageStatus === "pending"
                     ? "This hire has not started active duty yet."
+                    : pilot.packageStatus === "cancelled"
+                        ? "This pilot has already been dismissed from active coverage."
                     : "No immediate action is available right now.";
-    const actions = [trainingAction, contractTrainingNote, homeReturnAction, transferAction, readyTransferNote].filter((entry) => Boolean(entry));
+    const actions = [convertAction, convertNote, convertBlockedNote, dismissAction, dismissBlockedNote, trainingAction, contractTrainingNote, homeReturnAction, transferAction, readyTransferNote].filter((entry) => Boolean(entry));
     return actions.length > 0
         ? `<div class="meta-stack">${actions.join("")}</div>`
         : `<div class="muted">${escapeHtml(unavailableLabel)}</div>`;
@@ -2354,6 +2391,48 @@ async function handleStartPilotTransfer(response, form) {
             : { error: result.hardBlockers[0] ?? "Could not start pilot transfer." },
     }));
 }
+async function handleConvertPilotToDirectHire(response, form) {
+    const saveId = form.get("saveId") ?? "";
+    const tab = normalizeTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_convert"),
+        saveId,
+        commandName: "ConvertNamedPilotToDirectHire",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+        },
+    });
+    redirect(response, saveRoute(saveId, {
+        tab,
+        flash: result.success
+            ? { notice: result.validationMessages[0] ?? "Converted pilot to direct hire." }
+            : { error: result.hardBlockers[0] ?? "Could not convert that pilot to direct hire." },
+    }));
+}
+async function handleDismissPilot(response, form) {
+    const saveId = form.get("saveId") ?? "";
+    const tab = normalizeTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_dismiss"),
+        saveId,
+        commandName: "DismissNamedPilot",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+        },
+    });
+    redirect(response, saveRoute(saveId, {
+        tab,
+        flash: result.success
+            ? { notice: result.validationMessages[0] ?? "Dismissed pilot from active coverage." }
+            : { error: result.hardBlockers[0] ?? "Could not dismiss that pilot." },
+    }));
+}
 async function handleRefreshContractBoard(response, form) {
     const saveId = form.get("saveId") ?? "";
     const tab = normalizeTab(form.get("tab"));
@@ -2685,6 +2764,8 @@ const actionHandlers = {
     "/actions/hire-pilot-candidate": handleHirePilotCandidate,
     "/actions/start-pilot-training": handleStartPilotTraining,
     "/actions/start-pilot-transfer": handleStartPilotTransfer,
+    "/actions/convert-pilot-to-direct-hire": handleConvertPilotToDirectHire,
+    "/actions/dismiss-pilot": handleDismissPilot,
     "/actions/refresh-contract-board": handleRefreshContractBoard,
     "/actions/accept-contract": handleAcceptContract,
     "/actions/auto-plan-contract": handleAutoPlanContract,
@@ -2924,6 +3005,12 @@ async function handleRequest(request, response) {
                 return;
             case "start-pilot-transfer":
                 await withUiTiming(`action save=${saveId} name=start-pilot-transfer`, () => handleStartPilotTransferApi(response, saveId, form));
+                return;
+            case "convert-pilot-to-direct-hire":
+                await withUiTiming(`action save=${saveId} name=convert-pilot-to-direct-hire`, () => handleConvertPilotToDirectHireApi(response, saveId, form));
+                return;
+            case "dismiss-pilot":
+                await withUiTiming(`action save=${saveId} name=dismiss-pilot`, () => handleDismissPilotApi(response, saveId, form));
                 return;
             case "auto-plan-contract":
                 await withUiTiming(`action save=${saveId} name=auto-plan-contract`, () => handleAutoPlanContractApi(response, saveId, form));
@@ -3406,6 +3493,40 @@ async function handleStartPilotTransferApi(response, saveId, form) {
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: result.validationMessages[0] ?? "Started pilot transfer.", notificationLevel: "routine" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not start pilot transfer." });
+}
+async function handleConvertPilotToDirectHireApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_convert_api"),
+        saveId,
+        commandName: "ConvertNamedPilotToDirectHire",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+        },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: result.validationMessages[0] ?? "Converted pilot to direct hire.", notificationLevel: "important" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not convert that pilot to direct hire." });
+}
+async function handleDismissPilotApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const namedPilotId = form.get("namedPilotId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_pilot_dismiss_api"),
+        saveId,
+        commandName: "DismissNamedPilot",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            namedPilotId,
+        },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: result.validationMessages[0] ?? "Dismissed pilot from active coverage.", notificationLevel: "important" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not dismiss that pilot." });
 }
 async function handleCommitScheduleApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));

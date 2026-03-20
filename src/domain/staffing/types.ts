@@ -78,6 +78,7 @@ export type NamedPilotAvailabilityState =
   | "training"
   | "traveling"
   | "pending"
+  | "cancelled"
   | "expired";
 
 export interface NamedPilot {

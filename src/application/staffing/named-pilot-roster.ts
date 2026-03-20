@@ -883,7 +883,9 @@ export function loadNamedPilotRoster(
       && (!pilot.travelStartedAtUtc || compareUtc(pilot.travelStartedAtUtc, currentTimeUtc) <= 0);
     const availabilityState: NamedPilotAvailabilityState = pilot.packageStatus === "pending"
       ? "pending"
-      : pilot.packageStatus === "expired" || pilot.packageStatus === "cancelled"
+      : pilot.packageStatus === "cancelled"
+        ? "cancelled"
+      : pilot.packageStatus === "expired"
         ? "expired"
       : relevantAssignment?.status === "flying"
       ? "flying"

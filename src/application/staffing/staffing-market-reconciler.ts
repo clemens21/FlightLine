@@ -5,6 +5,11 @@
 
 import { createPrefixedId } from "../commands/utils.js";
 import type { CompanyContext } from "../queries/company-state.js";
+import {
+  estimateContractEngagementFee as estimateContractEngagementFeeFromProfile,
+  estimateContractHourlyRate as estimateContractHourlyRateFromProfile,
+  estimateDirectHireSalary as estimateDirectHireSalaryFromProfile,
+} from "./pilot-employment-pricing.js";
 import type {
   EmploymentModel,
   PilotCertificationCode,
@@ -268,55 +273,15 @@ function buildVisibleStatProfile(qualificationGroup: string, generatedSeed: stri
 }
 
 function estimateDirectSalary(profile: GeneratedPilotCandidateProfile): number {
-  const statWeight = statBandWeight(profile.statProfile.operationalReliability)
-    + statBandWeight(profile.statProfile.stressTolerance)
-    + statBandWeight(profile.statProfile.procedureDiscipline)
-    + statBandWeight(profile.statProfile.trainingAptitude);
-  const hourPremium = Math.round(profile.totalCareerHours / 450) * 125;
-  const laneHourPremium = Math.round(profile.primaryQualificationFamilyHours / 350) * 100;
-  const certificationPremium = Math.max(profile.certifications.length - 1, 0) * 300;
-  const statPremium = statWeight * 175;
-
-  return roundToNearest(
-    directSalaryBase(profile.qualificationGroup)
-      + hourPremium
-      + laneHourPremium
-      + certificationPremium
-      + statPremium,
-    250,
-  );
+  return estimateDirectHireSalaryFromProfile(profile);
 }
 
 function estimateContractHourlyRate(profile: GeneratedPilotCandidateProfile): number {
-  const statWeight = statBandWeight(profile.statProfile.operationalReliability)
-    + statBandWeight(profile.statProfile.procedureDiscipline)
-    + statBandWeight(profile.statProfile.stressTolerance);
-  const experiencePremium = Math.round(profile.totalCareerHours / 700) * 4;
-  const laneExperiencePremium = Math.round(profile.primaryQualificationFamilyHours / 550) * 3;
-
-  return roundToNearest(
-    contractHourlyBase(profile.qualificationGroup)
-      + experiencePremium
-      + laneExperiencePremium
-      + statWeight * 2,
-    5,
-  );
+  return estimateContractHourlyRateFromProfile(profile);
 }
 
 function estimateContractEngagementFee(profile: GeneratedPilotCandidateProfile): number {
-  const statWeight = statBandWeight(profile.statProfile.operationalReliability)
-    + statBandWeight(profile.statProfile.procedureDiscipline)
-    + statBandWeight(profile.statProfile.trainingAptitude);
-  const experiencePremium = Math.round(profile.totalCareerHours / 800) * 150;
-  const laneExperiencePremium = Math.round(profile.primaryQualificationFamilyHours / 650) * 125;
-
-  return roundToNearest(
-    contractEngagementBase(profile.qualificationGroup)
-      + experiencePremium
-      + laneExperiencePremium
-      + statWeight * 110,
-    250,
-  );
+  return estimateContractEngagementFeeFromProfile(profile);
 }
 
 function formatHours(hours: number): string {

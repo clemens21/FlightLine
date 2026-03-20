@@ -14,8 +14,10 @@ import { handleAdvanceTime } from "./commands/advance-time.js";
 import { handleAcquireAircraft } from "./commands/acquire-aircraft.js";
 import { handleActivateStaffingPackage } from "./commands/activate-staffing-package.js";
 import { handleCommitAircraftSchedule } from "./commands/commit-aircraft-schedule.js";
+import { handleConvertNamedPilotToDirectHire } from "./commands/convert-named-pilot-to-direct-hire.js";
 import { handleCreateCompany } from "./commands/create-company.js";
 import { handleCreateSaveGame } from "./commands/create-save-game.js";
+import { handleDismissNamedPilot } from "./commands/dismiss-named-pilot.js";
 import { handleRefreshAircraftMarket } from "./commands/refresh-aircraft-market.js";
 import { handleRefreshContractBoard } from "./commands/refresh-contract-board.js";
 import { handleRefreshStaffingMarket } from "./commands/refresh-staffing-market.js";
@@ -174,6 +176,20 @@ export class FlightLineBackend {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleStartNamedPilotTransfer(command, {
           saveDatabase: context.saveDatabase,
           airportReference: this.airportReference,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
+
+      case "ConvertNamedPilotToDirectHire": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleConvertNamedPilotToDirectHire(command, {
+          saveDatabase: context.saveDatabase,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
+
+      case "DismissNamedPilot": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleDismissNamedPilot(command, {
+          saveDatabase: context.saveDatabase,
         }));
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }

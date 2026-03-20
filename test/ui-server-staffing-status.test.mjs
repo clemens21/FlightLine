@@ -6,9 +6,11 @@
 import assert from "node:assert/strict";
 
 import {
+  acquireAircraft,
   activateStaffingPackage,
   createCompanySave,
   refreshStaffingMarket,
+  saveAndCommitSchedule,
   uniqueSaveId,
 } from "./helpers/flightline-testkit.mjs";
 import {
@@ -22,6 +24,26 @@ async function getJson(baseUrl, path) {
   const response = await fetch(`${baseUrl}${path}`);
   assert.equal(response.ok, true, `Expected GET ${path} to succeed, received ${response.status}.`);
   return response.json();
+}
+
+async function postFormJson(baseUrl, path, fields) {
+  const body = new URLSearchParams();
+  for (const [key, value] of Object.entries(fields)) {
+    body.append(key, String(value));
+  }
+
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded; charset=utf-8",
+    },
+    body,
+  });
+
+  return {
+    response,
+    payload: await response.json(),
+  };
 }
 
 function extractFirstPilotRow(html) {
@@ -42,6 +64,11 @@ function extractEmployeeDetail(html) {
 const pendingSaveId = uniqueSaveId("ui_staff_pending");
 const activeSaveId = uniqueSaveId("ui_staff_active");
 const expiredSaveId = uniqueSaveId("ui_staff_expired");
+const contractSaveId = uniqueSaveId("ui_staff_contract_actions");
+const reservedSaveId = uniqueSaveId("ui_staff_reserved_block");
+const trainingSaveId = uniqueSaveId("ui_staff_training_block");
+const contractReservedSaveId = uniqueSaveId("ui_staff_contract_reserved_convert_block");
+const contractFlyingSaveId = uniqueSaveId("ui_staff_contract_flying_convert_block");
 let server = null;
 
 try {
@@ -137,6 +164,201 @@ try {
       },
     });
     assert.equal(expiryAdvanceResult.success, true);
+
+    const contractStartedAtUtc = await createCompanySave(backend, contractSaveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      displayName: `UI Staff Contract ${contractSaveId}`,
+      startingCashAmount: 10_000_000,
+    });
+    const contractRefreshResult = await refreshStaffingMarket(backend, contractSaveId, contractStartedAtUtc, "bootstrap");
+    assert.equal(contractRefreshResult.success, true);
+    const contractMarket = await backend.loadActiveStaffingMarket(contractSaveId);
+    assert.ok(contractMarket);
+    const contractActionOffer = contractMarket.offers.find((offer) => offer.employmentModel === "contract_hire");
+    assert.ok(contractActionOffer);
+    const contractHireResult = await backend.dispatch({
+      commandId: `cmd_${contractSaveId}_hire_contract_pilot`,
+      saveId: contractSaveId,
+      commandName: "ActivateStaffingPackage",
+      issuedAtUtc: contractStartedAtUtc,
+      actorType: "player",
+      payload: {
+        laborCategory: contractActionOffer.laborCategory,
+        employmentModel: contractActionOffer.employmentModel,
+        qualificationGroup: contractActionOffer.qualificationGroup,
+        coverageUnits: contractActionOffer.coverageUnits,
+        fixedCostAmount: contractActionOffer.fixedCostAmount,
+        variableCostRate: contractActionOffer.variableCostRate,
+        startsAtUtc: contractActionOffer.startsAtUtc,
+        endsAtUtc: contractActionOffer.endsAtUtc,
+        sourceOfferId: contractActionOffer.staffingOfferId,
+      },
+    });
+    assert.equal(contractHireResult.success, true);
+
+    const reservedStartedAtUtc = await createCompanySave(backend, reservedSaveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      displayName: `UI Staff Reserved ${reservedSaveId}`,
+      startingCashAmount: 6_000_000,
+    });
+    await acquireAircraft(backend, reservedSaveId, reservedStartedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      registration: "N208RS",
+    });
+    await activateStaffingPackage(backend, reservedSaveId, reservedStartedAtUtc, {
+      laborCategory: "pilot",
+      employmentModel: "direct_hire",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 1,
+      fixedCostAmount: 4_200,
+    });
+    const reservedFleetState = await backend.loadFleetState(reservedSaveId);
+    const reservedAircraft = reservedFleetState?.aircraft.find((entry) => entry.registration === "N208RS");
+    assert.ok(reservedAircraft);
+    await saveAndCommitSchedule(backend, reservedSaveId, reservedStartedAtUtc, reservedAircraft.aircraftId, [
+      {
+        legType: "reposition",
+        originAirportId: "KDEN",
+        destinationAirportId: "KCOS",
+        plannedDepartureUtc: "2026-03-16T16:00:00.000Z",
+        plannedArrivalUtc: "2026-03-16T17:10:00.000Z",
+      },
+    ]);
+
+    const trainingStartedAtUtc = await createCompanySave(backend, trainingSaveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      displayName: `UI Staff Training ${trainingSaveId}`,
+      startingCashAmount: 6_000_000,
+    });
+    await activateStaffingPackage(backend, trainingSaveId, trainingStartedAtUtc, {
+      laborCategory: "pilot",
+      employmentModel: "direct_hire",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 1,
+      fixedCostAmount: 4_200,
+    });
+    const trainingStaffingState = await backend.loadStaffingState(trainingSaveId);
+    assert.ok(trainingStaffingState?.namedPilots[0]);
+    const trainingPilot = trainingStaffingState.namedPilots[0];
+    const trainingStartResult = await backend.dispatch({
+      commandId: `cmd_${trainingSaveId}_start_training`,
+      saveId: trainingSaveId,
+      commandName: "StartNamedPilotTraining",
+      issuedAtUtc: trainingStartedAtUtc,
+      actorType: "player",
+      payload: {
+        namedPilotId: trainingPilot.namedPilotId,
+      },
+    });
+    assert.equal(trainingStartResult.success, true);
+
+    const contractReservedStartedAtUtc = await createCompanySave(backend, contractReservedSaveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      displayName: `UI Staff Contract Reserved ${contractReservedSaveId}`,
+      startingCashAmount: 10_000_000,
+    });
+    await acquireAircraft(backend, contractReservedSaveId, contractReservedStartedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      registration: "N208CR",
+    });
+    const contractReservedRefreshResult = await refreshStaffingMarket(backend, contractReservedSaveId, contractReservedStartedAtUtc, "bootstrap");
+    assert.equal(contractReservedRefreshResult.success, true);
+    const contractReservedMarket = await backend.loadActiveStaffingMarket(contractReservedSaveId);
+    assert.ok(contractReservedMarket);
+    const contractReservedOffer = contractReservedMarket.offers.find((offer) => offer.employmentModel === "contract_hire");
+    assert.ok(contractReservedOffer);
+    const contractReservedHireResult = await backend.dispatch({
+      commandId: `cmd_${contractReservedSaveId}_hire_contract_reserved`,
+      saveId: contractReservedSaveId,
+      commandName: "ActivateStaffingPackage",
+      issuedAtUtc: contractReservedStartedAtUtc,
+      actorType: "player",
+      payload: {
+        laborCategory: contractReservedOffer.laborCategory,
+        employmentModel: contractReservedOffer.employmentModel,
+        qualificationGroup: contractReservedOffer.qualificationGroup,
+        coverageUnits: contractReservedOffer.coverageUnits,
+        fixedCostAmount: contractReservedOffer.fixedCostAmount,
+        variableCostRate: contractReservedOffer.variableCostRate,
+        startsAtUtc: contractReservedOffer.startsAtUtc,
+        endsAtUtc: contractReservedOffer.endsAtUtc,
+        sourceOfferId: contractReservedOffer.staffingOfferId,
+      },
+    });
+    assert.equal(contractReservedHireResult.success, true);
+    const contractReservedFleetState = await backend.loadFleetState(contractReservedSaveId);
+    const contractReservedAircraft = contractReservedFleetState?.aircraft.find((entry) => entry.registration === "N208CR");
+    assert.ok(contractReservedAircraft);
+    await saveAndCommitSchedule(backend, contractReservedSaveId, contractReservedStartedAtUtc, contractReservedAircraft.aircraftId, [
+      {
+        legType: "reposition",
+        originAirportId: "KDEN",
+        destinationAirportId: "KCOS",
+        plannedDepartureUtc: "2026-03-16T16:00:00.000Z",
+        plannedArrivalUtc: "2026-03-16T17:10:00.000Z",
+        assignedQualificationGroup: contractReservedOffer.qualificationGroup,
+      },
+    ]);
+
+    const contractFlyingStartedAtUtc = await createCompanySave(backend, contractFlyingSaveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      displayName: `UI Staff Contract Flying ${contractFlyingSaveId}`,
+      startingCashAmount: 10_000_000,
+    });
+    await acquireAircraft(backend, contractFlyingSaveId, contractFlyingStartedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      registration: "N208CF",
+    });
+    const contractFlyingRefreshResult = await refreshStaffingMarket(backend, contractFlyingSaveId, contractFlyingStartedAtUtc, "bootstrap");
+    assert.equal(contractFlyingRefreshResult.success, true);
+    const contractFlyingMarket = await backend.loadActiveStaffingMarket(contractFlyingSaveId);
+    assert.ok(contractFlyingMarket);
+    const contractFlyingOffer = contractFlyingMarket.offers.find((offer) => offer.employmentModel === "contract_hire");
+    assert.ok(contractFlyingOffer);
+    const contractFlyingHireResult = await backend.dispatch({
+      commandId: `cmd_${contractFlyingSaveId}_hire_contract_flying`,
+      saveId: contractFlyingSaveId,
+      commandName: "ActivateStaffingPackage",
+      issuedAtUtc: contractFlyingStartedAtUtc,
+      actorType: "player",
+      payload: {
+        laborCategory: contractFlyingOffer.laborCategory,
+        employmentModel: contractFlyingOffer.employmentModel,
+        qualificationGroup: contractFlyingOffer.qualificationGroup,
+        coverageUnits: contractFlyingOffer.coverageUnits,
+        fixedCostAmount: contractFlyingOffer.fixedCostAmount,
+        variableCostRate: contractFlyingOffer.variableCostRate,
+        startsAtUtc: contractFlyingOffer.startsAtUtc,
+        endsAtUtc: contractFlyingOffer.endsAtUtc,
+        sourceOfferId: contractFlyingOffer.staffingOfferId,
+      },
+    });
+    assert.equal(contractFlyingHireResult.success, true);
+    const contractFlyingFleetState = await backend.loadFleetState(contractFlyingSaveId);
+    const contractFlyingAircraft = contractFlyingFleetState?.aircraft.find((entry) => entry.registration === "N208CF");
+    assert.ok(contractFlyingAircraft);
+    await saveAndCommitSchedule(backend, contractFlyingSaveId, contractFlyingStartedAtUtc, contractFlyingAircraft.aircraftId, [
+      {
+        legType: "reposition",
+        originAirportId: "KDEN",
+        destinationAirportId: "KCOS",
+        plannedDepartureUtc: "2026-03-16T16:00:00.000Z",
+        plannedArrivalUtc: "2026-03-16T17:10:00.000Z",
+        assignedQualificationGroup: contractFlyingOffer.qualificationGroup,
+      },
+    ]);
+    const contractFlyingAdvanceResult = await backend.dispatch({
+      commandId: `cmd_${contractFlyingSaveId}_advance_flying`,
+      saveId: contractFlyingSaveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: contractFlyingStartedAtUtc,
+      actorType: "player",
+      payload: {
+        targetTimeUtc: "2026-03-16T16:20:00.000Z",
+        stopConditions: ["target_time"],
+      },
+    });
+    assert.equal(contractFlyingAdvanceResult.success, true);
   } finally {
     await backend.close();
   }
@@ -172,6 +394,68 @@ try {
   assert.match(expiredDetail, /expired/i);
   assert.doesNotMatch(expiredDetail, />\s*ready\s*</i);
   assert.match(expiredDetail, /No longer in active coverage|Contract ends/i);
+
+  const contractStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(contractSaveId)}/tab/staffing`);
+  assert.equal(contractStaffingTab.tabId, "staffing");
+  const contractRow = extractFirstPilotRow(contractStaffingTab.contentHtml);
+  const contractDetail = extractEmployeeDetail(contractStaffingTab.contentHtml);
+  assert.match(contractRow.rowHtml, /contract hire/i);
+  assert.match(contractDetail, /Convert to direct hire/i);
+  assert.match(contractDetail, /Dismiss pilot/i);
+  const contractPilotId = contractRow.pilotId;
+
+  const convertResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(contractSaveId)}/actions/convert-pilot-to-direct-hire`, {
+    tab: "staffing",
+    saveId: contractSaveId,
+    namedPilotId: contractPilotId,
+  });
+  assert.equal(convertResult.response.ok, true);
+  assert.equal(convertResult.payload.success, true);
+  assert.match(convertResult.payload.message ?? "", /Converted .* direct hire/i);
+  assert.equal(convertResult.payload.tab.tabId, "staffing");
+  const convertedDetail = extractEmployeeDetail(convertResult.payload.tab.contentHtml);
+  assert.match(convertedDetail, /direct hire/i);
+  assert.doesNotMatch(convertedDetail, /Convert to direct hire/i);
+
+  const dismissConvertedResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(contractSaveId)}/actions/dismiss-pilot`, {
+    tab: "staffing",
+    saveId: contractSaveId,
+    namedPilotId: contractPilotId,
+  });
+  assert.equal(dismissConvertedResult.response.ok, true);
+  assert.equal(dismissConvertedResult.payload.success, true);
+  assert.match(dismissConvertedResult.payload.message ?? "", /Dismissed .* active pilot coverage/i);
+  const dismissedDetail = extractEmployeeDetail(dismissConvertedResult.payload.tab.contentHtml);
+  assert.match(dismissedDetail, /cancelled/i);
+  assert.doesNotMatch(dismissedDetail, /Dismiss pilot/i);
+
+  const reservedStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(reservedSaveId)}/tab/staffing`);
+  assert.equal(reservedStaffingTab.tabId, "staffing");
+  const reservedDetail = extractEmployeeDetail(reservedStaffingTab.contentHtml);
+  assert.match(reservedDetail, /reserved/i);
+  assert.doesNotMatch(reservedDetail, /data-pilot-dismiss=/i);
+  assert.match(reservedDetail, /Dismissal is unavailable while this pilot is reserved for scheduled work/i);
+
+  const trainingStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(trainingSaveId)}/tab/staffing`);
+  assert.equal(trainingStaffingTab.tabId, "staffing");
+  const trainingDetail = extractEmployeeDetail(trainingStaffingTab.contentHtml);
+  assert.match(trainingDetail, /training/i);
+  assert.doesNotMatch(trainingDetail, /data-pilot-dismiss=/i);
+  assert.match(trainingDetail, /Dismissal is unavailable while this pilot is in training/i);
+
+  const contractReservedStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(contractReservedSaveId)}/tab/staffing`);
+  assert.equal(contractReservedStaffingTab.tabId, "staffing");
+  const contractReservedDetail = extractEmployeeDetail(contractReservedStaffingTab.contentHtml);
+  assert.match(contractReservedDetail, /reserved/i);
+  assert.doesNotMatch(contractReservedDetail, /data-pilot-convert-direct=/i);
+  assert.match(contractReservedDetail, /Conversion is unavailable while this pilot is reserved for committed contract work/i);
+
+  const contractFlyingStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(contractFlyingSaveId)}/tab/staffing`);
+  assert.equal(contractFlyingStaffingTab.tabId, "staffing");
+  const contractFlyingDetail = extractEmployeeDetail(contractFlyingStaffingTab.contentHtml);
+  assert.match(contractFlyingDetail, /flying/i);
+  assert.doesNotMatch(contractFlyingDetail, /data-pilot-convert-direct=/i);
+  assert.match(contractFlyingDetail, /Conversion is unavailable while this pilot is flying committed contract work/i);
 } finally {
   await Promise.allSettled([
     server?.stop(),
@@ -179,4 +463,9 @@ try {
   await removeWorkspaceSave(pendingSaveId);
   await removeWorkspaceSave(activeSaveId);
   await removeWorkspaceSave(expiredSaveId);
+  await removeWorkspaceSave(contractSaveId);
+  await removeWorkspaceSave(reservedSaveId);
+  await removeWorkspaceSave(trainingSaveId);
+  await removeWorkspaceSave(contractReservedSaveId);
+  await removeWorkspaceSave(contractFlyingSaveId);
 }

@@ -2,9 +2,18 @@
 
 ## Status
 
-Approved for bounded workstream decomposition.
-Slice 1, `profile-backed hiring market and employment economics truth`, is cleared by Nadia and ready to land.
-Current approved next slice after slice 1 lands: contractor conversion and dismissal controls.
+- Status:
+  Active capability with landed slices 1 and 2.
+- Workflow state:
+  landed_slice
+- Current owner:
+  Technical Lead (Mara Sterling)
+- Current active slice:
+  pilot labor ledger visibility
+- Next routing target:
+  Mara
+- Last updated:
+  2026-03-19
 
 ## Capability Brief
 
@@ -181,26 +190,24 @@ Current approved next slice after slice 1 lands: contractor conversion and dismi
        cleared by Nadia and ready to land
      - landed scope:
        candidate-based market, larger candidate pool, visible pilot profiles and stat bands, selected-candidate overlay, direct-versus-contract comparison, direct salary truth, contract engagement-fee plus completed-flight-hour billing, paired-offer retirement, and duplicate-hire prevention
+  2. contractor conversion and dismissal controls
+     - status:
+       cleared by Nadia and landed
+     - landed scope:
+       contract-to-direct conversion with named-pilot identity continuity, conversion blocking while reserved or flying, dismissal controls for eligible pilots, dismissal blocking while reserved, flying, training, or traveling, truthful staffing and finance transitions after conversion and dismissal, and Staff employee-detail action plus blocked-state messaging
 - Approved next slice:
   - objective:
-    let the player convert a contract pilot to direct hire and dismiss either type of pilot without breaking staffing truth, dispatch legality, or finance behavior
+    provide a player-readable pilot labor record that explains labor events and costs without turning into a generalized payroll subsystem
   - in scope:
-    - add a `Convert to direct hire` action for eligible contract pilots in the employee detail surface
-    - add a `Dismiss pilot` action for eligible direct-hire and contract-hire pilots in the employee detail surface
-    - preserve the same named pilot identity and accumulated history through conversion
-    - after conversion:
-      employment model becomes `direct_hire`, fixed contract end no longer applies, recurring salary applies going forward, and contract hourly billing no longer applies going forward
-    - dismissal removes the pilot from active operational coverage truthfully
-    - dismissed pilots should remain understandable in history rather than disappearing without explanation
-    - dismissal is blocked while a pilot is `reserved`, `flying`, or `training`
-    - conversion and dismissal must stay operationally truthful for staffing coverage, dispatch legality, and finance impact
+    - show a pilot activity-and-cost ledger with hire or contract start, conversion, dismissal, contract end, billed contract flight hours, and recurring salary or contractor charges
+    - keep the first labor-record view tightly explainable and pilot-scoped
+    - connect the labor record truthfully to existing finance and event history rather than inventing a parallel accounting path
   - explicit non-goals:
-    - no labor ledger yet
     - no wage negotiation
     - no contractor renewal
     - no non-pilot employment lifecycle
   - why this slice comes first:
-    employment-type truth and visible pilot-profile data are now in place, so lifecycle controls are the next player-visible gap
+    hiring and lifecycle controls are now landed, so labor visibility is the next missing explainability layer in the same capability
 - Deferred slices:
   - wage negotiation
   - contractor renewal
@@ -224,6 +231,10 @@ Current approved next slice after slice 1 lands: contractor conversion and dismi
   - preferred first-pass interpretation of "timesheet": pilot activity-and-cost ledger, not a generalized payroll simulator
   - visible pilot stats stay in the capability, but they should enter through the hiring-and-profile slice first rather than being split into a separate hidden-model stream
   - Nadia disposition for slice 1: ready to land
+  - Mara review on slice 2 found a finance-truth blocker: converting a reserved contract pilot currently drops hourly billing for already committed contract work; tracked in #41 and routed back to Eli
+  - Mara revalidation on 2026-03-19: reserved and flying contract-pilot conversion now block cleanly in both command and Staff UI flows; slice 2 routed to Nadia after focused build plus staffing-market and UI-server staffing validation
+  - Nadia disposition for slice 2: ready to land after focused build, staffing-market, and UI-server staffing review; no findings
+  - Owen landed slice 2 on 2026-03-19 as a bounded unit after build plus staffing-market and UI-server staffing validation
 
 ## Notes
 

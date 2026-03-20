@@ -44,6 +44,8 @@ export type CommandName =
   | "CommitAircraftSchedule"
   | "StartNamedPilotTraining"
   | "StartNamedPilotTransfer"
+  | "ConvertNamedPilotToDirectHire"
+  | "DismissNamedPilot"
   | "ScheduleMaintenance"
   | "AdvanceTime";
 
@@ -137,6 +139,14 @@ export interface StartNamedPilotTransferPayload {
   destinationAirportId: AirportId;
 }
 
+export interface ConvertNamedPilotToDirectHirePayload {
+  namedPilotId: NamedPilotId;
+}
+
+export interface DismissNamedPilotPayload {
+  namedPilotId: NamedPilotId;
+}
+
 export interface RefreshContractBoardPayload {
   refreshReason?: "scheduled" | "manual" | "bootstrap";
 }
@@ -205,6 +215,14 @@ export type StartNamedPilotTransferCommand = CommandEnvelope<StartNamedPilotTran
   commandName: "StartNamedPilotTransfer";
 };
 
+export type ConvertNamedPilotToDirectHireCommand = CommandEnvelope<ConvertNamedPilotToDirectHirePayload> & {
+  commandName: "ConvertNamedPilotToDirectHire";
+};
+
+export type DismissNamedPilotCommand = CommandEnvelope<DismissNamedPilotPayload> & {
+  commandName: "DismissNamedPilot";
+};
+
 export type RefreshContractBoardCommand = CommandEnvelope<RefreshContractBoardPayload> & {
   commandName: "RefreshContractBoard";
 };
@@ -238,6 +256,8 @@ export type SupportedCommand =
   | CommitAircraftScheduleCommand
   | StartNamedPilotTrainingCommand
   | StartNamedPilotTransferCommand
+  | ConvertNamedPilotToDirectHireCommand
+  | DismissNamedPilotCommand
   | RefreshContractBoardCommand
   | RefreshAircraftMarketCommand
   | RefreshStaffingMarketCommand
