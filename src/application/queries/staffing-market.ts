@@ -6,6 +6,8 @@
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { EmploymentModel, LaborCategory, PilotCertificationCode } from "../../domain/staffing/types.js";
 import { parsePilotCertificationsJson } from "../../domain/staffing/pilot-certifications.js";
+import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibility.js";
+import type { PilotVisibleProfile, StaffingPricingExplanation } from "../../domain/staffing/types.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import { loadActiveCompanyContext } from "./company-state.js";
@@ -60,6 +62,9 @@ export interface StaffingOfferView {
   currentAirportId: string | undefined;
   candidateState: StaffingCandidateState;
   explanationMetadata: JsonObject;
+  candidateProfileId: string | undefined;
+  candidateProfile: PilotVisibleProfile | undefined;
+  pricingExplanation: StaffingPricingExplanation | undefined;
   generatedSeed: string;
   offerStatus: OfferStatus;
   listedAtUtc: string | undefined;
@@ -158,30 +163,38 @@ export function loadActiveStaffingMarket(
     generationContextHash: windowRow.generationContextHash,
     refreshReason: windowRow.refreshReason,
     status: windowRow.status,
-    offers: offerRows.map((offer) => ({
-      staffingOfferId: offer.staffingOfferId,
-      laborCategory: offer.laborCategory,
-      employmentModel: offer.employmentModel,
-      qualificationGroup: offer.qualificationGroup,
-      coverageUnits: offer.coverageUnits,
-      fixedCostAmount: offer.fixedCostAmount,
-      variableCostRate: offer.variableCostRate ?? undefined,
-      startsAtUtc: offer.startsAtUtc ?? undefined,
-      endsAtUtc: offer.endsAtUtc ?? undefined,
-      displayName: offer.displayName ?? undefined,
-      certifications: parsePilotCertificationsJson(offer.certificationsJson, offer.qualificationGroup),
-      currentAirportId: offer.currentAirportId ?? undefined,
-      candidateState:
-        offer.startsAtUtc && compareUtc(offer.startsAtUtc, companyContext.currentTimeUtc) > 0
-          ? "available_soon"
-          : "available_now",
-      explanationMetadata: parseJsonObject(offer.explanationMetadataJson),
-      generatedSeed: offer.generatedSeed,
-      offerStatus: offer.offerStatus,
-      listedAtUtc: offer.listedAtUtc ?? undefined,
-      availableUntilUtc: offer.availableUntilUtc ?? undefined,
-      closedAtUtc: offer.closedAtUtc ?? undefined,
-      closeReason: offer.closeReason ?? undefined,
-    })),
+    offers: offerRows.map((offer) => {
+      const explanationMetadata = parseJsonObject(offer.explanationMetadataJson);
+      const visibility = parseStaffingOfferVisibility(explanationMetadata);
+
+      return {
+        staffingOfferId: offer.staffingOfferId,
+        laborCategory: offer.laborCategory,
+        employmentModel: offer.employmentModel,
+        qualificationGroup: offer.qualificationGroup,
+        coverageUnits: offer.coverageUnits,
+        fixedCostAmount: offer.fixedCostAmount,
+        variableCostRate: offer.variableCostRate ?? undefined,
+        startsAtUtc: offer.startsAtUtc ?? undefined,
+        endsAtUtc: offer.endsAtUtc ?? undefined,
+        displayName: offer.displayName ?? undefined,
+        certifications: parsePilotCertificationsJson(offer.certificationsJson, offer.qualificationGroup),
+        currentAirportId: offer.currentAirportId ?? undefined,
+        candidateState:
+          offer.startsAtUtc && compareUtc(offer.startsAtUtc, companyContext.currentTimeUtc) > 0
+            ? "available_soon"
+            : "available_now",
+        explanationMetadata,
+        candidateProfileId: visibility.candidateProfileId,
+        candidateProfile: visibility.candidateProfile,
+        pricingExplanation: visibility.pricingExplanation,
+        generatedSeed: offer.generatedSeed,
+        offerStatus: offer.offerStatus,
+        listedAtUtc: offer.listedAtUtc ?? undefined,
+        availableUntilUtc: offer.availableUntilUtc ?? undefined,
+        closedAtUtc: offer.closedAtUtc ?? undefined,
+        closeReason: offer.closeReason ?? undefined,
+      };
+    }),
   };
 }

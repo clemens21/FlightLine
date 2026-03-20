@@ -211,7 +211,7 @@ try {
   });
 
   assert.equal(activateStaffingResult.success, true);
-  assert.equal(activateStaffingResult.emittedLedgerEntryIds.length, 1);
+  assert.equal(activateStaffingResult.emittedLedgerEntryIds.length, 0);
 
   const activateCabinStaffingResult = await backend.dispatch({
     commandId: `cmd_${saveId}_staffing_cabin`,
@@ -229,7 +229,7 @@ try {
   });
 
   assert.equal(activateCabinStaffingResult.success, true);
-  assert.equal(activateCabinStaffingResult.emittedLedgerEntryIds.length, 1);
+  assert.equal(activateCabinStaffingResult.emittedLedgerEntryIds.length, 0);
 
   const companyContext = await backend.loadCompanyContext(saveId);
   assert.ok(companyContext);

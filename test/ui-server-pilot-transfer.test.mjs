@@ -158,20 +158,25 @@ try {
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-scroll-region="hire:list"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-scroll-region="hire:detail"'), true);
   assert.equal(zeroStateTab.contentHtml.includes("<th>Pilot</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Certifications</th>"), true);
+  assert.equal(zeroStateTab.contentHtml.includes("<th>Lane</th>"), true);
+  assert.equal(zeroStateTab.contentHtml.includes("<th>Total hours</th>"), true);
+  assert.equal(zeroStateTab.contentHtml.includes("<th>Lane hours</th>"), true);
   assert.equal(zeroStateTab.contentHtml.includes("<th>Base</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Cost</th>"), true);
+  assert.equal(zeroStateTab.contentHtml.includes("<th>Starting price</th>"), true);
   assert.equal(zeroStateTab.contentHtml.includes("SEPL"), true);
   assert.equal(zeroStateTab.contentHtml.includes("<th>Fit</th>"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Activate Staffing"), false);
   assert.equal(zeroStateTab.contentHtml.includes("available soon"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Coverage Summary"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Packages"), false);
-  assert.equal(zeroStateTab.contentHtml.includes("Support coverage"), true);
+  assert.equal(zeroStateTab.contentHtml.includes("Support coverage"), false);
   const zeroHireDetailBodyMatch = zeroStateTab.contentHtml.match(/data-staffing-detail-body="hire"[^>]*>([\s\S]*?)<\/div><div hidden data-staffing-detail-bank="hire">/);
   assert.ok(zeroHireDetailBodyMatch?.[1]);
   const zeroHireDetailHtml = zeroHireDetailBodyMatch[1];
   assert.equal(zeroHireDetailHtml.includes("Coverage posture"), false);
+  assert.equal(zeroHireDetailHtml.includes("Direct versus contract"), true);
+  assert.equal(zeroHireDetailHtml.includes("Pricing summary"), true);
+  assert.equal(zeroHireDetailHtml.includes("Choose hire path"), true);
   assert.equal(zeroHireDetailHtml.includes("data-support-coverage-start"), false);
   assert.equal(zeroHireDetailHtml.includes("Cabin General Coverage"), false);
   const zeroCandidatePortrait = extractRowPortrait(zeroStateTab.contentHtml, "data-pilot-candidate-row", "hire-row");
@@ -183,7 +188,6 @@ try {
   assert.equal((await zeroPortraitResponse.text()).includes("<svg"), true);
   const zeroCandidateMatch = zeroStateTab.contentHtml.match(/data-pilot-candidate-hire="([^"]+)"/);
   assert.ok(zeroCandidateMatch?.[1]);
-  assert.equal(zeroCandidateMatch[1], zeroCandidatePortrait.id);
   assert.equal(zeroStateTab.contentHtml.indexOf("Pilot Roster") < zeroStateTab.contentHtml.indexOf("Hire Staff"), true);
 
   const zeroHireResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(zeroSaveId)}/actions/hire-pilot-candidate`, {

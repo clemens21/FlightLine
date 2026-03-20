@@ -1086,7 +1086,22 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       padding-top: 16px;
       border-top: 1px solid var(--line);
     }
+    .staffing-detail-section {
+      display: grid;
+      gap: 12px;
+      padding-top: 16px;
+      margin-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .staffing-detail-section:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
     .summary-list { display: grid; gap: 12px; }
+    .staffing-comparison-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
     .summary-item {
       padding: 12px 14px;
       border-radius: 14px;
@@ -1094,6 +1109,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: var(--panel-strong);
     }
     .summary-item strong { display: block; font-size: 18px; margin-top: 3px; }
+    .staffing-comparison-card {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .staffing-hire-choice-form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
     .event-list { display: grid; gap: 10px; }
     .event-item {
       padding: 12px 14px;

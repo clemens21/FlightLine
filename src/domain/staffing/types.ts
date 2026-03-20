@@ -18,6 +18,28 @@ export type LaborCategory = "pilot" | "flight_attendant" | "mechanic" | "ops_sup
 export type EmploymentModel = "direct_hire" | "contract_hire" | "contract_pool" | "service_agreement";
 export type PilotCertificationCode = "SEPL" | "SEPS" | "MEPL" | "MEPS" | "JET";
 export type NamedPilotTrainingProgramKind = "recurrent" | "certification";
+export type PilotStatBand = "developing" | "solid" | "strong" | "exceptional";
+
+export interface PilotVisibleStatProfile {
+  operationalReliability: PilotStatBand;
+  stressTolerance: PilotStatBand;
+  procedureDiscipline: PilotStatBand;
+  trainingAptitude: PilotStatBand;
+}
+
+export interface PilotVisibleProfile {
+  candidateProfileId: string;
+  qualificationLane: string;
+  totalCareerHours: number;
+  primaryQualificationFamilyHours: number;
+  companyHours: number;
+  statProfile: PilotVisibleStatProfile;
+}
+
+export interface StaffingPricingExplanation {
+  summary: string;
+  drivers: string[];
+}
 
 export interface StaffingPackage {
   staffingPackageId: StaffingPackageId;

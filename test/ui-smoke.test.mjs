@@ -447,6 +447,7 @@ try {
       && employeePanel.hidden;
   });
   assert.ok((await page.locator("[data-pilot-candidate-market]").count()) >= 1);
+  await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]").length >= 8);
   assert.equal(await page.locator("[data-staffing-hire-overlay]").isVisible(), false);
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
@@ -502,21 +503,32 @@ try {
     return overlay instanceof HTMLElement
       && !overlay.hidden
       && title.includes(expectedName)
-      && detail.includes("Hire type")
+      && detail.includes("Qualification lane")
+      && detail.includes("Total career hours")
+      && detail.includes("Operational reliability")
+      && detail.includes("Choose hire path")
       && detail.includes("Availability")
-      && detail.includes("Pilot lane");
+      && detail.includes("Direct hire")
+      && detail.includes("Contract hire");
   }, firstCandidateName);
   const hireDetailText = (await page.locator("[data-staffing-detail-body='hire']").textContent()) ?? "";
+  assert.equal(hireDetailText.includes("Identity brief"), true);
+  assert.equal(hireDetailText.includes("Flight profile"), true);
+  assert.equal(hireDetailText.includes("Pricing summary"), true);
+  assert.equal(hireDetailText.includes("Choose hire path"), true);
   assert.equal(hireDetailText.includes("Pilot candidate"), false);
   assert.equal(hireDetailText.includes(firstCandidateName), false);
   assert.equal(hireDetailText.includes("Coverage posture"), false);
+  assert.equal(hireDetailText.includes("Hire type"), false);
   assert.equal(hireDetailText.includes("Open-ended named pilot hire."), false);
   assert.equal(hireDetailText.includes("Fixed-term named pilot hire."), false);
   assert.equal(hireDetailText.includes("Monthly fixed staffing cost for this named hire."), false);
   assert.equal(hireDetailText.includes("Hiring activates this candidate into the roster at the listed availability window."), false);
-  assert.equal(hireDetailText.includes("active named pilots are currently tied to this certification lane."), false);
   assert.equal(hireDetailText.includes("Type and availability are fixed by this staffing offer."), false);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-support-coverage-start]").count(), 0);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='direct_hire']").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='contract_hire']").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-pilot-candidate-hire]").count(), 2);
   const hireOverlayGeometry = await page.locator("[data-staffing-hire-overlay]").evaluate((overlayElement) => {
     if (!(overlayElement instanceof HTMLElement)) {
       return {

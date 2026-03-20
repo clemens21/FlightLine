@@ -103,6 +103,13 @@ interface NamedPilotAssignmentStateRow extends Record<string, unknown> {
   travelUntilUtc: string | null;
 }
 
+interface ContractPilotUsageRow extends Record<string, unknown> {
+  namedPilotId: string;
+  staffingPackageId: string;
+  displayName: string;
+  variableCostRate: number;
+}
+
 interface CompletedTrainingRow extends Record<string, unknown> {
   namedPilotId: string;
   displayName: string;
@@ -608,6 +615,40 @@ export async function handleAdvanceTime(
           AND npa.assigned_to_utc > $event_time_utc
         ORDER BY npa.named_pilot_assignment_id ASC`,
         {
+          $schedule_id: scheduleId,
+          $qualification_group: qualificationGroup,
+          $event_time_utc: eventTimeUtc,
+        },
+      )
+    );
+
+    const loadContractPilotUsage = (
+      scheduleId: string,
+      qualificationGroup: string,
+      eventTimeUtc: string,
+    ): ContractPilotUsageRow[] => (
+      dependencies.saveDatabase.all<ContractPilotUsageRow>(
+        `SELECT
+          np.named_pilot_id AS namedPilotId,
+          sp.staffing_package_id AS staffingPackageId,
+          np.display_name AS displayName,
+          sp.variable_cost_rate AS variableCostRate
+        FROM named_pilot_assignment AS npa
+        JOIN named_pilot AS np ON np.named_pilot_id = npa.named_pilot_id
+        JOIN staffing_package AS sp ON sp.staffing_package_id = np.staffing_package_id
+        WHERE sp.company_id = $company_id
+          AND sp.labor_category = 'pilot'
+          AND sp.employment_model = 'contract_hire'
+          AND sp.status = 'active'
+          AND sp.variable_cost_rate IS NOT NULL
+          AND npa.schedule_id = $schedule_id
+          AND npa.qualification_group = $qualification_group
+          AND npa.status IN ('reserved', 'flying')
+          AND npa.assigned_from_utc <= $event_time_utc
+          AND npa.assigned_to_utc >= $event_time_utc
+        ORDER BY np.named_pilot_id ASC`,
+        {
+          $company_id: companyContext!.companyId,
           $schedule_id: scheduleId,
           $qualification_group: qualificationGroup,
           $event_time_utc: eventTimeUtc,
@@ -1190,6 +1231,51 @@ export async function handleAdvanceTime(
           durationHours: Number(durationHours.toFixed(2)),
         },
       );
+
+      const contractPilotUsageRows = loadContractPilotUsage(
+        legRow.scheduleId,
+        assignedQualificationGroup,
+        eventTimeUtc,
+      );
+
+      for (const contractPilot of contractPilotUsageRows) {
+        const usageChargeAmount = Math.round(durationHours * contractPilot.variableCostRate) * -1;
+        const usageMetadata: JsonObject = {
+          namedPilotId: contractPilot.namedPilotId,
+          staffingPackageId: contractPilot.staffingPackageId,
+          scheduleId: legRow.scheduleId,
+          flightLegId: legRow.flightLegId,
+          qualificationGroup: assignedQualificationGroup,
+          durationHours: Number(durationHours.toFixed(2)),
+          variableCostRate: contractPilot.variableCostRate,
+        };
+        const usageLedgerEntryId = insertLedgerEntry(
+          eventTimeUtc,
+          "contract_staffing_usage",
+          usageChargeAmount,
+          "staffing_package",
+          contractPilot.staffingPackageId,
+          `Billed contract pilot ${contractPilot.displayName} for completed leg ${legRow.flightLegId}.`,
+          usageMetadata,
+        );
+
+        insertEventLog(
+          eventTimeUtc,
+          "contract_staffing_usage_billed",
+          "staffing_package",
+          contractPilot.staffingPackageId,
+          "info",
+          `Billed ${contractPilot.displayName} for ${Number(durationHours.toFixed(2))} completed contract pilot hours.`,
+          {
+            ...usageMetadata,
+            ledgerEntryId: usageLedgerEntryId ?? undefined,
+            usageChargeAmount: Math.abs(usageChargeAmount),
+          },
+        );
+
+        changedAggregateIds.add(contractPilot.namedPilotId);
+        changedAggregateIds.add(contractPilot.staffingPackageId);
+      }
 
       if (legRow.linkedCompanyContractId && ["assigned", "active"].includes(legRow.contractState ?? "")) {
         const penaltyModel = parseJsonObject(legRow.penaltyModelJson) as ContractPenaltyModel | undefined;

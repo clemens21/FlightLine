@@ -11,6 +11,7 @@ import type {
   NamedPilotAvailabilityState,
   PilotCertificationCode,
   NamedPilotTrainingProgramKind,
+  PilotVisibleProfile,
 } from "../../domain/staffing/types.js";
 import {
   certificationsForQualificationGroup,
@@ -19,6 +20,7 @@ import {
   pilotCertificationsToJson,
   requiredCertificationForQualificationGroup,
 } from "../../domain/staffing/pilot-certifications.js";
+import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibility.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AirportReferenceRepository, AirportRecord } from "../../infrastructure/reference/airport-reference.js";
 
@@ -52,6 +54,7 @@ interface NamedPilotRow extends Record<string, unknown> {
   travelUntilUtc: string | null;
   createdAtUtc: string;
   updatedAtUtc: string;
+  sourceOfferExplanationMetadataJson: string | null;
   employmentModel: EmploymentModel;
   qualificationGroup: string;
   packageStatus: "pending" | "active" | "expired" | "cancelled";
@@ -123,10 +126,12 @@ export interface NamedPilotRosterView {
   namedPilotId: string;
   staffingPackageId: string;
   sourceOfferId: string | undefined;
+  sourceCandidateProfileId: string | undefined;
   rosterSlotNumber: number;
   displayName: string;
   qualificationGroup: string;
   certifications: PilotCertificationCode[];
+  candidateProfile: PilotVisibleProfile | undefined;
   employmentModel: EmploymentModel;
   packageStatus: "pending" | "active" | "expired" | "cancelled";
   startsAtUtc: string;
@@ -816,6 +821,7 @@ export function loadNamedPilotRoster(
       np.travel_until_utc AS travelUntilUtc,
       np.created_at_utc AS createdAtUtc,
       np.updated_at_utc AS updatedAtUtc,
+      so.explanation_metadata_json AS sourceOfferExplanationMetadataJson,
       sp.employment_model AS employmentModel,
       sp.qualification_group AS qualificationGroup,
       sp.status AS packageStatus,
@@ -823,6 +829,7 @@ export function loadNamedPilotRoster(
       sp.ends_at_utc AS endsAtUtc
     FROM named_pilot AS np
     JOIN staffing_package AS sp ON sp.staffing_package_id = np.staffing_package_id
+    LEFT JOIN staffing_offer AS so ON so.staffing_offer_id = sp.source_offer_id
     WHERE np.company_id = $company_id
     ORDER BY sp.qualification_group ASC, np.display_name ASC, np.named_pilot_id ASC`,
     { $company_id: companyId },
@@ -864,6 +871,9 @@ export function loadNamedPilotRoster(
 
   return pilots.map((pilot) => {
     const certifications = parsePilotCertificationsJson(pilot.certificationsJson, pilot.qualificationGroup);
+    const visibility = pilot.sourceOfferExplanationMetadataJson
+      ? parseStaffingOfferVisibility(JSON.parse(pilot.sourceOfferExplanationMetadataJson) as Record<string, unknown>)
+      : { candidateProfileId: undefined, candidateProfile: undefined, pricingExplanation: undefined };
     const pilotAssignments = assignmentsByPilotId.get(pilot.namedPilotId) ?? [];
     const relevantAssignment = pickRelevantAssignment(pilotAssignments, currentTimeUtc);
     const isResting = Boolean(pilot.restingUntilUtc) && compareUtc(currentTimeUtc, pilot.restingUntilUtc!) < 0;
@@ -891,10 +901,12 @@ export function loadNamedPilotRoster(
       namedPilotId: pilot.namedPilotId,
       staffingPackageId: pilot.staffingPackageId,
       sourceOfferId: pilot.sourceOfferId ?? undefined,
+      sourceCandidateProfileId: visibility.candidateProfileId,
       rosterSlotNumber: pilot.rosterSlotNumber,
       displayName: pilot.displayName,
       qualificationGroup: pilot.qualificationGroup,
       certifications,
+      candidateProfile: visibility.candidateProfile,
       employmentModel: pilot.employmentModel,
       packageStatus: pilot.packageStatus,
       startsAtUtc: pilot.startsAtUtc,

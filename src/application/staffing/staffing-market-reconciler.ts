@@ -5,7 +5,13 @@
 
 import { createPrefixedId } from "../commands/utils.js";
 import type { CompanyContext } from "../queries/company-state.js";
-import type { EmploymentModel, PilotCertificationCode } from "../../domain/staffing/types.js";
+import type {
+  EmploymentModel,
+  PilotCertificationCode,
+  PilotStatBand,
+  PilotVisibleProfile,
+  StaffingPricingExplanation,
+} from "../../domain/staffing/types.js";
 import { certificationsForQualificationGroup, pilotCertificationsToJson } from "../../domain/staffing/pilot-certifications.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
@@ -32,11 +38,13 @@ interface QualificationDemand {
 }
 
 interface GeneratedPilotCandidateOffer {
+  candidateProfileId: string;
   displayName: string;
   employmentModel: EmploymentModel;
   qualificationGroup: string;
   certifications: PilotCertificationCode[];
   fixedCostAmount: number;
+  variableCostRate?: number;
   startsAtUtc: string;
   endsAtUtc?: string;
   currentAirportId: string;
@@ -107,6 +115,15 @@ const LAST_NAMES = [
 ] as const;
 
 const CONTRACT_DURATION_DAYS = [90, 120, 180] as const;
+const STAT_BAND_VALUES = ["developing", "solid", "strong", "exceptional"] as const satisfies PilotStatBand[];
+
+interface GeneratedPilotCandidateProfile extends PilotVisibleProfile {
+  displayName: string;
+  qualificationGroup: string;
+  certifications: PilotCertificationCode[];
+  currentAirportId: string;
+  generatedSeed: string;
+}
 
 function addHoursIso(utcIsoString: string, hours: number): string {
   return new Date(new Date(utcIsoString).getTime() + hours * 3_600_000).toISOString();
@@ -126,22 +143,267 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
-function estimatePilotFixedCost(qualificationGroup: string): number {
+function roundToNearest(value: number, increment: number): number {
+  return Math.round(value / increment) * increment;
+}
+
+function humanizeQualificationGroup(qualificationGroup: string): string {
+  return qualificationGroup.replaceAll("_", " ");
+}
+
+function qualificationComplexityIndex(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
-      return 14_000;
+      return 1;
     case "twin_turboprop_utility":
-      return 18_000;
+      return 2;
     case "twin_turboprop_commuter":
-      return 22_000;
+      return 3;
     case "single_turboprop_utility":
     default:
-      return qualificationGroup.includes("twin") ? 18_000 : 12_000;
+      return qualificationGroup.includes("twin") ? 2 : 0;
   }
 }
 
-function chooseOfferEmploymentModel(offerIndex: number): EmploymentModel {
-  return offerIndex % 2 === 1 ? "contract_hire" : "direct_hire";
+function directSalaryBase(qualificationGroup: string): number {
+  switch (qualificationGroup) {
+    case "single_turboprop_premium":
+      return 11_000;
+    case "twin_turboprop_utility":
+      return 13_500;
+    case "twin_turboprop_commuter":
+      return 16_500;
+    case "single_turboprop_utility":
+    default:
+      return qualificationGroup.includes("twin") ? 13_500 : 9_500;
+  }
+}
+
+function contractHourlyBase(qualificationGroup: string): number {
+  switch (qualificationGroup) {
+    case "single_turboprop_premium":
+      return 120;
+    case "twin_turboprop_utility":
+      return 145;
+    case "twin_turboprop_commuter":
+      return 170;
+    case "single_turboprop_utility":
+    default:
+      return qualificationGroup.includes("twin") ? 145 : 105;
+  }
+}
+
+function contractEngagementBase(qualificationGroup: string): number {
+  switch (qualificationGroup) {
+    case "single_turboprop_premium":
+      return 3_000;
+    case "twin_turboprop_utility":
+      return 3_750;
+    case "twin_turboprop_commuter":
+      return 4_750;
+    case "single_turboprop_utility":
+    default:
+      return qualificationGroup.includes("twin") ? 3_750 : 2_500;
+  }
+}
+
+function chooseStatBand(seed: string, laneComplexity: number): PilotStatBand {
+  const rolledValue = hashString(seed) % 100;
+  const boostedValue = Math.min(99, rolledValue + laneComplexity * 4);
+
+  if (boostedValue >= 90) {
+    return "exceptional";
+  }
+
+  if (boostedValue >= 60) {
+    return "strong";
+  }
+
+  if (boostedValue >= 24) {
+    return "solid";
+  }
+
+  return "developing";
+}
+
+function statBandWeight(statBand: PilotStatBand): number {
+  return STAT_BAND_VALUES.indexOf(statBand);
+}
+
+function estimateCareerHours(qualificationGroup: string, certifications: PilotCertificationCode[], generatedSeed: string): {
+  totalCareerHours: number;
+  primaryQualificationFamilyHours: number;
+} {
+  const complexityIndex = qualificationComplexityIndex(qualificationGroup);
+  const breadthWeight = Math.max(certifications.length - 1, 0);
+  const rangeSeed = hashString(`${generatedSeed}:hours`);
+  const totalHourFloor = 900 + complexityIndex * 850 + breadthWeight * 275;
+  const totalHourSpan = 3_100 + complexityIndex * 1_350 + breadthWeight * 450;
+  const totalCareerHours = roundToNearest(
+    totalHourFloor + (rangeSeed % totalHourSpan),
+    25,
+  );
+  const familyRatioSeed = hashString(`${generatedSeed}:family`);
+  const familyRatio = 0.45 + ((familyRatioSeed % 38) / 100);
+  const primaryQualificationFamilyHours = roundToNearest(
+    Math.max(350, Math.min(totalCareerHours - 75, totalCareerHours * familyRatio)),
+    25,
+  );
+
+  return {
+    totalCareerHours,
+    primaryQualificationFamilyHours,
+  };
+}
+
+function buildVisibleStatProfile(qualificationGroup: string, generatedSeed: string) {
+  const complexityIndex = qualificationComplexityIndex(qualificationGroup);
+
+  return {
+    operationalReliability: chooseStatBand(`${generatedSeed}:reliability`, complexityIndex),
+    stressTolerance: chooseStatBand(`${generatedSeed}:stress`, complexityIndex),
+    procedureDiscipline: chooseStatBand(`${generatedSeed}:procedure`, complexityIndex),
+    trainingAptitude: chooseStatBand(`${generatedSeed}:training`, complexityIndex),
+  };
+}
+
+function estimateDirectSalary(profile: GeneratedPilotCandidateProfile): number {
+  const statWeight = statBandWeight(profile.statProfile.operationalReliability)
+    + statBandWeight(profile.statProfile.stressTolerance)
+    + statBandWeight(profile.statProfile.procedureDiscipline)
+    + statBandWeight(profile.statProfile.trainingAptitude);
+  const hourPremium = Math.round(profile.totalCareerHours / 450) * 125;
+  const laneHourPremium = Math.round(profile.primaryQualificationFamilyHours / 350) * 100;
+  const certificationPremium = Math.max(profile.certifications.length - 1, 0) * 300;
+  const statPremium = statWeight * 175;
+
+  return roundToNearest(
+    directSalaryBase(profile.qualificationGroup)
+      + hourPremium
+      + laneHourPremium
+      + certificationPremium
+      + statPremium,
+    250,
+  );
+}
+
+function estimateContractHourlyRate(profile: GeneratedPilotCandidateProfile): number {
+  const statWeight = statBandWeight(profile.statProfile.operationalReliability)
+    + statBandWeight(profile.statProfile.procedureDiscipline)
+    + statBandWeight(profile.statProfile.stressTolerance);
+  const experiencePremium = Math.round(profile.totalCareerHours / 700) * 4;
+  const laneExperiencePremium = Math.round(profile.primaryQualificationFamilyHours / 550) * 3;
+
+  return roundToNearest(
+    contractHourlyBase(profile.qualificationGroup)
+      + experiencePremium
+      + laneExperiencePremium
+      + statWeight * 2,
+    5,
+  );
+}
+
+function estimateContractEngagementFee(profile: GeneratedPilotCandidateProfile): number {
+  const statWeight = statBandWeight(profile.statProfile.operationalReliability)
+    + statBandWeight(profile.statProfile.procedureDiscipline)
+    + statBandWeight(profile.statProfile.trainingAptitude);
+  const experiencePremium = Math.round(profile.totalCareerHours / 800) * 150;
+  const laneExperiencePremium = Math.round(profile.primaryQualificationFamilyHours / 650) * 125;
+
+  return roundToNearest(
+    contractEngagementBase(profile.qualificationGroup)
+      + experiencePremium
+      + laneExperiencePremium
+      + statWeight * 110,
+    250,
+  );
+}
+
+function formatHours(hours: number): string {
+  return `${hours.toLocaleString("en-US")}h`;
+}
+
+function titleCaseBand(statBand: PilotStatBand): string {
+  return statBand.charAt(0).toUpperCase() + statBand.slice(1);
+}
+
+function buildPricingExplanation(
+  profile: GeneratedPilotCandidateProfile,
+  employmentModel: EmploymentModel,
+  contractHourlyRate: number | undefined,
+): StaffingPricingExplanation {
+  const operatingProfile = `${titleCaseBand(profile.statProfile.operationalReliability)} reliability, `
+    + `${titleCaseBand(profile.statProfile.procedureDiscipline)} procedure discipline`;
+
+  return {
+    summary: employmentModel === "contract_hire"
+      ? "Contract pricing uses visible lane complexity, flight time, and operational profile, then bills only completed flight-leg hours."
+      : "Direct salary uses visible lane complexity, flight time, and operational profile with no activation charge in this slice.",
+    drivers: [
+      `Qualification lane: ${profile.qualificationLane}`,
+      `Certification breadth: ${profile.certifications.join(", ")}`,
+      `Total career time: ${formatHours(profile.totalCareerHours)}`,
+      `Lane time: ${formatHours(profile.primaryQualificationFamilyHours)} in ${profile.qualificationLane}`,
+      employmentModel === "contract_hire" && contractHourlyRate !== undefined
+        ? `Usage billing anchor: ${contractHourlyRate.toLocaleString("en-US")}/completed flight hour`
+        : `Operational profile: ${operatingProfile}`,
+    ],
+  };
+}
+
+function buildCandidateProfile(
+  entry: QualificationDemand,
+  candidateProfileId: string,
+  displayName: string,
+  currentAirportId: string,
+  generatedSeed: string,
+): GeneratedPilotCandidateProfile {
+  const certifications = certificationsForQualificationGroup(entry.qualificationGroup);
+  const hourProfile = estimateCareerHours(entry.qualificationGroup, certifications, generatedSeed);
+
+  return {
+    candidateProfileId,
+    displayName,
+    qualificationGroup: entry.qualificationGroup,
+    qualificationLane: humanizeQualificationGroup(entry.qualificationGroup),
+    certifications,
+    totalCareerHours: hourProfile.totalCareerHours,
+    primaryQualificationFamilyHours: hourProfile.primaryQualificationFamilyHours,
+    companyHours: 0,
+    statProfile: buildVisibleStatProfile(entry.qualificationGroup, generatedSeed),
+    currentAirportId,
+    generatedSeed,
+  };
+}
+
+function buildOfferExplanationMetadata(
+  profile: GeneratedPilotCandidateProfile,
+  pricingExplanation: StaffingPricingExplanation,
+): Record<string, unknown> {
+  return {
+    candidateProfileId: profile.candidateProfileId,
+    candidateProfile: {
+      candidateProfileId: profile.candidateProfileId,
+      qualificationLane: profile.qualificationLane,
+      totalCareerHours: profile.totalCareerHours,
+      primaryQualificationFamilyHours: profile.primaryQualificationFamilyHours,
+      companyHours: profile.companyHours,
+      statProfile: profile.statProfile,
+    },
+    pricingExplanation,
+  };
+}
+
+function desiredCandidateCounts(demand: QualificationDemand[]): number[] {
+  if (demand.length <= 1) {
+    return [8];
+  }
+
+  if (demand.length === 2) {
+    return [5, 4];
+  }
+
+  return [4, 3, 3];
 }
 
 function chooseContractEndUtc(startsAtUtc: string, generatedSeed: string): string {
@@ -255,7 +517,7 @@ export function generateStaffingMarket(
   aircraftReference: AircraftReferenceRepository,
   refreshReason: "scheduled" | "manual" | "bootstrap",
 ): GeneratedStaffingMarket {
-  const demand = loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, 2);
+  const demand = loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, 3);
   const windowSeed = `staffing:${companyContext.worldSeed}:${companyContext.currentTimeUtc}:${refreshReason}`;
   const generationContextHash = JSON.stringify(
     demand.map((entry) => ({
@@ -267,41 +529,53 @@ export function generateStaffingMarket(
   );
   const offers: GeneratedPilotCandidateOffer[] = [];
   const usedNames = new Set<string>();
+  const candidateCounts = desiredCandidateCounts(demand);
 
   demand.forEach((entry, demandIndex) => {
-    const desiredCount = demand.length === 1
-      ? 3
-      : demandIndex === 0
-        ? 2
-        : 1;
+    const desiredCount = candidateCounts[demandIndex] ?? 2;
 
-    for (let offerIndex = 0; offerIndex < desiredCount; offerIndex += 1) {
+    for (let candidateIndex = 0; candidateIndex < desiredCount; candidateIndex += 1) {
       const startsAtUtc = companyContext.currentTimeUtc;
-      const generatedSeed = `${windowSeed}:${entry.qualificationGroup}:${offerIndex}`;
-      const displayName = generateCandidateName(generatedSeed, usedNames);
-      const employmentModel = chooseOfferEmploymentModel(offerIndex);
+      const candidateSeed = `${windowSeed}:${entry.qualificationGroup}:candidate:${candidateIndex}`;
+      const displayName = generateCandidateName(candidateSeed, usedNames);
+      const candidateProfileId = `${entry.qualificationGroup}:${hashString(candidateSeed).toString(36)}`;
+      const candidateProfile = buildCandidateProfile(
+        entry,
+        candidateProfileId,
+        displayName,
+        companyContext.homeBaseAirportId,
+        candidateSeed,
+      );
+      const directPricingExplanation = buildPricingExplanation(candidateProfile, "direct_hire", undefined);
+      const contractHourlyRate = estimateContractHourlyRate(candidateProfile);
+      const contractPricingExplanation = buildPricingExplanation(candidateProfile, "contract_hire", contractHourlyRate);
 
       offers.push({
+        candidateProfileId,
         displayName,
-        employmentModel,
+        employmentModel: "direct_hire",
         qualificationGroup: entry.qualificationGroup,
-        certifications: certificationsForQualificationGroup(entry.qualificationGroup),
-        fixedCostAmount: estimatePilotFixedCost(entry.qualificationGroup),
+        certifications: candidateProfile.certifications,
+        fixedCostAmount: estimateDirectSalary(candidateProfile),
         startsAtUtc,
         currentAirportId: companyContext.homeBaseAirportId,
-        explanationMetadata: {
-          aircraftCount: entry.aircraftCount,
-          pilotsRequired: entry.pilotsRequired,
-          currentCoverageUnits: entry.coverageUnits,
-          employmentModel,
-          fitSummary: entry.aircraftCount > 0
-            ? `Matches ${entry.sampleModelName ?? entry.qualificationGroup} operations.`
-            : "Keeps early utility operations staffed.",
-        },
-        generatedSeed,
-        ...(employmentModel === "contract_hire"
-          ? { endsAtUtc: chooseContractEndUtc(startsAtUtc, generatedSeed) }
-          : {}),
+        explanationMetadata: buildOfferExplanationMetadata(candidateProfile, directPricingExplanation),
+        generatedSeed: candidateSeed,
+      });
+
+      offers.push({
+        candidateProfileId,
+        displayName,
+        employmentModel: "contract_hire",
+        qualificationGroup: entry.qualificationGroup,
+        certifications: candidateProfile.certifications,
+        fixedCostAmount: estimateContractEngagementFee(candidateProfile),
+        variableCostRate: contractHourlyRate,
+        startsAtUtc,
+        endsAtUtc: chooseContractEndUtc(startsAtUtc, candidateSeed),
+        currentAirportId: companyContext.homeBaseAirportId,
+        explanationMetadata: buildOfferExplanationMetadata(candidateProfile, contractPricingExplanation),
+        generatedSeed: candidateSeed,
       });
     }
   });
@@ -431,7 +705,7 @@ export function reconcileStaffingMarket(params: {
           $qualification_group,
           1,
           $fixed_cost_amount,
-          NULL,
+          $variable_cost_rate,
           $starts_at_utc,
           $ends_at_utc,
           $display_name,
@@ -452,6 +726,7 @@ export function reconcileStaffingMarket(params: {
           $employment_model: offer.employmentModel,
           $qualification_group: offer.qualificationGroup,
           $fixed_cost_amount: offer.fixedCostAmount,
+          $variable_cost_rate: offer.variableCostRate ?? null,
           $starts_at_utc: offer.startsAtUtc,
           $ends_at_utc: offer.endsAtUtc ?? null,
           $display_name: offer.displayName,

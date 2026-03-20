@@ -252,6 +252,78 @@ function formatStaffingAvailabilityLabel(candidateState, startsAtUtc) {
 function formatContractEndLabel(endsAtUtc) {
     return endsAtUtc ? `Ends ${formatDate(endsAtUtc)}` : "No fixed end date";
 }
+function formatPilotHours(hours) {
+    return `${formatNumber(hours ?? 0)}h`;
+}
+function formatPilotStatBand(statBand) {
+    if (typeof statBand !== "string" || statBand.length === 0) {
+        return "Unknown";
+    }
+    return statBand.charAt(0).toUpperCase() + statBand.slice(1);
+}
+function candidateDetailId(offer) {
+    return offer?.candidateProfileId ?? offer?.staffingOfferId ?? "";
+}
+function resolveCandidateGroupPortraitSeed(candidate) {
+    return resolveCandidatePortraitSeed(candidate.directOffer ?? candidate.contractOffer ?? {
+        staffingOfferId: candidate.candidateId,
+        displayName: candidate.displayName,
+        candidateProfileId: candidate.candidateId,
+    });
+}
+function buildPilotCandidateGroups(staffingMarket) {
+    const pilotOffers = (staffingMarket?.offers ?? []).filter((offer) => offer.laborCategory === "pilot" && offer.candidateState === "available_now");
+    const groups = new Map();
+    for (const offer of pilotOffers) {
+        const candidateId = candidateDetailId(offer);
+        const existingGroup = groups.get(candidateId) ?? {
+            candidateId,
+            displayName: offer.displayName ?? "Unnamed candidate",
+            qualificationGroup: offer.qualificationGroup,
+            certifications: offer.certifications ?? [],
+            currentAirportId: offer.currentAirportId,
+            candidateProfile: offer.candidateProfile,
+            directOffer: null,
+            contractOffer: null,
+        };
+        existingGroup.displayName = existingGroup.displayName || offer.displayName || "Unnamed candidate";
+        existingGroup.qualificationGroup = existingGroup.qualificationGroup || offer.qualificationGroup;
+        existingGroup.certifications = existingGroup.certifications?.length ? existingGroup.certifications : (offer.certifications ?? []);
+        existingGroup.currentAirportId = existingGroup.currentAirportId ?? offer.currentAirportId;
+        existingGroup.candidateProfile = existingGroup.candidateProfile ?? offer.candidateProfile;
+        if (offer.employmentModel === "direct_hire") {
+            existingGroup.directOffer = offer;
+        }
+        else if (offer.employmentModel === "contract_hire") {
+            existingGroup.contractOffer = offer;
+        }
+        groups.set(candidateId, existingGroup);
+    }
+    return [...groups.values()].sort((left, right) => {
+        const leftProfile = left.candidateProfile;
+        const rightProfile = right.candidateProfile;
+        const leftHours = leftProfile?.primaryQualificationFamilyHours ?? 0;
+        const rightHours = rightProfile?.primaryQualificationFamilyHours ?? 0;
+        if (leftHours !== rightHours) {
+            return rightHours - leftHours;
+        }
+        const leftDirectCost = left.directOffer?.fixedCostAmount ?? Number.MAX_SAFE_INTEGER;
+        const rightDirectCost = right.directOffer?.fixedCostAmount ?? Number.MAX_SAFE_INTEGER;
+        if (leftDirectCost !== rightDirectCost) {
+            return leftDirectCost - rightDirectCost;
+        }
+        return left.displayName.localeCompare(right.displayName);
+    });
+}
+function describeCandidateStartingPrice(candidate) {
+    if (candidate.contractOffer) {
+        return `From ${formatMoney(candidate.contractOffer.fixedCostAmount)} upfront`;
+    }
+    if (candidate.directOffer) {
+        return `From ${formatMoney(candidate.directOffer.fixedCostAmount)}/mo`;
+    }
+    return "Pricing unavailable";
+}
 function hashStableValue(value) {
     let hash = 0;
     for (const character of value) {
@@ -446,15 +518,18 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
     void saveId;
     void tabId;
     void options;
-    const pilotOffers = (staffingMarket?.offers ?? []).filter((offer) => offer.laborCategory === "pilot" && offer.candidateState === "available_now");
-    if (pilotOffers.length === 0) {
+    const candidateGroups = buildPilotCandidateGroups(staffingMarket);
+    if (candidateGroups.length === 0) {
         return `<div class="empty-state" data-staffing-market-empty><strong>No pilots are available to hire right now.</strong><div class="muted">This market only shows named pilots who are available now.</div></div>`;
     }
-    const selectedOfferId = options.selectedOfferId ?? pilotOffers[0]?.staffingOfferId ?? "";
-    return `<div class="aircraft-table-wrap table-wrap staffing-hire-market-list" data-pilot-candidate-market data-staffing-scroll-region="hire:list"><table><thead><tr><th>Pilot</th><th>Certifications</th><th>Base</th><th>Cost</th></tr></thead><tbody>${pilotOffers.map((offer) => {
-        const isSelected = offer.staffingOfferId === selectedOfferId;
-        const portraitSeed = resolveCandidatePortraitSeed(offer);
-        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(offer.staffingOfferId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(offer.staffingOfferId)}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<div class="meta-stack"><strong>${escapeHtml(offer.displayName ?? "Unnamed candidate")}</strong></div></div></td><td><div class="meta-stack"><span>${escapeHtml(formatPilotCertificationList(offer.certifications ?? []))}</span><span class="muted">${escapeHtml(humanize(offer.qualificationGroup))}</span></div></td><td>${offer.currentAirportId ? renderAirportDisplay(offer.currentAirportId) : `<span class="muted">Unassigned base</span>`}</td><td><div class="meta-stack"><span>${escapeHtml(formatMoney(offer.fixedCostAmount))}/mo</span><span class="muted">Monthly fixed staffing cost</span></div></td></tr>`;
+    const selectedCandidateId = candidateGroups.some((candidate) => candidate.candidateId === options.selectedCandidateId)
+        ? options.selectedCandidateId
+        : candidateGroups[0]?.candidateId ?? "";
+    return `<div class="aircraft-table-wrap table-wrap staffing-hire-market-list" data-pilot-candidate-market data-staffing-scroll-region="hire:list"><table><thead><tr><th>Pilot</th><th>Lane</th><th>Total hours</th><th>Lane hours</th><th>Base</th><th>Starting price</th></tr></thead><tbody>${candidateGroups.map((candidate) => {
+        const isSelected = candidate.candidateId === selectedCandidateId;
+        const portraitSeed = resolveCandidateGroupPortraitSeed(candidate);
+        const laneLabel = candidate.candidateProfile?.qualificationLane ?? humanize(candidate.qualificationGroup);
+        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(candidate.candidateId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(candidate.candidateId)}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<div class="meta-stack"><strong>${escapeHtml(candidate.displayName)}</strong></div></div></td><td><div class="meta-stack"><span>${escapeHtml(laneLabel)}</span><span class="muted">${escapeHtml(formatPilotCertificationList(candidate.certifications ?? []))}</span></div></td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.totalCareerHours ?? 0))}</td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.primaryQualificationFamilyHours ?? 0))}</td><td>${candidate.currentAirportId ? renderAirportDisplay(candidate.currentAirportId) : `<span class="muted">Unassigned base</span>`}</td><td>${escapeHtml(describeCandidateStartingPrice(candidate))}</td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
 function renderStaffingFactRow(label, value, detail = "") {
@@ -466,14 +541,76 @@ function renderStaffingFactListRow(label, entries) {
     }
     return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><ul class="aircraft-fact-list">${entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul></div></div>`;
 }
+function renderHireCoverageRows(coverage, qualificationGroup, namedPilots, staffingState) {
+    const laneSummary = findPilotCoverageSummary(coverage, qualificationGroup);
+    const matchingPilots = namedPilots.filter((pilot) => pilot.qualificationGroup === qualificationGroup);
+    const activeMatchingPilots = matchingPilots.filter((pilot) => pilot.packageStatus === "active");
+    const readyMatchingPilots = activeMatchingPilots.filter((pilot) => pilot.availabilityState === "ready");
+    return `${renderStaffingFactRow("Pilot lane coverage", laneSummary ? `${formatNumber(laneSummary.activeCoverageUnits)} active | ${formatNumber(laneSummary.pendingCoverageUnits)} pending` : "No pilot coverage", `This hire adds one named pilot to the ${humanize(qualificationGroup)} lane.`)}${renderStaffingFactRow("Roster readiness", `${formatNumber(readyMatchingPilots.length)} ready | ${formatNumber(Math.max(activeMatchingPilots.length - readyMatchingPilots.length, 0))} committed`, `${formatNumber(activeMatchingPilots.length)} active named pilots currently sit in this lane.`)}${renderStaffingFactRow("Recurring salary load", formatMoney(staffingState?.totalMonthlyFixedCostAmount ?? 0), "Current monthly staffing load across active recurring labor only.")}`;
+}
+function renderHireComparisonCard(saveId, tabId, candidate, offer, context) {
+    void saveId;
+    void tabId;
+    void candidate;
+    void context;
+    if (!offer) {
+        return `<section class="summary-item staffing-comparison-card"><div class="eyebrow">Unavailable</div><strong>Not listed</strong><span class="muted">This hiring path is not available in the current market window.</span></section>`;
+    }
+    const recurringLine = offer.employmentModel === "direct_hire"
+        ? "Recurring salary | No activation charge"
+        : `Engagement fee ${formatMoney(offer.fixedCostAmount)} | ${formatMoney(offer.variableCostRate ?? 0)}/completed flight hour`;
+    const contractTermLine = offer.employmentModel === "contract_hire"
+        ? formatContractEndLabel(offer.endsAtUtc)
+        : "No fixed contract end";
+    const trainingLine = offer.employmentModel === "contract_hire"
+        ? "Certification training blocked in this slice"
+        : "Certification training allowed";
+    const headline = offer.employmentModel === "contract_hire"
+        ? formatMoney(offer.fixedCostAmount)
+        : `${formatMoney(offer.fixedCostAmount)}/mo`;
+    return `<section class="summary-item staffing-comparison-card" data-staffing-hire-path="${escapeHtml(offer.employmentModel)}"><div class="eyebrow">${escapeHtml(formatEmploymentModelLabel(offer.employmentModel))}</div><strong>${escapeHtml(headline)}</strong><div class="meta-stack"><span>${escapeHtml(recurringLine)}</span><span class="muted">${escapeHtml(contractTermLine)}</span><span class="muted">${escapeHtml(trainingLine)}</span></div></section>`;
+}
+function renderHireChoiceAction(saveId, tabId, offer, context) {
+    if (!offer) {
+        return "";
+    }
+    const actionPath = context.api
+        ? `/api/save/${encodeURIComponent(saveId)}/actions/hire-pilot-candidate`
+        : "/actions/hire-pilot-candidate";
+    const priceLabel = offer.employmentModel === "contract_hire"
+        ? `${formatMoney(offer.fixedCostAmount)} + ${formatMoney(offer.variableCostRate ?? 0)}/hr`
+        : `${formatMoney(offer.fixedCostAmount)}/mo`;
+    const buttonLabel = offer.employmentModel === "contract_hire"
+        ? "Choose contract hire"
+        : "Choose direct hire";
+    return `<form method="post" action="${actionPath}" class="market-confirm-form staffing-hire-choice-form" ${context.api ? "data-api-form" : ""}>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="staffingOfferId" value="${escapeHtml(offer.staffingOfferId)}" /><button type="submit" data-pending-label="Hiring..." data-pilot-candidate-hire="${escapeHtml(offer.staffingOfferId)}">${escapeHtml(buttonLabel)}</button><span class="muted">${escapeHtml(priceLabel)}</span></form>`;
+}
+function resolveCandidatePricingSummary(candidate) {
+    const directPricing = candidate.directOffer?.pricingExplanation;
+    const contractPricing = candidate.contractOffer?.pricingExplanation;
+    if (directPricing && contractPricing) {
+        const sharedDrivers = directPricing.drivers.filter((driver) => !driver.startsWith("Operational profile:"));
+        const usageBillingDriver = contractPricing.drivers.find((driver) => driver.startsWith("Usage billing anchor:"));
+        return {
+            summary: "Both hire paths use visible lane complexity, flight time, and operational profile. Direct hire is recurring salary; contract hire adds an engagement fee plus completed flight-leg billing.",
+            drivers: usageBillingDriver ? [...sharedDrivers, usageBillingDriver] : sharedDrivers,
+        };
+    }
+    const pricingExplanation = directPricing ?? contractPricing;
+    return {
+        summary: pricingExplanation?.summary
+            ?? "Pricing is grounded in visible lane complexity, flight time, and operational profile.",
+        drivers: pricingExplanation?.drivers ?? [],
+    };
+}
 function preferredNamedPilotId(namedPilots) {
     return namedPilots.find((pilot) => pilot.packageStatus === "active" && pilot.availabilityState === "ready")?.namedPilotId
         ?? namedPilots.find((pilot) => pilot.packageStatus === "active")?.namedPilotId
         ?? namedPilots[0]?.namedPilotId
         ?? "";
 }
-function preferredPilotOfferId(pilotOffers) {
-    return pilotOffers[0]?.staffingOfferId ?? "";
+function preferredPilotCandidateId(candidateGroups) {
+    return candidateGroups[0]?.candidateId ?? "";
 }
 function buildTransferDestinationCatalog(companyContext, aircraft) {
     if (!companyContext) {
@@ -624,26 +761,35 @@ function renderNamedPilotDetail(saveId, tabId, pilot, context) {
         ? (pilot.endsAtUtc ? `Contract end ${formatDate(pilot.endsAtUtc)}.` : "Fixed-term named pilot hire.")
         : "Open-ended named pilot hire.") + renderStaffingFactRow("Status", humanize(pilot.availabilityState), statusContext.join(" | ") || (pilot.packageStatus === "active" ? "Available for new work." : "Not currently active for operations.")) + renderStaffingFactRow("Current base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned", homeBaseAirport ? `Home ${homeBaseAirport.code} | ${homeBaseAirport.primaryLabel}` : "No company home base is set.") + renderStaffingFactRow("Assignment", assignedAircraft ? assignedAircraft.registration : "No committed aircraft", assignedAircraft ? `Currently tied to ${assignedAircraft.registration} for operational coverage.` : "No current aircraft commitment is holding this pilot.") + renderStaffingFactListRow("Notes", employeeNotes)}</div></section>${renderStaffingCoverageCard(context.coverage, pilot.qualificationGroup, context.namedPilots, context.staffingState)}<section class="aircraft-facts-card"><div class="eyebrow">Employee actions</div>${actionBody}</section></div>`;
 }
-function renderHireCandidateDetail(saveId, tabId, offer, context) {
-    if (!offer) {
-        return `<div class="aircraft-detail-stack"><section class="aircraft-facts-card"><div class="eyebrow">Hiring detail</div><div class="empty-state compact"><strong>No pilot candidate is selected.</strong><div class="muted">This market only shows named pilots who are available now.</div></div></section>${renderStaffingCoverageCard(context.coverage, "single_turboprop_utility", context.namedPilots, context.staffingState, { impactDetail: "Use the coverage posture here to understand current roster pressure while the market refreshes." })}</div>`;
+function renderHireCandidateDetail(saveId, tabId, candidate, context) {
+    if (!candidate) {
+        return `<div class="aircraft-detail-stack"><section class="aircraft-facts-card"><div class="eyebrow">Hiring detail</div><div class="empty-state compact"><strong>No pilot candidate is selected.</strong><div class="muted">This market only shows named pilots who are available now.</div></div></section></div>`;
     }
-    const actionPath = context.api
-        ? `/api/save/${encodeURIComponent(saveId)}/actions/hire-pilot-candidate`
-        : "/actions/hire-pilot-candidate";
-    const currentAirport = offer.currentAirportId ? describeAirport(offer.currentAirportId) : null;
-    const availabilityLabel = formatStaffingAvailabilityLabel(offer.candidateState, offer.startsAtUtc);
-    const contractEndRow = offer.employmentModel === "contract_hire" && offer.endsAtUtc
-        ? renderStaffingFactRow("Contract end", formatDate(offer.endsAtUtc))
-        : "";
-    const candidateFacts = renderStaffingFactRow("Certifications", formatPilotCertificationList(offer.certifications ?? []))
-        + renderStaffingFactRow("Hire type", formatEmploymentModelLabel(offer.employmentModel))
-        + renderStaffingFactRow("Base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned base")
-        + renderStaffingFactRow("Cost", `${formatMoney(offer.fixedCostAmount)}/mo`)
-        + renderStaffingFactRow("Availability", availabilityLabel)
-        + contractEndRow
-        + renderStaffingCoverageRows(context.coverage, offer.qualificationGroup, context.namedPilots, context.staffingState, { impactDetail: "Hiring this candidate adds one active named pilot to the matching certification lane.", compact: true });
-    return `<div class="aircraft-detail-stack" data-staffing-selected-detail="hire"><section class="aircraft-facts-card"><div class="aircraft-facts-list">${candidateFacts}</div><div class="staffing-hire-action-row"><form method="post" action="${actionPath}" class="market-confirm-form" ${context.api ? "data-api-form" : ""}>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="staffingOfferId" value="${escapeHtml(offer.staffingOfferId)}" /><button type="submit" data-pending-label="Hiring..." data-pilot-candidate-hire="${escapeHtml(offer.staffingOfferId)}">Hire pilot</button></form></div></section></div>`;
+    const profile = candidate.candidateProfile;
+    const directOffer = candidate.directOffer;
+    const contractOffer = candidate.contractOffer;
+    const primaryOffer = directOffer ?? contractOffer;
+    const currentAirport = candidate.currentAirportId ? describeAirport(candidate.currentAirportId) : null;
+    const availabilityLabel = formatStaffingAvailabilityLabel(primaryOffer?.candidateState ?? "available_now", primaryOffer?.startsAtUtc);
+    const qualificationLane = profile?.qualificationLane ?? humanize(candidate.qualificationGroup);
+    const pricingSummaryView = resolveCandidatePricingSummary(candidate);
+    const pricingSummary = pricingSummaryView.summary;
+    const pricingDrivers = pricingSummaryView.drivers;
+    const operationalProfileRows = profile
+        ? renderStaffingFactRow("Operational reliability", formatPilotStatBand(profile.statProfile.operationalReliability))
+            + renderStaffingFactRow("Stress tolerance", formatPilotStatBand(profile.statProfile.stressTolerance))
+            + renderStaffingFactRow("Procedure discipline", formatPilotStatBand(profile.statProfile.procedureDiscipline))
+            + renderStaffingFactRow("Training aptitude", formatPilotStatBand(profile.statProfile.trainingAptitude))
+        : renderStaffingFactRow("Operational profile", "Not available");
+    const comparisonCards = [directOffer, contractOffer]
+        .filter((offer) => Boolean(offer))
+        .map((offer) => renderHireComparisonCard(saveId, tabId, candidate, offer, context))
+        .join("");
+    const hireChoiceActions = [directOffer, contractOffer]
+        .filter((offer) => Boolean(offer))
+        .map((offer) => renderHireChoiceAction(saveId, tabId, offer, context))
+        .join("");
+    return `<div class="aircraft-detail-stack" data-staffing-selected-detail="hire"><section class="aircraft-facts-card"><div class="staffing-detail-section"><div class="eyebrow">Identity brief</div><div class="aircraft-facts-list">${renderStaffingFactRow("Qualification lane", qualificationLane) + renderStaffingFactRow("Base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned base") + renderStaffingFactRow("Availability", availabilityLabel)}</div></div><div class="staffing-detail-section"><div class="eyebrow">Flight profile</div><div class="aircraft-facts-list">${renderStaffingFactRow("Total career hours", formatPilotHours(profile?.totalCareerHours ?? 0)) + renderStaffingFactRow("Primary lane hours", formatPilotHours(profile?.primaryQualificationFamilyHours ?? 0), qualificationLane) + renderStaffingFactRow("Company hours", formatPilotHours(profile?.companyHours ?? 0), "Logged with your airline.")}</div></div><div class="staffing-detail-section"><div class="eyebrow">Certifications</div><div class="aircraft-facts-list">${renderStaffingFactRow("Certifications", formatPilotCertificationList(candidate.certifications ?? []))}</div></div><div class="staffing-detail-section"><div class="eyebrow">Operational profile</div><div class="aircraft-facts-list">${operationalProfileRows}</div></div><div class="staffing-detail-section"><div class="eyebrow">Direct versus contract</div><div class="summary-list staffing-comparison-grid">${comparisonCards}</div></div><div class="staffing-detail-section"><div class="eyebrow">Pricing summary</div><div class="aircraft-facts-list">${renderStaffingFactRow("Summary", pricingSummary) + renderStaffingFactListRow("Visible drivers", pricingDrivers)}</div></div><div class="staffing-detail-section"><div class="eyebrow">Coverage impact</div><div class="aircraft-facts-list">${renderHireCoverageRows(context.coverage, candidate.qualificationGroup, context.namedPilots, context.staffingState)}</div></div><div class="staffing-detail-section staffing-hire-action-row"><div class="eyebrow">Choose hire path</div><div class="meta-stack">${hireChoiceActions}</div></div></section></div>`;
 }
 function renderPilotRosterTable(namedPilots, selectedPilotId, aircraftById) {
     return `<div class="aircraft-table-wrap table-wrap" data-staffing-roster data-staffing-scroll-region="employees:list"><table><thead><tr><th>Pilot</th><th>Certifications</th><th>Status</th><th>Context</th></tr></thead><tbody>${namedPilots.map((pilot) => {
@@ -1117,7 +1263,22 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       padding-top: 16px;
       border-top: 1px solid var(--line);
     }
+    .staffing-detail-section {
+      display: grid;
+      gap: 12px;
+      padding-top: 16px;
+      margin-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .staffing-detail-section:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
     .summary-list { display: grid; gap: 12px; }
+    .staffing-comparison-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
     .summary-item {
       padding: 12px 14px;
       border-radius: 14px;
@@ -1125,6 +1286,17 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       background: var(--panel-strong);
     }
     .summary-item strong { display: block; font-size: 18px; margin-top: 3px; }
+    .staffing-comparison-card {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+    .staffing-hire-choice-form {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
     .event-list { display: grid; gap: 10px; }
     .event-item {
       padding: 12px 14px;
@@ -2912,17 +3084,16 @@ const saveShellRenderers = {
         const packages = staffingState?.staffingPackages ?? [];
         const namedPilots = staffingState?.namedPilots ?? [];
         const pilotPackages = packages.filter((pkg) => pkg.laborCategory === "pilot");
-        const availablePilotOffers = (staffingMarket?.offers ?? []).filter((offer) => offer.laborCategory === "pilot" && offer.candidateState === "available_now");
-        const availablePilotOfferCount = availablePilotOffers.length;
+        const availablePilotCandidates = buildPilotCandidateGroups(staffingMarket);
+        const availablePilotOfferCount = availablePilotCandidates.length;
         const hasPendingPilotCoverage = pilotPackages.some((pkg) => pkg.status === "pending");
         const defaultWorkspaceTab = namedPilots.length > 0 ? "employees" : "hire";
         const fleetAircraft = source.fleetState?.aircraft ?? [];
         const aircraftById = new Map(fleetAircraft.map((aircraft) => [aircraft.aircraftId, aircraft]));
-        const supportCoverageBody = renderSupportCoverageActions(saveId, tabId, { api: true });
         const homeBaseAirportId = source.companyContext?.homeBaseAirportId;
         const transferDestinationCatalog = buildTransferDestinationCatalog(source.companyContext, fleetAircraft);
         const defaultEmployeeId = preferredNamedPilotId(namedPilots);
-        const defaultHireId = preferredPilotOfferId(availablePilotOffers);
+        const defaultHireId = preferredPilotCandidateId(availablePilotCandidates);
         const pilotDetailContext = {
             aircraftById,
             coverage,
@@ -2936,26 +3107,25 @@ const saveShellRenderers = {
             coverage,
             namedPilots,
             staffingState,
-            supportCoverageBody,
         };
         const selectedPilot = namedPilots.find((pilot) => pilot.namedPilotId === defaultEmployeeId) ?? null;
-        const selectedOffer = availablePilotOffers.find((offer) => offer.staffingOfferId === defaultHireId) ?? null;
+        const selectedCandidate = availablePilotCandidates.find((candidate) => candidate.candidateId === defaultHireId) ?? null;
         const rosterBody = namedPilots.length === 0
             ? `<div class="empty-state" data-staffing-roster-empty><strong>No pilot roster yet.</strong><div class="muted">${hasPendingPilotCoverage
                 ? "Hired pilots with future starts will appear here as they move toward active duty."
                 : "Hire an individual pilot candidate to create the first named roster entry."} Training, transfer, and return-home actions will appear here once the roster is live.</div></div>`
             : renderPilotRosterTable(namedPilots, defaultEmployeeId, aircraftById);
-        const hireStaffBody = renderPilotHiringMarket(saveId, tabId, source, { api: true, selectedOfferId: defaultHireId });
+        const hireStaffBody = renderPilotHiringMarket(saveId, tabId, source, { api: true, selectedCandidateId: defaultHireId });
         const employeeDetailTitle = selectedPilot?.displayName ?? "Employee Detail";
         const employeeDetailBody = renderNamedPilotDetail(saveId, tabId, selectedPilot, pilotDetailContext);
         const employeeTemplates = namedPilots.map((pilot) => renderStaffingDetailTemplate("employees", pilot.namedPilotId, pilot.displayName, renderNamedPilotDetail(saveId, tabId, pilot, pilotDetailContext))).join("");
-        const hireDetailTitle = selectedOffer?.displayName ?? "Hiring Detail";
-        const hireDetailPortraitSeed = selectedOffer ? resolveCandidatePortraitSeed(selectedOffer) : "staff-portrait";
+        const hireDetailTitle = selectedCandidate?.displayName ?? "Hiring Detail";
+        const hireDetailPortraitSeed = selectedCandidate ? resolveCandidateGroupPortraitSeed(selectedCandidate) : "staff-portrait";
         const hireDetailPortraitSrc = resolveStaffPortraitSrc(hireDetailPortraitSeed);
-        const hireDetailBody = renderHireCandidateDetail(saveId, tabId, selectedOffer, hireDetailContext);
-        const hireTemplates = availablePilotOffers.map((offer) => {
-            const portraitSeed = resolveCandidatePortraitSeed(offer);
-            return renderStaffingDetailTemplate("hire", offer.staffingOfferId, offer.displayName ?? "Pilot candidate", renderHireCandidateDetail(saveId, tabId, offer, hireDetailContext), { portraitSrc: resolveStaffPortraitSrc(portraitSeed) });
+        const hireDetailBody = renderHireCandidateDetail(saveId, tabId, selectedCandidate, hireDetailContext);
+        const hireTemplates = availablePilotCandidates.map((candidate) => {
+            const portraitSeed = resolveCandidateGroupPortraitSeed(candidate);
+            return renderStaffingDetailTemplate("hire", candidate.candidateId, candidate.displayName ?? "Pilot candidate", renderHireCandidateDetail(saveId, tabId, candidate, hireDetailContext), { portraitSrc: resolveStaffPortraitSrc(portraitSeed) });
         }).join("");
         const employeesWorkspace = `<section class="aircraft-workspace-body" data-staffing-workspace-panel="employees"${defaultWorkspaceTab === "employees" ? "" : " hidden"}><div class="aircraft-workbench"><section class="panel aircraft-fleet-panel"><div class="panel-head"><h3>Pilot Roster</h3></div><div class="panel-body aircraft-fleet-body"><div class="meta-stack"><strong>Employees</strong><span class="muted">Select a pilot to review certifications, availability, and employee actions.</span></div>${rosterBody}</div></section><section class="panel aircraft-detail-panel" data-staffing-detail-panel="employees"><div class="panel-head"><h3 data-staffing-detail-title="employees">${escapeHtml(employeeDetailTitle)}</h3></div><div class="panel-body aircraft-detail-body" data-staffing-detail-body="employees" data-staffing-scroll-region="employees:detail">${employeeDetailBody}</div><div hidden data-staffing-detail-bank="employees">${employeeTemplates}</div></section></div></section>`;
         const hireWorkspace = `<section class="aircraft-workspace-body staffing-hire-workspace" data-staffing-workspace-panel="hire"${defaultWorkspaceTab === "hire" ? "" : " hidden"}><div class="staffing-hire-stage" data-staffing-hire-stage><section class="panel staffing-hire-table-panel"><div class="panel-head"><h3>Hire Staff</h3></div><div class="panel-body staffing-hire-table-body"><div class="meta-stack"><strong>Pilot Candidates</strong><span class="muted">Choose a direct or contract pilot hire. This market only shows candidates available now.</span></div>${hireStaffBody}</div></section><div class="staffing-hire-overlay" data-staffing-hire-overlay data-staffing-detail-panel="hire" hidden><button type="button" class="staffing-hire-overlay-backdrop" data-staffing-detail-close="hire" aria-label="Close hiring detail"></button><section class="panel staffing-hire-overlay-card"><div class="panel-head"><div class="staffing-detail-headline">${renderStaffPortrait(hireDetailPortraitSeed, "hire-detail", { size: "detail", detailView: "hire" })}<h3 data-staffing-detail-title="hire">${escapeHtml(hireDetailTitle)}</h3></div><button type="button" class="ghost-button" data-staffing-detail-close="hire">Close</button></div><div class="panel-body aircraft-detail-body" data-staffing-detail-body="hire" data-staffing-scroll-region="hire:detail">${hireDetailBody}</div><div hidden data-staffing-detail-bank="hire">${hireTemplates}</div></section></div></div></section>`;

@@ -10,6 +10,7 @@ import type {
   NamedPilotAvailabilityState,
   NamedPilotTrainingProgramKind,
   PilotCertificationCode,
+  PilotVisibleProfile,
 } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import { loadNamedPilotRoster } from "../staffing/named-pilot-roster.js";
@@ -62,10 +63,12 @@ export interface NamedPilotView {
   namedPilotId: string;
   staffingPackageId: string;
   sourceOfferId: string | undefined;
+  sourceCandidateProfileId: string | undefined;
   rosterSlotNumber: number;
   displayName: string;
   qualificationGroup: string;
   certifications: PilotCertificationCode[];
+  candidateProfile: PilotVisibleProfile | undefined;
   employmentModel: EmploymentModel;
   packageStatus: "pending" | "active" | "expired" | "cancelled";
   startsAtUtc: UtcIsoString;
@@ -197,7 +200,7 @@ export function loadStaffingState(saveDatabase: SqliteFileDatabase, saveId: Save
       .filter((entry) => entry.status === "pending")
       .reduce((sum, entry) => sum + entry.coverageUnits, 0),
     totalMonthlyFixedCostAmount: staffingPackages
-      .filter((entry) => entry.status === "active")
+      .filter((entry) => entry.status === "active" && Boolean(entry.recurringObligationId))
       .reduce((sum, entry) => sum + entry.fixedCostAmount, 0),
   };
 }

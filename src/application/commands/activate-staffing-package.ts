@@ -8,6 +8,7 @@ import { addUtcMonths, createPrefixedId, deriveFinancialPressureBand } from "./u
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import { reconcileNamedPilots } from "../staffing/named-pilot-roster.js";
 import { normalizeOptionalUtcTimestamp } from "../../domain/common/utc.js";
+import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibility.js";
 import { parsePilotCertificationsJson, pilotCertificationsToJson } from "../../domain/staffing/pilot-certifications.js";
 import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
@@ -20,6 +21,7 @@ interface ActivateStaffingPackageDependencies {
 
 interface StaffingMarketOfferRow extends Record<string, unknown> {
   staffingOfferId: string;
+  offerWindowId: string;
   companyId: string;
   laborCategory: LaborCategory;
   employmentModel: EmploymentModel;
@@ -32,7 +34,15 @@ interface StaffingMarketOfferRow extends Record<string, unknown> {
   displayName: string | null;
   certificationsJson: string | null;
   currentAirportId: string | null;
+  explanationMetadataJson: string | null;
   offerStatus: string;
+}
+
+interface ExistingCandidatePackageRow extends Record<string, unknown> {
+  staffingPackageId: string;
+  sourceOfferId: string | null;
+  status: "pending" | "active" | "expired" | "cancelled";
+  explanationMetadataJson: string | null;
 }
 
 const recommendedCabinQualificationGroups = new Set([
@@ -50,6 +60,25 @@ const recommendedOpsQualificationGroups = new Set([
   "ops_maintenance_control",
 ]);
 
+function usesRecurringStaffingCost(employmentModel: EmploymentModel): boolean {
+  return employmentModel === "direct_hire"
+    || employmentModel === "contract_pool"
+    || employmentModel === "service_agreement";
+}
+
+function parseCandidateProfileId(explanationMetadataJson: string | null | undefined): string | undefined {
+  if (!explanationMetadataJson) {
+    return undefined;
+  }
+
+  try {
+    const explanationMetadata = JSON.parse(explanationMetadataJson) as Record<string, unknown>;
+    return parseStaffingOfferVisibility(explanationMetadata).candidateProfileId;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function handleActivateStaffingPackage(
   command: ActivateStaffingPackageCommand,
   dependencies: ActivateStaffingPackageDependencies,
@@ -66,6 +95,7 @@ export async function handleActivateStaffingPackage(
     ? dependencies.saveDatabase.getOne<StaffingMarketOfferRow>(
         `SELECT
           staffing_offer_id AS staffingOfferId,
+          offer_window_id AS offerWindowId,
           company_id AS companyId,
           labor_category AS laborCategory,
           employment_model AS employmentModel,
@@ -78,6 +108,7 @@ export async function handleActivateStaffingPackage(
           display_name AS displayName,
           certifications_json AS certificationsJson,
           current_airport_id AS currentAirportId,
+          explanation_metadata_json AS explanationMetadataJson,
           offer_status AS offerStatus
         FROM staffing_offer
         WHERE staffing_offer_id = $staffing_offer_id
@@ -125,6 +156,51 @@ export async function handleActivateStaffingPackage(
 
     if (marketOffer.offerStatus !== "available") {
       hardBlockers.push(`Staffing offer ${marketOffer.staffingOfferId} is no longer available.`);
+    }
+  }
+
+  const sourceCandidateProfileId = parseCandidateProfileId(marketOffer?.explanationMetadataJson);
+  const pairedOfferIds = marketOffer && sourceCandidateProfileId
+    ? dependencies.saveDatabase
+        .all<{ staffingOfferId: string; explanationMetadataJson: string | null }>(
+          `SELECT
+            staffing_offer_id AS staffingOfferId,
+            explanation_metadata_json AS explanationMetadataJson
+          FROM staffing_offer
+          WHERE offer_window_id = $offer_window_id
+            AND offer_status = 'available'`,
+          { $offer_window_id: marketOffer.offerWindowId },
+        )
+        .filter((offer) => parseCandidateProfileId(offer.explanationMetadataJson) === sourceCandidateProfileId)
+        .map((offer) => offer.staffingOfferId)
+    : marketOffer
+      ? [marketOffer.staffingOfferId]
+      : [];
+
+  if (companyContext && sourceCandidateProfileId) {
+    const existingCandidatePackages = dependencies.saveDatabase.all<ExistingCandidatePackageRow>(
+      `SELECT
+        sp.staffing_package_id AS staffingPackageId,
+        sp.source_offer_id AS sourceOfferId,
+        sp.status AS status,
+        so.explanation_metadata_json AS explanationMetadataJson
+      FROM staffing_package AS sp
+      JOIN staffing_offer AS so ON so.staffing_offer_id = sp.source_offer_id
+      WHERE sp.company_id = $company_id
+        AND sp.labor_category = 'pilot'
+        AND sp.status IN ('pending', 'active')
+        AND sp.source_offer_id IS NOT NULL`,
+      { $company_id: companyContext.companyId },
+    );
+
+    const duplicateCandidatePackage = existingCandidatePackages.find((pkg) =>
+      parseCandidateProfileId(pkg.explanationMetadataJson) === sourceCandidateProfileId
+    );
+
+    if (duplicateCandidatePackage) {
+      hardBlockers.push(
+        `${marketOffer?.displayName ?? "That pilot candidate"} is no longer available because this candidate identity is already on the roster.`,
+      );
     }
   }
 
@@ -185,7 +261,14 @@ export async function handleActivateStaffingPackage(
   }
 
   const initialStatus = companyContext && startsAtUtc && Date.parse(startsAtUtc) > Date.parse(companyContext.currentTimeUtc) ? "pending" : "active";
-  const upfrontChargeAmount = initialStatus === "active" ? effectiveFixedCostAmount : 0;
+  const recurringCostModel = usesRecurringStaffingCost(effectiveEmploymentModel);
+  const upfrontChargeAmount = effectiveEmploymentModel === "direct_hire"
+    ? 0
+    : effectiveEmploymentModel === "contract_hire"
+      ? effectiveFixedCostAmount
+      : initialStatus === "active"
+        ? effectiveFixedCostAmount
+        : 0;
   const staffingEventType = initialStatus === "pending" ? "staffing_package_scheduled" : "staffing_package_activated";
   const staffingEventTimeUtc = initialStatus === "pending" ? hiredAtUtc : startsAtUtc;
   const staffingEventMessage = initialStatus === "pending"
@@ -217,7 +300,7 @@ export async function handleActivateStaffingPackage(
   const effectiveEndsAtUtc = endsAtUtc ?? null;
 
   const staffingPackageId = createPrefixedId("staff");
-  const recurringObligationId = effectiveFixedCostAmount > 0 ? createPrefixedId("obligation") : null;
+  const recurringObligationId = recurringCostModel && effectiveFixedCostAmount > 0 ? createPrefixedId("obligation") : null;
   const ledgerEntryId = upfrontChargeAmount > 0 ? createPrefixedId("ledger") : null;
   const eventLogEntryId = createPrefixedId("event");
   const updatedCashAmount = companyContext!.currentCashAmount - upfrontChargeAmount;
@@ -280,7 +363,7 @@ export async function handleActivateStaffingPackage(
       {
         $current_cash_amount: updatedCashAmount,
         $financial_pressure_band: financialPressureBand,
-        $updated_at_utc: effectiveStartsAtUtc,
+        $updated_at_utc: hiredAtUtc,
         $company_id: companyContext!.companyId,
       },
     );
@@ -348,7 +431,7 @@ export async function handleActivateStaffingPackage(
           $obligation_type: effectiveEmploymentModel === "service_agreement" ? "service_agreement" : "staffing",
           $source_object_id: staffingPackageId,
           $amount: effectiveFixedCostAmount,
-          $next_due_at_utc: initialStatus === "active" ? addUtcMonths(effectiveStartsAtUtc, 1) : effectiveStartsAtUtc,
+          $next_due_at_utc: addUtcMonths(effectiveStartsAtUtc, 1),
           $end_at_utc: effectiveEndsAtUtc,
         },
       );
@@ -382,31 +465,44 @@ export async function handleActivateStaffingPackage(
         {
           $ledger_entry_id: ledgerEntryId,
           $company_id: companyContext!.companyId,
-          $entry_time_utc: effectiveStartsAtUtc,
+          $entry_time_utc: effectiveEmploymentModel === "contract_hire" ? hiredAtUtc : effectiveStartsAtUtc,
           $amount: upfrontChargeAmount * -1,
           $source_object_id: staffingPackageId,
-          $description: `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`,
+          $description: effectiveEmploymentModel === "contract_hire"
+            ? `Engaged contract ${effectiveLaborCategory} staffing for ${qualificationGroup}.`
+            : `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`,
           $metadata_json: JSON.stringify({
             employmentModel: effectiveEmploymentModel,
             coverageUnits: effectiveCoverageUnits,
             fixedCostAmount: effectiveFixedCostAmount,
+            variableCostRate: effectiveVariableCostRate ?? undefined,
+            chargeShape: effectiveEmploymentModel === "contract_hire"
+              ? "engagement_fee"
+              : recurringCostModel
+                ? "recurring_salary"
+                : "activation_charge",
           }),
         },
       );
     }
 
     if (marketOffer) {
-      dependencies.saveDatabase.run(
-        `UPDATE staffing_offer
-        SET offer_status = 'acquired',
-            closed_at_utc = $closed_at_utc,
-            close_reason = 'acquired'
-        WHERE staffing_offer_id = $staffing_offer_id`,
-        {
-          $staffing_offer_id: marketOffer.staffingOfferId,
-          $closed_at_utc: hiredAtUtc,
-        },
-      );
+      const offerIdsToRetire = pairedOfferIds.length > 0 ? pairedOfferIds : [marketOffer.staffingOfferId];
+
+      for (const staffingOfferId of offerIdsToRetire) {
+        dependencies.saveDatabase.run(
+          `UPDATE staffing_offer
+          SET offer_status = 'acquired',
+              closed_at_utc = $closed_at_utc,
+              close_reason = 'acquired'
+          WHERE staffing_offer_id = $staffing_offer_id
+            AND offer_status = 'available'`,
+          {
+            $staffing_offer_id: staffingOfferId,
+            $closed_at_utc: hiredAtUtc,
+          },
+        );
+      }
     }
 
     dependencies.saveDatabase.run(
@@ -481,7 +577,7 @@ export async function handleActivateStaffingPackage(
         $command_name: command.commandName,
         $actor_type: command.actorType,
         $issued_at_utc: command.issuedAtUtc,
-        $completed_at_utc: effectiveStartsAtUtc,
+        $completed_at_utc: hiredAtUtc,
         $payload_json: JSON.stringify({
           ...command.payload,
           laborCategory: effectiveLaborCategory,

@@ -167,14 +167,18 @@ function buildPortraitSeed(displayName: string | undefined | null, stableIdentit
   return `${normalizedName}::${normalizedIdentity}`;
 }
 
-export function resolveCandidatePortraitSeed(offer: Pick<StaffingOfferView, "staffingOfferId" | "displayName">): string {
-  return buildPortraitSeed(offer.displayName, offer.staffingOfferId, "staff-candidate");
+export function resolveCandidatePortraitSeed(
+  offer: Pick<StaffingOfferView, "staffingOfferId" | "displayName" | "candidateProfileId">,
+): string {
+  return buildPortraitSeed(offer.displayName, offer.candidateProfileId ?? offer.staffingOfferId, "staff-candidate");
 }
 
-export function resolveEmployeePortraitSeed(pilot: Pick<NamedPilotView, "displayName" | "sourceOfferId" | "staffingPackageId" | "namedPilotId">): string {
+export function resolveEmployeePortraitSeed(
+  pilot: Pick<NamedPilotView, "displayName" | "sourceCandidateProfileId" | "sourceOfferId" | "staffingPackageId" | "namedPilotId">,
+): string {
   return buildPortraitSeed(
     pilot.displayName,
-    pilot.sourceOfferId ?? pilot.staffingPackageId ?? pilot.namedPilotId,
+    pilot.sourceCandidateProfileId ?? pilot.sourceOfferId ?? pilot.staffingPackageId ?? pilot.namedPilotId,
     "staff-employee",
   );
 }
