@@ -7,6 +7,7 @@ import type { CommandResult, ActivateStaffingPackageCommand } from "./types.js";
 import { addUtcMonths, createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import { reconcileNamedPilots } from "../staffing/named-pilot-roster.js";
+import { normalizeOptionalUtcTimestamp } from "../../domain/common/utc.js";
 import { parsePilotCertificationsJson, pilotCertificationsToJson } from "../../domain/staffing/pilot-certifications.js";
 import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
@@ -48,10 +49,6 @@ const recommendedOpsQualificationGroups = new Set([
   "ops_station",
   "ops_maintenance_control",
 ]);
-
-function isIsoUtcEarlier(leftUtc: string, rightUtc: string): boolean {
-  return new Date(leftUtc).getTime() < new Date(rightUtc).getTime();
-}
 
 export async function handleActivateStaffingPackage(
   command: ActivateStaffingPackageCommand,
@@ -109,11 +106,15 @@ export async function handleActivateStaffingPackage(
     hardBlockers.push("Staffing coverage units must be a positive whole number.");
   }
 
-  if (effectiveFixedCostAmount < 0) {
+  if (!Number.isFinite(effectiveFixedCostAmount)) {
+    hardBlockers.push("Staffing fixed cost amount must be a finite number.");
+  } else if (effectiveFixedCostAmount < 0) {
     hardBlockers.push("Staffing fixed cost amount cannot be negative.");
   }
 
-  if ((effectiveVariableCostRate ?? 0) < 0) {
+  if (effectiveVariableCostRate !== null && !Number.isFinite(effectiveVariableCostRate)) {
+    hardBlockers.push("Staffing variable cost rate must be a finite number when provided.");
+  } else if ((effectiveVariableCostRate ?? 0) < 0) {
     hardBlockers.push("Staffing variable cost rate cannot be negative.");
   }
 
@@ -157,15 +158,25 @@ export async function handleActivateStaffingPackage(
     }
   }
 
-  const startsAtUtc = marketOffer?.startsAtUtc ?? command.payload.startsAtUtc ?? companyContext?.currentTimeUtc ?? command.issuedAtUtc;
-  const endsAtUtc = marketOffer?.endsAtUtc ?? command.payload.endsAtUtc ?? null;
+  const rawStartsAtUtc = marketOffer?.startsAtUtc ?? command.payload.startsAtUtc ?? companyContext?.currentTimeUtc ?? command.issuedAtUtc;
+  const rawEndsAtUtc = marketOffer?.endsAtUtc ?? command.payload.endsAtUtc ?? null;
+  const startsAtUtc = normalizeOptionalUtcTimestamp(rawStartsAtUtc);
+  const endsAtUtc = normalizeOptionalUtcTimestamp(rawEndsAtUtc);
   const hiredAtUtc = companyContext?.currentTimeUtc ?? command.issuedAtUtc;
 
-  if (companyContext && isIsoUtcEarlier(startsAtUtc, companyContext.currentTimeUtc)) {
+  if (!startsAtUtc) {
+    hardBlockers.push(`Staffing package start time ${rawStartsAtUtc} is not a valid UTC timestamp.`);
+  }
+
+  if (rawEndsAtUtc && !endsAtUtc) {
+    hardBlockers.push(`Staffing package end time ${rawEndsAtUtc} is not a valid UTC timestamp.`);
+  }
+
+  if (companyContext && startsAtUtc && Date.parse(startsAtUtc) < Date.parse(companyContext.currentTimeUtc)) {
     hardBlockers.push("Staffing package start time cannot be earlier than the current game time.");
   }
 
-  if (endsAtUtc && !isIsoUtcEarlier(startsAtUtc, endsAtUtc)) {
+  if (startsAtUtc && endsAtUtc && Date.parse(startsAtUtc) >= Date.parse(endsAtUtc)) {
     hardBlockers.push("Staffing package end time must be later than the start time.");
   }
 
@@ -173,8 +184,17 @@ export async function handleActivateStaffingPackage(
     warnings.push("Service-agreement staffing was activated without a service region code.");
   }
 
-  const initialStatus = companyContext && startsAtUtc > companyContext.currentTimeUtc ? "pending" : "active";
+  const initialStatus = companyContext && startsAtUtc && Date.parse(startsAtUtc) > Date.parse(companyContext.currentTimeUtc) ? "pending" : "active";
   const upfrontChargeAmount = initialStatus === "active" ? effectiveFixedCostAmount : 0;
+  const staffingEventType = initialStatus === "pending" ? "staffing_package_scheduled" : "staffing_package_activated";
+  const staffingEventTimeUtc = initialStatus === "pending" ? hiredAtUtc : startsAtUtc;
+  const staffingEventMessage = initialStatus === "pending"
+    ? marketOffer?.displayName
+      ? `Scheduled ${marketOffer.displayName} to start ${qualificationGroup} coverage on ${startsAtUtc}.`
+      : `Scheduled ${effectiveLaborCategory} staffing package ${qualificationGroup} to start on ${startsAtUtc}.`
+    : marketOffer?.displayName
+      ? `Hired ${marketOffer.displayName} for ${qualificationGroup}.`
+      : `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`;
 
   if (companyContext && upfrontChargeAmount > companyContext.currentCashAmount) {
     hardBlockers.push(`Company does not have enough cash to activate this staffing package for ${upfrontChargeAmount}.`);
@@ -192,6 +212,9 @@ export async function handleActivateStaffingPackage(
       emittedLedgerEntryIds: [],
     };
   }
+
+  const effectiveStartsAtUtc = startsAtUtc!;
+  const effectiveEndsAtUtc = endsAtUtc ?? null;
 
   const staffingPackageId = createPrefixedId("staff");
   const recurringObligationId = effectiveFixedCostAmount > 0 ? createPrefixedId("obligation") : null;
@@ -242,8 +265,8 @@ export async function handleActivateStaffingPackage(
         $fixed_cost_amount: effectiveFixedCostAmount,
         $variable_cost_rate: effectiveVariableCostRate,
         $service_region_code: effectiveServiceRegionCode,
-        $starts_at_utc: startsAtUtc,
-        $ends_at_utc: endsAtUtc,
+        $starts_at_utc: effectiveStartsAtUtc,
+        $ends_at_utc: effectiveEndsAtUtc,
         $status: initialStatus,
       },
     );
@@ -257,7 +280,7 @@ export async function handleActivateStaffingPackage(
       {
         $current_cash_amount: updatedCashAmount,
         $financial_pressure_band: financialPressureBand,
-        $updated_at_utc: startsAtUtc,
+        $updated_at_utc: effectiveStartsAtUtc,
         $company_id: companyContext!.companyId,
       },
     );
@@ -325,8 +348,8 @@ export async function handleActivateStaffingPackage(
           $obligation_type: effectiveEmploymentModel === "service_agreement" ? "service_agreement" : "staffing",
           $source_object_id: staffingPackageId,
           $amount: effectiveFixedCostAmount,
-          $next_due_at_utc: initialStatus === "active" ? addUtcMonths(startsAtUtc, 1) : startsAtUtc,
-          $end_at_utc: endsAtUtc,
+          $next_due_at_utc: initialStatus === "active" ? addUtcMonths(effectiveStartsAtUtc, 1) : effectiveStartsAtUtc,
+          $end_at_utc: effectiveEndsAtUtc,
         },
       );
     }
@@ -359,7 +382,7 @@ export async function handleActivateStaffingPackage(
         {
           $ledger_entry_id: ledgerEntryId,
           $company_id: companyContext!.companyId,
-          $entry_time_utc: startsAtUtc,
+          $entry_time_utc: effectiveStartsAtUtc,
           $amount: upfrontChargeAmount * -1,
           $source_object_id: staffingPackageId,
           $description: `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`,
@@ -403,7 +426,7 @@ export async function handleActivateStaffingPackage(
         $save_id,
         $company_id,
         $event_time_utc,
-        'staffing_package_activated',
+        $event_type,
         'staffing_package',
         $source_object_id,
         'info',
@@ -414,18 +437,18 @@ export async function handleActivateStaffingPackage(
         $event_log_entry_id: eventLogEntryId,
         $save_id: command.saveId,
         $company_id: companyContext!.companyId,
-        $event_time_utc: startsAtUtc,
+        $event_time_utc: staffingEventTimeUtc,
+        $event_type: staffingEventType,
         $source_object_id: staffingPackageId,
-        $message: marketOffer?.displayName
-          ? `Hired ${marketOffer.displayName} for ${qualificationGroup}.`
-          : `Activated ${effectiveLaborCategory} staffing package ${qualificationGroup}.`,
+        $message: staffingEventMessage,
         $metadata_json: JSON.stringify({
           laborCategory: effectiveLaborCategory,
           employmentModel: effectiveEmploymentModel,
           qualificationGroup,
           coverageUnits: effectiveCoverageUnits,
-          startsAtUtc,
-          endsAtUtc,
+          startsAtUtc: effectiveStartsAtUtc,
+          endsAtUtc: effectiveEndsAtUtc ?? undefined,
+          status: initialStatus,
           recurringObligationId,
           sourceOfferId: marketOffer?.staffingOfferId,
         }),
@@ -458,7 +481,7 @@ export async function handleActivateStaffingPackage(
         $command_name: command.commandName,
         $actor_type: command.actorType,
         $issued_at_utc: command.issuedAtUtc,
-        $completed_at_utc: startsAtUtc,
+        $completed_at_utc: effectiveStartsAtUtc,
         $payload_json: JSON.stringify({
           ...command.payload,
           laborCategory: effectiveLaborCategory,
@@ -467,6 +490,8 @@ export async function handleActivateStaffingPackage(
           staffingPackageId,
           recurringObligationId,
           initialStatus,
+          startsAtUtc: effectiveStartsAtUtc,
+          endsAtUtc: effectiveEndsAtUtc ?? undefined,
           coverageUnits: effectiveCoverageUnits,
           fixedCostAmount: effectiveFixedCostAmount,
           variableCostRate: effectiveVariableCostRate,

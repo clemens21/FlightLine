@@ -1,0 +1,443 @@
+import assert from "node:assert/strict";
+
+import {
+  acquireAircraft,
+  activateStaffingPackage,
+  createCompanySave,
+  createTestHarness,
+  dispatchOrThrow,
+  pickFlyableOffer,
+  refreshContractBoard,
+  uniqueSaveId,
+} from "./helpers/flightline-testkit.mjs";
+import { bindRoutePlanToAircraft } from "../dist/ui/route-plan-dispatch.js";
+import { addCandidateOfferToRoutePlan, loadRoutePlanState } from "../dist/ui/route-plan-state.js";
+
+function addHours(utcIsoString, hours) {
+  return new Date(new Date(utcIsoString).getTime() + hours * 60 * 60 * 1000).toISOString();
+}
+
+function midwayUtc(startUtc, endUtc) {
+  const startMs = new Date(startUtc).getTime();
+  const endMs = new Date(endUtc).getTime();
+  return new Date(startMs + Math.floor((endMs - startMs) / 2)).toISOString();
+}
+
+async function createOperationalSave(backend, saveId, { aircraftCount = 1, pilotCoverageUnits = 1 } = {}) {
+  const startedAtUtc = await createCompanySave(backend, saveId, {
+    startedAtUtc: "2026-03-16T13:00:00.000Z",
+    startingCashAmount: 10_000_000,
+  });
+
+  for (let index = 0; index < aircraftCount; index += 1) {
+    await acquireAircraft(backend, saveId, startedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      registration: `N20${String(index + 1).padStart(2, "0")}${saveId.slice(-2).toUpperCase()}`,
+    });
+  }
+
+  await activateStaffingPackage(backend, saveId, startedAtUtc, {
+    laborCategory: "pilot",
+    employmentModel: "direct_hire",
+    qualificationGroup: "single_turboprop_utility",
+    coverageUnits: pilotCoverageUnits,
+    fixedCostAmount: 12_000,
+  });
+
+  await refreshContractBoard(backend, saveId, startedAtUtc, "bootstrap");
+
+  const fleetState = await backend.loadFleetState(saveId);
+  const board = await backend.loadActiveContractBoard(saveId);
+  assert.ok(fleetState?.aircraft[0]);
+  assert.ok(board);
+  const selectedOffer = pickFlyableOffer(board, fleetState.aircraft[0], backend.getAirportReference());
+  assert.ok(selectedOffer, `Expected a flyable contract offer for ${saveId}.`);
+
+  return {
+    startedAtUtc,
+    fleetState,
+    selectedOffer,
+  };
+}
+
+async function createBindableAcceptedRoutePlanSave(
+  backend,
+  savePrefix,
+  options = {},
+) {
+  const maxAttempts = 12;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const saveId = uniqueSaveId(`${savePrefix}_${attempt}`);
+    const { startedAtUtc, fleetState, selectedOffer } = await createOperationalSave(backend, saveId, options);
+    await addOfferToRoutePlan(backend, saveId, selectedOffer.contractOfferId);
+    const companyContractId = await acceptSelectedOffer(backend, saveId, startedAtUtc, selectedOffer);
+
+    const routePlanBeforeProbe = await backend.withExistingSaveDatabase(
+      saveId,
+      (context) => loadRoutePlanState(context.saveDatabase, saveId),
+    );
+    assert.ok(routePlanBeforeProbe);
+    assert.equal(routePlanBeforeProbe.items[0]?.sourceId, companyContractId);
+    assert.equal(routePlanBeforeProbe.items[0]?.plannerItemStatus, "accepted_ready");
+
+    const probeBindResult = await bindRoutePlanToAircraft(
+      backend,
+      saveId,
+      fleetState.aircraft[0].aircraftId,
+      `cmd_${saveId}_probe_bind`,
+    );
+
+    if (!probeBindResult.success) {
+      continue;
+    }
+
+    const routePlanAfterProbe = await backend.withExistingSaveDatabase(
+      saveId,
+      (context) => loadRoutePlanState(context.saveDatabase, saveId),
+    );
+    assert.ok(routePlanAfterProbe);
+    assert.equal(routePlanAfterProbe.items[0]?.plannerItemStatus, "accepted_ready");
+    assert.equal(routePlanAfterProbe.items[0]?.linkedAircraftId, undefined);
+    assert.equal(routePlanAfterProbe.items[0]?.linkedScheduleId, undefined);
+
+    return {
+      saveId,
+      startedAtUtc,
+      fleetState,
+      selectedOffer,
+      companyContractId,
+    };
+  }
+
+  throw new Error(`Could not create a bindable accepted route-plan scenario for ${savePrefix} after ${maxAttempts} attempts.`);
+}
+
+async function acceptSelectedOffer(backend, saveId, startedAtUtc, selectedOffer) {
+  const acceptResult = await dispatchOrThrow(backend, {
+    commandId: `cmd_${saveId}_accept`,
+    saveId,
+    commandName: "AcceptContractOffer",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      contractOfferId: selectedOffer.contractOfferId,
+    },
+  });
+  const companyContractId = String(acceptResult.metadata?.companyContractId ?? "");
+  assert.ok(companyContractId);
+  return companyContractId;
+}
+
+async function addOfferToRoutePlan(backend, saveId, contractOfferId) {
+  await backend.withExistingSaveDatabase(saveId, async (context) => {
+    const mutation = addCandidateOfferToRoutePlan(context.saveDatabase, saveId, contractOfferId);
+    assert.equal(mutation.success, true);
+    await context.saveDatabase.persist();
+  });
+}
+
+const harness = await createTestHarness("flightline-contract-dispatch-lifecycle");
+const { backend } = harness;
+
+try {
+  {
+    const saveId = uniqueSaveId("contract_cancel_ledger");
+    const { startedAtUtc, selectedOffer } = await createOperationalSave(backend, saveId);
+    const companyContractId = await acceptSelectedOffer(backend, saveId, startedAtUtc, selectedOffer);
+    const companyContextBeforeCancel = await backend.loadCompanyContext(saveId);
+    assert.ok(companyContextBeforeCancel);
+
+    const cancelResult = await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_cancel`,
+      saveId,
+      commandName: "CancelCompanyContract",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        companyContractId,
+      },
+    });
+    assert.equal(cancelResult.success, true);
+
+    const companyContextAfterCancel = await backend.loadCompanyContext(saveId);
+    assert.ok(companyContextAfterCancel);
+    const companyContractsAfterCancel = await backend.loadCompanyContracts(saveId);
+    assert.ok(companyContractsAfterCancel);
+    const cancelledContract = companyContractsAfterCancel.contracts.find((contract) => contract.companyContractId === companyContractId);
+    assert.ok(cancelledContract);
+    const cashDelta = companyContextAfterCancel.currentCashAmount - companyContextBeforeCancel.currentCashAmount;
+    assert.equal(cashDelta, cancelledContract.cancellationPenaltyAmount * -1);
+
+    const cancellationLedgerEntry = await backend.withExistingSaveDatabase(saveId, async (context) => context.saveDatabase.getOne(
+      `SELECT amount AS amount
+       FROM ledger_entry
+       WHERE source_object_type = 'company_contract'
+         AND source_object_id = $source_object_id
+         AND entry_type = 'contract_cancellation_penalty'
+       LIMIT 1`,
+      { $source_object_id: companyContractId },
+    ));
+    assert.equal(cancellationLedgerEntry?.amount, cancelledContract.cancellationPenaltyAmount * -1);
+  }
+
+  {
+    const { saveId, startedAtUtc, fleetState, companyContractId } = await createBindableAcceptedRoutePlanSave(
+      backend,
+      "route_plan_truth",
+    );
+
+    let routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items[0]?.sourceId, companyContractId);
+    assert.equal(routePlan.items[0]?.plannerItemStatus, "accepted_ready");
+
+    const firstBindResult = await bindRoutePlanToAircraft(
+      backend,
+      saveId,
+      fleetState.aircraft[0].aircraftId,
+      `cmd_${saveId}_bind_first`,
+    );
+    assert.equal(firstBindResult.success, true);
+    assert.ok(firstBindResult.scheduleId);
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items[0]?.plannerItemStatus, "accepted_ready");
+    assert.equal(routePlan.items[0]?.linkedAircraftId, undefined);
+    assert.equal(routePlan.items[0]?.linkedScheduleId, undefined);
+
+    const replacementDraftResult = await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_replacement_draft`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: fleetState.aircraft[0].aircraftId,
+        scheduleKind: "operational",
+        legs: [
+          {
+            legType: "reposition",
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
+            plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
+          },
+        ],
+      },
+    });
+    assert.equal(replacementDraftResult.success, true);
+
+    const schedulesAfterReplacement = await backend.loadAircraftSchedules(saveId, fleetState.aircraft[0].aircraftId);
+    assert.equal(
+      schedulesAfterReplacement.some((schedule) => schedule.scheduleId === firstBindResult.scheduleId && schedule.scheduleState === "cancelled"),
+      true,
+    );
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items[0]?.plannerItemStatus, "accepted_ready");
+    assert.equal(routePlan.items[0]?.linkedAircraftId, undefined);
+    assert.equal(routePlan.items[0]?.linkedScheduleId, undefined);
+
+    const secondBindResult = await bindRoutePlanToAircraft(
+      backend,
+      saveId,
+      fleetState.aircraft[0].aircraftId,
+      `cmd_${saveId}_bind_second`,
+    );
+    assert.equal(secondBindResult.success, true);
+    assert.ok(secondBindResult.scheduleId);
+
+    const commitResult = await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_commit_bound_route_plan`,
+      saveId,
+      commandName: "CommitAircraftSchedule",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        scheduleId: secondBindResult.scheduleId,
+      },
+    });
+    assert.equal(commitResult.success, true);
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items[0]?.plannerItemStatus, "scheduled");
+    assert.equal(routePlan.items[0]?.linkedAircraftId, fleetState.aircraft[0].aircraftId);
+    assert.equal(routePlan.items[0]?.linkedScheduleId, secondBindResult.scheduleId);
+
+    const committedSchedules = await backend.loadAircraftSchedules(saveId, fleetState.aircraft[0].aircraftId);
+    const committedRoutePlanSchedule = committedSchedules.find((schedule) => schedule.scheduleId === secondBindResult.scheduleId);
+    assert.ok(committedRoutePlanSchedule?.legs.length);
+    const finalArrivalUtc = committedRoutePlanSchedule.legs.at(-1)?.plannedArrivalUtc;
+    assert.ok(finalArrivalUtc);
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_advance_contract_complete`,
+      saveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        targetTimeUtc: addHours(finalArrivalUtc, 2),
+        stopConditions: ["target_time"],
+      },
+    });
+
+    const companyContractsAfterAdvance = await backend.loadCompanyContracts(saveId);
+    assert.ok(companyContractsAfterAdvance);
+    const completedContract = companyContractsAfterAdvance.contracts.find((contract) => contract.companyContractId === companyContractId);
+    assert.ok(completedContract);
+    assert.equal(completedContract.contractState, "completed");
+    assert.equal(completedContract.assignedAircraftId, undefined);
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items[0]?.plannerItemStatus, "closed");
+    assert.equal(routePlan.items[0]?.linkedAircraftId, undefined);
+    assert.equal(routePlan.items[0]?.linkedScheduleId, undefined);
+  }
+
+  {
+    const { saveId, startedAtUtc, fleetState } = await createBindableAcceptedRoutePlanSave(backend, "contract_draft_exclusive", {
+      aircraftCount: 2,
+      pilotCoverageUnits: 2,
+    });
+
+    const firstBindResult = await bindRoutePlanToAircraft(
+      backend,
+      saveId,
+      fleetState.aircraft[0].aircraftId,
+      `cmd_${saveId}_bind_first_aircraft`,
+    );
+    assert.equal(firstBindResult.success, true);
+    assert.ok(firstBindResult.scheduleId);
+
+    const aircraftOneSchedules = await backend.loadAircraftSchedules(saveId, fleetState.aircraft[0].aircraftId);
+    const firstDraftSchedule = aircraftOneSchedules.find((schedule) => schedule.scheduleId === firstBindResult.scheduleId);
+    assert.ok(firstDraftSchedule?.legs.length);
+
+    const duplicateDraftResult = await backend.dispatch({
+      commandId: `cmd_${saveId}_duplicate_draft`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: fleetState.aircraft[1].aircraftId,
+        scheduleKind: "operational",
+        legs: firstDraftSchedule.legs.map((leg) => ({
+          legType: leg.legType,
+          linkedCompanyContractId: leg.linkedCompanyContractId,
+          originAirportId: leg.originAirportId,
+          destinationAirportId: leg.destinationAirportId,
+          plannedDepartureUtc: leg.plannedDepartureUtc,
+          plannedArrivalUtc: leg.plannedArrivalUtc,
+          assignedQualificationGroup: leg.assignedQualificationGroup,
+        })),
+      },
+    });
+    assert.equal(duplicateDraftResult.success, true);
+    assert.equal(
+      duplicateDraftResult.hardBlockers.some((message) => /already attached to another aircraft draft/i.test(message)),
+      true,
+    );
+  }
+
+  {
+    const { saveId, startedAtUtc, fleetState, companyContractId } = await createBindableAcceptedRoutePlanSave(
+      backend,
+      "contract_late_complete",
+    );
+
+    const bindResult = await bindRoutePlanToAircraft(
+      backend,
+      saveId,
+      fleetState.aircraft[0].aircraftId,
+      `cmd_${saveId}_bind_late`,
+    );
+    assert.equal(bindResult.success, true);
+    assert.ok(bindResult.scheduleId);
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_commit_late`,
+      saveId,
+      commandName: "CommitAircraftSchedule",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        scheduleId: bindResult.scheduleId,
+      },
+    });
+
+    const committedSchedules = await backend.loadAircraftSchedules(saveId, fleetState.aircraft[0].aircraftId);
+    const committedLateSchedule = committedSchedules.find((schedule) => schedule.scheduleId === bindResult.scheduleId);
+    const contractLeg = committedLateSchedule?.legs.find((leg) => leg.linkedCompanyContractId === companyContractId);
+    assert.ok(contractLeg?.plannedDepartureUtc);
+    assert.ok(contractLeg?.plannedArrivalUtc);
+    const forcedDeadlineUtc = midwayUtc(contractLeg.plannedDepartureUtc, contractLeg.plannedArrivalUtc);
+
+    await backend.withExistingSaveDatabase(saveId, async (context) => {
+      context.saveDatabase.run(
+        `UPDATE company_contract
+         SET deadline_utc = $deadline_utc
+         WHERE company_contract_id = $company_contract_id`,
+        {
+          $deadline_utc: forcedDeadlineUtc,
+          $company_contract_id: companyContractId,
+        },
+      );
+      context.saveDatabase.run(
+        `UPDATE scheduled_event
+         SET scheduled_time_utc = $scheduled_time_utc
+         WHERE company_contract_id = $company_contract_id
+           AND event_type = 'contract_deadline_check'
+           AND status = 'pending'`,
+        {
+          $scheduled_time_utc: forcedDeadlineUtc,
+          $company_contract_id: companyContractId,
+        },
+      );
+      await context.saveDatabase.persist();
+    });
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_advance_late_arrival`,
+      saveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        targetTimeUtc: addHours(contractLeg.plannedArrivalUtc, 2),
+        stopConditions: ["target_time"],
+      },
+    });
+
+    const companyContractsAfterLateAdvance = await backend.loadCompanyContracts(saveId);
+    assert.ok(companyContractsAfterLateAdvance);
+    const lateCompletedContract = companyContractsAfterLateAdvance.contracts.find((contract) => contract.companyContractId === companyContractId);
+    assert.ok(lateCompletedContract);
+    assert.equal(lateCompletedContract.contractState, "late_completed");
+    assert.equal(lateCompletedContract.assignedAircraftId, undefined);
+
+    const contractLedgerEntries = await backend.withExistingSaveDatabase(saveId, async (context) => context.saveDatabase.all(
+      `SELECT entry_type AS entryType, amount AS amount
+       FROM ledger_entry
+       WHERE source_object_type = 'company_contract'
+         AND source_object_id = $source_object_id
+       ORDER BY entry_time_utc ASC`,
+      { $source_object_id: companyContractId },
+    ));
+    assert.equal(contractLedgerEntries.some((entry) => entry.entryType === "contract_revenue" && entry.amount > 0), true);
+    assert.equal(contractLedgerEntries.some((entry) => entry.entryType === "contract_failure_penalty"), false);
+
+    const eventLogAfterLateAdvance = await backend.loadRecentEventLog(saveId, 12);
+    assert.ok(eventLogAfterLateAdvance);
+    assert.equal(eventLogAfterLateAdvance.entries.some((entry) => entry.eventType === "contract_late_completed" && entry.sourceObjectId === companyContractId), true);
+    assert.equal(eventLogAfterLateAdvance.entries.some((entry) => entry.eventType === "contract_failed" && entry.sourceObjectId === companyContractId), false);
+  }
+} finally {
+  await harness.cleanup();
+}

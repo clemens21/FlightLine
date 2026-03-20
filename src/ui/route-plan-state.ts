@@ -58,6 +58,12 @@ interface CandidateOfferRow extends Record<string, unknown> {
   windowStatus: string;
 }
 
+interface ContractExecutionLinkRow extends Record<string, unknown> {
+  companyContractId: string;
+  linkedAircraftId: string;
+  linkedScheduleId: string;
+}
+
 export interface RoutePlanItemState {
   routePlanItemId: string;
   routePlanId: string;
@@ -321,7 +327,7 @@ export function addAcceptedContractToRoutePlan(
       )
     : null;
 
-  const nextStatus = statusForAcceptedContract(contract, undefined);
+  const nextStatus = statusForAcceptedContract(contract);
 
   if (upgradedCandidate) {
     saveDatabase.run(
@@ -684,9 +690,16 @@ function reconcileRoutePlanState(
       .filter((contract) => Boolean(contract.originContractOfferId))
       .map((contract) => [contract.originContractOfferId as string, contract]),
   );
+  const executionLinksByContractId = loadCommittedContractExecutionLinks(saveDatabase, routePlanRow.companyId);
 
   const itemRows = loadRoutePlanItems(saveDatabase, routePlanRow.routePlanId);
-  const nextStates = itemRows.map((itemRow) => reconcileRoutePlanItem(itemRow, offersById, contractsById, contractsByOriginOfferId));
+  const nextStates = itemRows.map((itemRow) => reconcileRoutePlanItem(
+    itemRow,
+    offersById,
+    contractsById,
+    contractsByOriginOfferId,
+    executionLinksByContractId,
+  ));
   const changedItems = nextStates.filter(({ itemRow, nextState }) => itemNeedsUpdate(itemRow, nextState));
 
   if (changedItems.length > 0) {
@@ -751,17 +764,22 @@ function reconcileRoutePlanItem(
   offersById: Map<string, ContractBoardOfferView>,
   contractsById: Map<string, CompanyContractView>,
   contractsByOriginOfferId: Map<string, CompanyContractView>,
+  executionLinksByContractId: Map<string, ContractExecutionLinkRow>,
 ): { itemRow: RoutePlanItemRow; nextState: RoutePlanItemRow } {
   if (itemRow.sourceType === "candidate_offer") {
     const upgradedContract = contractsByOriginOfferId.get(itemRow.sourceId);
     if (upgradedContract) {
+      const plannerItemStatus = statusForAcceptedContract(upgradedContract);
+      const executionLink = plannerItemStatus === "scheduled"
+        ? executionLinksByContractId.get(upgradedContract.companyContractId)
+        : undefined;
       return {
         itemRow,
         nextState: {
           ...itemRow,
           sourceType: "accepted_contract",
           sourceId: upgradedContract.companyContractId,
-          plannerItemStatus: statusForAcceptedContract(upgradedContract, itemRow.plannerItemStatus),
+          plannerItemStatus,
           originAirportId: upgradedContract.originAirportId,
           destinationAirportId: upgradedContract.destinationAirportId,
           volumeType: upgradedContract.volumeType,
@@ -770,6 +788,8 @@ function reconcileRoutePlanItem(
           payoutAmount: upgradedContract.acceptedPayoutAmount,
           earliestStartUtc: upgradedContract.earliestStartUtc ?? null,
           deadlineUtc: upgradedContract.deadlineUtc,
+          linkedAircraftId: executionLink?.linkedAircraftId ?? null,
+          linkedScheduleId: executionLink?.linkedScheduleId ?? null,
         },
       };
     }
@@ -789,6 +809,8 @@ function reconcileRoutePlanItem(
           payoutAmount: matchingOffer.payoutAmount,
           earliestStartUtc: matchingOffer.earliestStartUtc,
           deadlineUtc: matchingOffer.latestCompletionUtc,
+          linkedAircraftId: null,
+          linkedScheduleId: null,
         },
       };
     }
@@ -798,6 +820,8 @@ function reconcileRoutePlanItem(
       nextState: {
         ...itemRow,
         plannerItemStatus: "candidate_stale",
+        linkedAircraftId: null,
+        linkedScheduleId: null,
       },
     };
   }
@@ -809,15 +833,21 @@ function reconcileRoutePlanItem(
       nextState: {
         ...itemRow,
         plannerItemStatus: "closed",
+        linkedAircraftId: null,
+        linkedScheduleId: null,
       },
     };
   }
 
+  const plannerItemStatus = statusForAcceptedContract(matchingContract);
+  const executionLink = plannerItemStatus === "scheduled"
+    ? executionLinksByContractId.get(matchingContract.companyContractId)
+    : undefined;
   return {
     itemRow,
     nextState: {
       ...itemRow,
-      plannerItemStatus: statusForAcceptedContract(matchingContract, itemRow.plannerItemStatus),
+      plannerItemStatus,
       originAirportId: matchingContract.originAirportId,
       destinationAirportId: matchingContract.destinationAirportId,
       volumeType: matchingContract.volumeType,
@@ -826,23 +856,54 @@ function reconcileRoutePlanItem(
       payoutAmount: matchingContract.acceptedPayoutAmount,
       earliestStartUtc: matchingContract.earliestStartUtc ?? null,
       deadlineUtc: matchingContract.deadlineUtc,
+      linkedAircraftId: executionLink?.linkedAircraftId ?? null,
+      linkedScheduleId: executionLink?.linkedScheduleId ?? null,
     },
   };
 }
 
 function statusForAcceptedContract(
   contract: CompanyContractView,
-  existingStatus: RoutePlanItemStatus | undefined,
 ): RoutePlanItemStatus {
   if (closedCompanyContractStates.has(contract.contractState)) {
     return "closed";
   }
 
-  if (existingStatus === "scheduled" || ["assigned", "active"].includes(contract.contractState)) {
+  if (["assigned", "active"].includes(contract.contractState)) {
     return "scheduled";
   }
 
   return "accepted_ready";
+}
+
+function loadCommittedContractExecutionLinks(
+  saveDatabase: SqliteFileDatabase,
+  companyId: string,
+): Map<string, ContractExecutionLinkRow> {
+  const rows = saveDatabase.all<ContractExecutionLinkRow>(
+    `SELECT
+      fl.linked_company_contract_id AS companyContractId,
+      s.aircraft_id AS linkedAircraftId,
+      s.schedule_id AS linkedScheduleId
+    FROM flight_leg AS fl
+    JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
+    JOIN company_aircraft AS ca ON ca.aircraft_id = s.aircraft_id
+    WHERE ca.company_id = $company_id
+      AND fl.linked_company_contract_id IS NOT NULL
+      AND s.schedule_state = 'committed'
+      AND s.is_draft = 0
+    ORDER BY s.updated_at_utc DESC, s.schedule_id DESC, fl.sequence_number ASC`,
+    { $company_id: companyId },
+  );
+
+  const linksByContractId = new Map<string, ContractExecutionLinkRow>();
+  for (const row of rows) {
+    if (!linksByContractId.has(row.companyContractId)) {
+      linksByContractId.set(row.companyContractId, row);
+    }
+  }
+
+  return linksByContractId;
 }
 
 function offerIsPlanCandidateAvailable(offer: CandidateOfferRow, currentTimeUtc: string): boolean {

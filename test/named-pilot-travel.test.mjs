@@ -360,6 +360,117 @@ try {
       true,
     );
   }
+
+  {
+    const saveId = uniqueSaveId("pilot_travel_in_progress_blocked");
+    const startedAtUtc = await createCompanySave(backend, saveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      startingCashAmount: 25_000_000,
+    });
+
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N208TI" });
+    await acquireAircraft(backend, saveId, startedAtUtc, { registration: "N20DTI" });
+    await activateStaffingPackage(backend, saveId, startedAtUtc, {
+      laborCategory: "pilot",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 1,
+      fixedCostAmount: 12_000,
+    });
+
+    const fleetState = await backend.loadFleetState(saveId);
+    assert.ok(fleetState);
+    const sourceAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N208TI");
+    const targetAircraft = fleetState.aircraft.find((aircraft) => aircraft.registration === "N20DTI");
+    assert.ok(sourceAircraft);
+    assert.ok(targetAircraft);
+
+    await saveAndCommitSchedule(
+      backend,
+      saveId,
+      startedAtUtc,
+      sourceAircraft.aircraftId,
+      [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: "2026-03-16T13:00:00.000Z",
+          plannedArrivalUtc: "2026-03-16T14:10:00.000Z",
+        },
+      ],
+    );
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_advance_transfer_ready_source`,
+      saveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        targetTimeUtc: "2026-03-17T00:30:00.000Z",
+      },
+    });
+
+    const staffingStateReady = await backend.loadStaffingState(saveId);
+    assert.ok(staffingStateReady?.namedPilots[0]);
+    const readyPilot = staffingStateReady.namedPilots[0];
+    assert.equal(readyPilot.currentAirportId, "KCOS");
+    assert.equal(readyPilot.availabilityState, "ready");
+
+    await dispatchOrThrow(backend, {
+      commandId: `cmd_${saveId}_travel_back_to_kden`,
+      saveId,
+      commandName: "StartNamedPilotTransfer",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        namedPilotId: readyPilot.namedPilotId,
+        destinationAirportId: "KDEN",
+      },
+    });
+
+    const blockedInTransitDraft = await backend.dispatch({
+      commandId: `cmd_${saveId}_in_transit_assignment_block`,
+      saveId,
+      commandName: "SaveScheduleDraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftId: targetAircraft.aircraftId,
+        scheduleKind: "operational",
+        legs: [
+          {
+            legType: "reposition",
+            originAirportId: "KDEN",
+            destinationAirportId: "KCOS",
+            plannedDepartureUtc: "2026-03-17T00:45:00.000Z",
+            plannedArrivalUtc: "2026-03-17T01:55:00.000Z",
+          },
+        ],
+      },
+    });
+
+    assert.equal(blockedInTransitDraft.success, true);
+    assert.equal(
+      blockedInTransitDraft.hardBlockers.some((message) => /cannot reach (KDEN|the origin) in time/i.test(message)),
+      true,
+    );
+    const blockedScheduleId = String(blockedInTransitDraft.metadata?.scheduleId ?? "");
+    assert.ok(blockedScheduleId);
+
+    const blockedCommitResult = await backend.dispatch({
+      commandId: `cmd_${saveId}_in_transit_commit_block`,
+      saveId,
+      commandName: "CommitAircraftSchedule",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        scheduleId: blockedScheduleId,
+      },
+    });
+    assert.equal(blockedCommitResult.success, false);
+    assert.match(blockedCommitResult.hardBlockers[0] ?? "", /cannot reach (KDEN|the origin) in time/i);
+  }
 } finally {
   await harness.cleanup();
 }

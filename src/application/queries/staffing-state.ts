@@ -197,7 +197,7 @@ export function loadStaffingState(saveDatabase: SqliteFileDatabase, saveId: Save
       .filter((entry) => entry.status === "pending")
       .reduce((sum, entry) => sum + entry.coverageUnits, 0),
     totalMonthlyFixedCostAmount: staffingPackages
-      .filter((entry) => entry.status === "active" || entry.status === "pending")
+      .filter((entry) => entry.status === "active")
       .reduce((sum, entry) => sum + entry.fixedCostAmount, 0),
   };
 }

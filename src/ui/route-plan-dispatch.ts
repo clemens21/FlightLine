@@ -4,7 +4,7 @@
  */
 
 import type { FlightLineBackend, ScheduleDraftLegPayload } from "../index.js";
-import { loadRoutePlanState, markRoutePlanItemsScheduled } from "./route-plan-state.js";
+import { loadRoutePlanState } from "./route-plan-state.js";
 
 const turnaroundMinutes = 45;
 
@@ -138,17 +138,6 @@ export async function bindRoutePlanToAircraft(
       error: draftResult.hardBlockers[0] ?? "Could not draft the route plan schedule.",
     };
   }
-
-  await backend.withExistingSaveDatabase(saveId, async (context) => {
-    markRoutePlanItemsScheduled(
-      context.saveDatabase,
-      saveId,
-      boundContractIds,
-      aircraftId,
-      String(draftResult.metadata?.scheduleId),
-    );
-    await context.saveDatabase.persist();
-  });
 
   const blockerSuffix = blockerItems.length > 0
     ? ` ${blockerItems.length} planned item${blockerItems.length === 1 ? " remains" : "s remain"} unscheduled until accepted.`

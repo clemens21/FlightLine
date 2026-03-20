@@ -189,7 +189,7 @@ export async function handleCancelCompanyContract(
         $ledger_entry_id: ledgerEntryId,
         $company_id: resolvedCompanyContext.companyId,
         $entry_time_utc: resolvedCompanyContext.currentTimeUtc,
-        $amount: cancellationPenaltyAmount,
+        $amount: cancellationPenaltyAmount * -1,
         $source_object_id: resolvedContractRow.companyContractId,
         $description: `Cancellation penalty for ${contractSummary}`,
         $metadata_json: JSON.stringify({

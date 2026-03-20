@@ -9,8 +9,7 @@ It is not implementation authorization on its own.
 
 Related upstream artifacts:
 
-- [2026-03-17_staffing-roster-and-training-evolution.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/incoming/2026-03-17_staffing-roster-and-training-evolution.md)
-- [2026-03-17_dispatch-workspace-revitalization.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/completed/2026-03-17_dispatch-workspace-revitalization.md)
+- [2026-03-17_dispatch-workspace-revitalization.md](/Z:/projects/FlightLine/product-work/completed/2026-03-17_dispatch-workspace-revitalization.md)
 
 ## 1. Main Conclusion
 

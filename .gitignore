@@ -14,6 +14,7 @@ data/saves/*.sqlite
 data/saves/*.sqlite-shm
 data/saves/*.sqlite-wal
 data/logs/*.log
+data/cache/
 node_modules/
 dist/
 coverage/

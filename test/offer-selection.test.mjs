@@ -116,3 +116,43 @@ function makeAirportReference() {
   assert.ok(selectedOffer);
   assert.equal(selectedOffer.contractOfferId, "offer_valid_pax");
 }
+
+{
+  const aircraft = {
+    currentAirportId: "KDEN",
+    maxPassengers: 10,
+    maxCargoLb: 1600,
+    activeCabinSeats: 10,
+    activeCabinCargoCapacityLb: 1267,
+    rangeNm: 900,
+  };
+
+  const board = {
+    offers: [
+      {
+        contractOfferId: "offer_home_but_stretch",
+        originAirportId: "KDEN",
+        destinationAirportId: "KSPS",
+        earliestStartUtc: "2026-03-16T13:00:00.000Z",
+        latestCompletionUtc: "2026-03-16T22:00:00.000Z",
+        passengerCount: 8,
+        cargoWeightLb: undefined,
+        explanationMetadata: { fit_bucket: "stretch_growth" },
+      },
+      {
+        contractOfferId: "offer_remote_flyable",
+        originAirportId: "KCOS",
+        destinationAirportId: "KSPS",
+        earliestStartUtc: "2026-03-16T13:00:00.000Z",
+        latestCompletionUtc: "2026-03-16T22:00:00.000Z",
+        passengerCount: 8,
+        cargoWeightLb: undefined,
+        explanationMetadata: { fit_bucket: "flyable_now" },
+      },
+    ],
+  };
+
+  const selectedOffer = pickFlyableOffer(board, aircraft, makeAirportReference());
+  assert.ok(selectedOffer);
+  assert.equal(selectedOffer.contractOfferId, "offer_remote_flyable");
+}

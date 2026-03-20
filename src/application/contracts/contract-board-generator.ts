@@ -332,7 +332,7 @@ function deriveFitBucket(
     return { fitBucket: "stretch_growth", reasonCode: "fleet_class_upgrade" };
   }
 
-  if (["widebody_airliner", "heavy_freighter"].includes(likelyRole) && ["startup", "regional"].includes(companyContext.companyPhase)) {
+  if (["widebody_airliner", "heavy_freighter"].includes(likelyRole) && ["startup", "regional_carrier"].includes(companyContext.companyPhase)) {
     return { fitBucket: "blocked_now", reasonCode: "fleet_class_out_of_scope" };
   }
 

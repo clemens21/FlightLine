@@ -6,9 +6,10 @@
  */
 
 import type { AdvanceTimeCommand, CommandResult } from "./types.js";
-import { createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
+import { addCadenceToUtc, createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import { deriveNamedPilotRestUntil } from "../staffing/named-pilot-roster.js";
+import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
 import {
   applyCertificationTrainingAward,
   parsePilotCertificationsJson,
@@ -133,6 +134,26 @@ interface ExpiringStaffingPackageRow extends Record<string, unknown> {
   recurringObligationId: string | null;
 }
 
+interface ActivatingStaffingPackageRow extends Record<string, unknown> {
+  staffingPackageId: string;
+  laborCategory: LaborCategory;
+  employmentModel: EmploymentModel;
+  qualificationGroup: string;
+  startsAtUtc: string;
+  endsAtUtc: string | null;
+}
+
+interface DueRecurringObligationRow extends Record<string, unknown> {
+  recurringObligationId: string;
+  obligationType: string;
+  sourceObjectType: string;
+  sourceObjectId: string;
+  amount: number;
+  cadence: "daily" | "weekly" | "monthly";
+  nextDueAtUtc: string;
+  endAtUtc: string | null;
+}
+
 interface StaffingPackagePilotRow extends Record<string, unknown> {
   namedPilotId: string;
   displayName: string;
@@ -210,6 +231,25 @@ function hoursBetween(startUtc: string, endUtc: string): number {
 
 function humanizeIdentifier(value: string): string {
   return value.replaceAll("_", " ");
+}
+
+function recurringObligationEntryType(obligationType: string): string {
+  switch (obligationType) {
+    case "lease":
+      return "lease_payment";
+    case "finance":
+      return "finance_payment";
+    case "staffing":
+      return "staffing_payment";
+    case "service_agreement":
+      return "service_agreement_payment";
+    default:
+      return "recurring_obligation_payment";
+  }
+}
+
+function recurringObligationDescription(obligationType: string): string {
+  return `${humanizeIdentifier(obligationType).replace(/^./, (value) => value.toUpperCase())} payment collected.`;
 }
 
 function deriveConditionBandInput(conditionValue: number): string {
@@ -302,12 +342,13 @@ export async function handleAdvanceTime(
 ): Promise<CommandResult> {
   const hardBlockers: string[] = [];
   const companyContext = loadActiveCompanyContext(dependencies.saveDatabase, command.saveId);
+  const normalizedTargetTimeUtc = normalizeUtcTimestamp(command.payload.targetTimeUtc);
 
   if (!companyContext) {
     hardBlockers.push(`Save ${command.saveId} does not have an active company.`);
   }
 
-  const parsedTargetTimestamp = Date.parse(command.payload.targetTimeUtc);
+  const parsedTargetTimestamp = normalizedTargetTimeUtc ? Date.parse(normalizedTargetTimeUtc) : Number.NaN;
   const targetTimestamp = Number.isNaN(parsedTargetTimestamp) ? null : parsedTargetTimestamp;
   const currentTimestamp = companyContext ? Date.parse(companyContext.currentTimeUtc) : null;
 
@@ -1164,6 +1205,7 @@ export async function handleAdvanceTime(
         dependencies.saveDatabase.run(
           `UPDATE company_contract
           SET contract_state = $contract_state
+              ,assigned_aircraft_id = NULL
           WHERE company_contract_id = $company_contract_id`,
           {
             $contract_state: resolvedContractState,
@@ -1359,10 +1401,25 @@ export async function handleAdvanceTime(
       const failurePenaltyAmount = typeof penaltyModel?.failurePenaltyAmount === "number"
         ? penaltyModel.failurePenaltyAmount
         : Math.round(contractRow.acceptedPayoutAmount * 0.22);
+      const dispatchedLegRow = dependencies.saveDatabase.getOne<CountRow>(
+        `SELECT COUNT(*) AS countValue
+        FROM flight_leg AS fl
+        JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
+        WHERE fl.linked_company_contract_id = $company_contract_id
+          AND s.schedule_state = 'committed'
+          AND fl.leg_state IN ('in_progress', 'completed')`,
+        { $company_contract_id: contractRow.companyContractId },
+      );
+
+      if ((dispatchedLegRow?.countValue ?? 0) > 0) {
+        markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+        return;
+      }
 
       dependencies.saveDatabase.run(
         `UPDATE company_contract
         SET contract_state = 'failed'
+            ,assigned_aircraft_id = NULL
         WHERE company_contract_id = $company_contract_id`,
         { $company_contract_id: contractRow.companyContractId },
       );
@@ -1656,6 +1713,186 @@ export async function handleAdvanceTime(
       }
     };
 
+    const activateDueStaffingPackages = (toUtc: string): void => {
+      const activatingPackages = dependencies.saveDatabase.all<ActivatingStaffingPackageRow>(
+        `SELECT
+          staffing_package_id AS staffingPackageId,
+          labor_category AS laborCategory,
+          employment_model AS employmentModel,
+          qualification_group AS qualificationGroup,
+          starts_at_utc AS startsAtUtc,
+          ends_at_utc AS endsAtUtc
+        FROM staffing_package
+        WHERE company_id = $company_id
+          AND status = 'pending'
+          AND starts_at_utc <= $to_utc
+        ORDER BY starts_at_utc ASC, staffing_package_id ASC`,
+        {
+          $company_id: companyContext!.companyId,
+          $to_utc: toUtc,
+        },
+      );
+
+      for (const staffingPackage of activatingPackages) {
+        const packagePilots = staffingPackage.laborCategory === "pilot"
+          ? dependencies.saveDatabase.all<StaffingPackagePilotRow>(
+              `SELECT
+                named_pilot_id AS namedPilotId,
+                display_name AS displayName
+              FROM named_pilot
+              WHERE company_id = $company_id
+                AND staffing_package_id = $staffing_package_id
+              ORDER BY roster_slot_number ASC, named_pilot_id ASC`,
+              {
+                $company_id: companyContext!.companyId,
+                $staffing_package_id: staffingPackage.staffingPackageId,
+              },
+            )
+          : [];
+
+        dependencies.saveDatabase.run(
+          `UPDATE staffing_package
+          SET status = 'active'
+          WHERE staffing_package_id = $staffing_package_id`,
+          { $staffing_package_id: staffingPackage.staffingPackageId },
+        );
+
+        if (packagePilots.length > 0) {
+          dependencies.saveDatabase.run(
+            `UPDATE named_pilot
+            SET updated_at_utc = $updated_at_utc
+            WHERE company_id = $company_id
+              AND staffing_package_id = $staffing_package_id`,
+            {
+              $company_id: companyContext!.companyId,
+              $staffing_package_id: staffingPackage.staffingPackageId,
+              $updated_at_utc: staffingPackage.startsAtUtc,
+            },
+          );
+        }
+
+        const employmentLabel = humanizeIdentifier(staffingPackage.employmentModel);
+        const laborLabel = humanizeIdentifier(staffingPackage.laborCategory);
+        const qualificationLabel = humanizeIdentifier(staffingPackage.qualificationGroup);
+        insertEventLog(
+          staffingPackage.startsAtUtc,
+          "staffing_package_activated",
+          "staffing_package",
+          staffingPackage.staffingPackageId,
+          "info",
+          `${employmentLabel.charAt(0).toUpperCase() + employmentLabel.slice(1)} ${laborLabel} coverage for ${qualificationLabel} activated.`,
+          {
+            laborCategory: staffingPackage.laborCategory,
+            employmentModel: staffingPackage.employmentModel,
+            qualificationGroup: staffingPackage.qualificationGroup,
+            startsAtUtc: staffingPackage.startsAtUtc,
+            endsAtUtc: staffingPackage.endsAtUtc ?? undefined,
+            namedPilotIds: packagePilots.map((pilot) => pilot.namedPilotId),
+          },
+        );
+
+        changedAggregateIds.add(staffingPackage.staffingPackageId);
+        packagePilots.forEach((pilot) => changedAggregateIds.add(pilot.namedPilotId));
+      }
+    };
+
+    const settleDueRecurringObligations = (toUtc: string): void => {
+      while (true) {
+        const recurringObligation = dependencies.saveDatabase.getOne<DueRecurringObligationRow>(
+          `SELECT
+            recurring_obligation_id AS recurringObligationId,
+            obligation_type AS obligationType,
+            source_object_type AS sourceObjectType,
+            source_object_id AS sourceObjectId,
+            amount AS amount,
+            cadence AS cadence,
+            next_due_at_utc AS nextDueAtUtc,
+            end_at_utc AS endAtUtc
+          FROM recurring_obligation
+          WHERE company_id = $company_id
+            AND status = 'active'
+            AND next_due_at_utc <= $to_utc
+          ORDER BY next_due_at_utc ASC, recurring_obligation_id ASC
+          LIMIT 1`,
+          {
+            $company_id: companyContext!.companyId,
+            $to_utc: toUtc,
+          },
+        );
+
+        if (!recurringObligation) {
+          return;
+        }
+
+        if (
+          recurringObligation.endAtUtc
+          && Date.parse(recurringObligation.nextDueAtUtc) > Date.parse(recurringObligation.endAtUtc)
+        ) {
+          dependencies.saveDatabase.run(
+            `UPDATE recurring_obligation
+            SET status = 'completed'
+            WHERE recurring_obligation_id = $recurring_obligation_id`,
+            { $recurring_obligation_id: recurringObligation.recurringObligationId },
+          );
+          changedAggregateIds.add(recurringObligation.recurringObligationId);
+          changedAggregateIds.add(recurringObligation.sourceObjectId);
+          continue;
+        }
+
+        const paymentMetadata: JsonObject = {
+          recurringObligationId: recurringObligation.recurringObligationId,
+          obligationType: recurringObligation.obligationType,
+          cadence: recurringObligation.cadence,
+          dueAtUtc: recurringObligation.nextDueAtUtc,
+        };
+        const ledgerEntryId = insertLedgerEntry(
+          recurringObligation.nextDueAtUtc,
+          recurringObligationEntryType(recurringObligation.obligationType),
+          recurringObligation.amount * -1,
+          recurringObligation.sourceObjectType,
+          recurringObligation.sourceObjectId,
+          recurringObligationDescription(recurringObligation.obligationType),
+          paymentMetadata,
+        );
+        const nextDueAtUtc = addCadenceToUtc(recurringObligation.nextDueAtUtc, recurringObligation.cadence);
+        const completesAfterCollection = recurringObligation.endAtUtc !== null
+          && Date.parse(nextDueAtUtc) > Date.parse(recurringObligation.endAtUtc);
+
+        dependencies.saveDatabase.run(
+          `UPDATE recurring_obligation
+          SET next_due_at_utc = $next_due_at_utc,
+              status = $status
+          WHERE recurring_obligation_id = $recurring_obligation_id`,
+          {
+            $next_due_at_utc: completesAfterCollection
+              ? recurringObligation.endAtUtc
+              : nextDueAtUtc,
+            $status: completesAfterCollection ? "completed" : "active",
+            $recurring_obligation_id: recurringObligation.recurringObligationId,
+          },
+        );
+
+        insertEventLog(
+          recurringObligation.nextDueAtUtc,
+          "recurring_obligation_collected",
+          "recurring_obligation",
+          recurringObligation.recurringObligationId,
+          "info",
+          `${humanizeIdentifier(recurringObligation.obligationType).replace(/^./, (value) => value.toUpperCase())} payment of ${Math.abs(recurringObligation.amount)} collected.`,
+          {
+            ...paymentMetadata,
+            ledgerEntryId: ledgerEntryId ?? undefined,
+            amount: recurringObligation.amount,
+            nextDueAtUtc: completesAfterCollection ? undefined : nextDueAtUtc,
+            completedAtUtc: completesAfterCollection ? recurringObligation.nextDueAtUtc : undefined,
+          },
+        );
+
+        changedAggregateIds.add(recurringObligation.recurringObligationId);
+        changedAggregateIds.add(recurringObligation.sourceObjectId);
+      }
+    };
+
     const resolveDuePilotTransitions = (toUtc: string): void => {
       if (new Date(toUtc).getTime() <= new Date(pilotTransitionCursorUtc).getTime()) {
         return;
@@ -1692,17 +1929,19 @@ export async function handleAdvanceTime(
         LIMIT 1`,
         {
           $save_id: command.saveId,
-          $target_time_utc: command.payload.targetTimeUtc,
+          $target_time_utc: normalizedTargetTimeUtc!,
         },
       );
 
       if (!nextScheduledEvent) {
-        advancedToUtc = command.payload.targetTimeUtc;
+        advancedToUtc = normalizedTargetTimeUtc!;
         stoppedBecause = "target_time";
         break;
       }
 
       resolveDuePilotTransitions(nextScheduledEvent.scheduledTimeUtc);
+      activateDueStaffingPackages(nextScheduledEvent.scheduledTimeUtc);
+      settleDueRecurringObligations(nextScheduledEvent.scheduledTimeUtc);
 
       const dueEvents = dependencies.saveDatabase.all<ScheduledEventRow>(
         `SELECT
@@ -1782,6 +2021,8 @@ export async function handleAdvanceTime(
     }
 
     resolveDuePilotTransitions(advancedToUtc);
+    activateDueStaffingPackages(advancedToUtc);
+    settleDueRecurringObligations(advancedToUtc);
     expireDueStaffingPackages(advancedToUtc);
 
     const summary: JsonObject = {
@@ -1789,7 +2030,7 @@ export async function handleAdvanceTime(
       completedLegIds: [...completedLegIds],
       resolvedContractIds: [...resolvedContractIds],
       availableAircraftIds: [...availableAircraftIds],
-      requestedTargetTimeUtc: command.payload.targetTimeUtc,
+      requestedTargetTimeUtc: normalizedTargetTimeUtc!,
       stopConditions,
     };
 

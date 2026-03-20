@@ -10,6 +10,20 @@ import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../../dist/index.js";
 
+const startupStartingCashAmount = 3_500_000;
+
+function deriveFinancialPressureBand(currentCashAmount) {
+  if (currentCashAmount < 250_000) {
+    return "stressed";
+  }
+
+  if (currentCashAmount < 1_000_000) {
+    return "tight";
+  }
+
+  return "stable";
+}
+
 export async function createTestHarness(prefix) {
   const saveDirectoryPath = await mkdtemp(join(tmpdir(), `${prefix}-`));
   const airportDatabasePath = resolve(process.cwd(), "data", "airports", "flightline-airports.sqlite");
@@ -56,7 +70,7 @@ export async function createCompanySave(
     startedAtUtc = "2026-03-16T13:00:00.000Z",
     displayName = `Test Carrier ${saveId}`,
     starterAirportId = "KDEN",
-    startingCashAmount = 3_500_000,
+    startingCashAmount = startupStartingCashAmount,
   } = {},
 ) {
   await dispatchOrThrow(backend, {
@@ -81,9 +95,49 @@ export async function createCompanySave(
     payload: {
       displayName,
       starterAirportId,
-      startingCashAmount,
+      startingCashAmount: startupStartingCashAmount,
     },
   });
+
+  if (startingCashAmount !== startupStartingCashAmount) {
+    await backend.withExistingSaveDatabase(saveId, async (context) => {
+      const companyRow = context.saveDatabase.getOne(
+        "SELECT active_company_id AS companyId FROM save_game WHERE save_id = $save_id LIMIT 1",
+        { $save_id: saveId },
+      );
+
+      assert.ok(companyRow?.companyId, `Expected save ${saveId} to have an active company after CreateCompany.`);
+
+      context.saveDatabase.run(
+        `UPDATE company_financial_state
+         SET current_cash_amount = $current_cash_amount,
+             financial_pressure_band = $financial_pressure_band,
+             updated_at_utc = $updated_at_utc
+         WHERE company_id = $company_id`,
+        {
+          $current_cash_amount: startingCashAmount,
+          $financial_pressure_band: deriveFinancialPressureBand(startingCashAmount),
+          $updated_at_utc: startedAtUtc,
+          $company_id: companyRow.companyId,
+        },
+      );
+
+      context.saveDatabase.run(
+        `UPDATE ledger_entry
+         SET amount = $amount
+         WHERE company_id = $company_id
+           AND entry_type = 'initial_capital'
+           AND source_object_type = 'company'
+           AND source_object_id = $company_id`,
+        {
+          $amount: startingCashAmount,
+          $company_id: companyRow.companyId,
+        },
+      );
+
+      await context.saveDatabase.persist();
+    });
+  }
 
   return startedAtUtc;
 }
@@ -124,6 +178,11 @@ export async function activateStaffingPackage(
     qualificationGroup,
     coverageUnits,
     fixedCostAmount,
+    variableCostRate,
+    serviceRegionCode,
+    startsAtUtc,
+    endsAtUtc,
+    sourceOfferId,
   },
 ) {
   return dispatchOrThrow(backend, {
@@ -138,6 +197,11 @@ export async function activateStaffingPackage(
       qualificationGroup,
       coverageUnits,
       fixedCostAmount,
+      variableCostRate,
+      serviceRegionCode,
+      startsAtUtc,
+      endsAtUtc,
+      sourceOfferId,
     },
   });
 }
@@ -212,11 +276,14 @@ export function pickFlyableOffer(board, aircraft, airportReference, homeAirportI
     return windowHours >= 8 && fitsPassengers && fitsCargo && distanceNm <= aircraft.rangeNm * 0.92;
   });
 
-  return candidateOffers.find((offer) => offer.originAirportId === homeAirportId)
-    ?? candidateOffers.find((offer) => {
-      const fitBucket = typeof offer.explanationMetadata?.fit_bucket === "string" ? offer.explanationMetadata.fit_bucket : undefined;
-      return fitBucket === "flyable_now";
-    })
+  const flyableNowOffers = candidateOffers.filter((offer) => {
+    const fitBucket = typeof offer.explanationMetadata?.fit_bucket === "string" ? offer.explanationMetadata.fit_bucket : undefined;
+    return fitBucket === "flyable_now";
+  });
+
+  return flyableNowOffers.find((offer) => offer.originAirportId === homeAirportId)
+    ?? flyableNowOffers[0]
+    ?? candidateOffers.find((offer) => offer.originAirportId === homeAirportId)
     ?? candidateOffers[0]
     ?? null;
 }

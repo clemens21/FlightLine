@@ -20,6 +20,7 @@ import { buildAircraftTabPayload } from "./aircraft-tab-model.js";
 import { buildDispatchTabPayload } from "./dispatch-tab-model.js";
 import { ensureActiveAircraftMarket } from "./aircraft-market-lifecycle.js";
 import { ensureActiveStaffingMarket } from "./staffing-market-lifecycle.js";
+import { ensureStaffPortraitAssetsForStaffing } from "./staff-portrait-cache.js";
 import { loadContractsViewPayload } from "./contracts-view.js";
 import { loadRoutePlanState, type RoutePlanState } from "./route-plan-state.js";
 import type { SaveBootstrapPayload, SavePageTab, SaveTabPayload, ShellSummaryPayload } from "./save-shell-model.js";
@@ -133,6 +134,7 @@ export async function buildTabPayload(
     if (ensuredMarket.refreshed) {
       source = await loadShellSummarySource(backend, saveId, false) ?? source;
     }
+    await ensureStaffPortraitAssetsForStaffing(source.staffingMarket, source.staffingState);
   }
 
   return {

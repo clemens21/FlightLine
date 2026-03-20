@@ -28,6 +28,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       ?? host.dataset.staffingDefaultHireId
       ?? null,
   };
+  let hireOverlayOpen = false;
 
   function detailRows(view: StaffingWorkspaceView): HTMLElement[] {
     return Array.from(
@@ -85,6 +86,10 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     });
 
     if (!selectedId || !titleNode || !bodyNode) {
+      if (view === "hire") {
+        hireOverlayOpen = false;
+        setHireOverlayVisible(false);
+      }
       return;
     }
 
@@ -92,12 +97,20 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       (entry) => entry.dataset.staffingDetailId === selectedId,
     );
     if (!template) {
+      if (view === "hire") {
+        hireOverlayOpen = false;
+        setHireOverlayVisible(false);
+      }
       return;
     }
 
     titleNode.textContent = template.dataset.staffingDetailTitle
       ?? defaultDetailTitle(view);
     bodyNode.replaceChildren(template.content.cloneNode(true));
+
+    if (view === "hire") {
+      setHireOverlayVisible(activeView === "hire" && hireOverlayOpen);
+    }
   }
 
   function render(): void {
@@ -118,6 +131,22 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
 
     renderSelection("employees");
     renderSelection("hire");
+  }
+
+  function setHireOverlayVisible(isVisible: boolean): void {
+    const overlay = host.querySelector<HTMLElement>("[data-staffing-hire-overlay]");
+    const stage = host.querySelector<HTMLElement>("[data-staffing-hire-stage]");
+    if (!overlay || !stage) {
+      return;
+    }
+
+    overlay.hidden = !isVisible;
+    stage.classList.toggle("overlay-open", isVisible);
+  }
+
+  function closeHireOverlay(): void {
+    hireOverlayOpen = false;
+    render();
   }
 
   function restoreScrollRegions(): void {
@@ -153,8 +182,18 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     if (workspaceButton) {
       event.preventDefault();
       activeView = normalizeWorkspaceView(workspaceButton.dataset.staffingWorkspaceTab);
+      if (activeView !== "hire") {
+        hireOverlayOpen = false;
+      }
       storeWorkspaceView(saveId, activeView);
       render();
+      return;
+    }
+
+    const closeButton = target?.closest<HTMLElement>("[data-staffing-detail-close='hire']");
+    if (closeButton) {
+      event.preventDefault();
+      closeHireOverlay();
       return;
     }
 
@@ -176,10 +215,22 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
 
     selectedDetailIds[rowView] = detailId;
     storeSelection(saveId, rowView, detailId);
+    if (rowView === "hire") {
+      hireOverlayOpen = true;
+    }
     render();
+    if (rowView === "hire") {
+      setHireOverlayVisible(activeView === "hire");
+    }
   }
 
   function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && hireOverlayOpen) {
+      event.preventDefault();
+      closeHireOverlay();
+      return;
+    }
+
     const target = event.target instanceof HTMLElement ? event.target : null;
     const row = target?.closest<HTMLElement>("[data-staffing-row-select]");
     if (!row || !host.contains(row)) {
@@ -201,7 +252,13 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
 
     selectedDetailIds[rowView] = detailId;
     storeSelection(saveId, rowView, detailId);
+    if (rowView === "hire") {
+      hireOverlayOpen = true;
+    }
     render();
+    if (rowView === "hire") {
+      setHireOverlayVisible(activeView === "hire");
+    }
   }
 
   function handleScroll(event: Event): void {

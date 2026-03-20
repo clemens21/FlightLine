@@ -247,6 +247,43 @@ try {
   assert.equal(await page.locator("[data-shell-title]").textContent(), displayName);
   assert.equal(await page.evaluate(() => new URL(window.location.href).searchParams.get("tab")), "dispatch");
 
+  await clickUi(page.locator("[data-settings-menu] summary"));
+  await page.waitForFunction(() => {
+    const settings = document.querySelector("[data-settings-menu]");
+    return settings instanceof HTMLDetailsElement && settings.open;
+  });
+  await clickUi(page.locator("[data-settings-open-help]"));
+  await page.waitForFunction(() => {
+    const help = document.querySelector("[data-help-center]");
+    const settings = document.querySelector("[data-settings-menu]");
+    return help instanceof HTMLElement
+      && !help.hidden
+      && settings instanceof HTMLDetailsElement
+      && !settings.open
+      && help.textContent?.includes("Help Home")
+      && help.textContent?.includes("Do This Next")
+      && help.textContent?.includes("Why Am I Blocked?")
+      && help.textContent?.includes("Key Concepts");
+  });
+  await clickUi(page.locator("[data-help-section-tab='blocked']"));
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("[data-help-section-panel='blocked']");
+    return panel instanceof HTMLElement && !panel.hidden;
+  });
+  await clickUi(page.locator("[data-help-section-panel='blocked'] [data-help-topic-button='i-cannot-dispatch-this-contract']").first());
+  await page.waitForFunction(() => {
+    const article = document.querySelector("[data-help-topic-panel='i-cannot-dispatch-this-contract']");
+    return article instanceof HTMLElement
+      && !article.hidden
+      && article.textContent?.includes("Dispatch validation");
+  });
+  await clickUi(page.locator("[data-help-close]").first());
+  await page.waitForFunction(() => {
+    const help = document.querySelector("[data-help-center]");
+    return help instanceof HTMLElement && help.hidden;
+  });
+  assert.equal(await page.evaluate(() => new URL(window.location.href).searchParams.get("tab")), "dispatch");
+
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Advance time"), true);
@@ -392,7 +429,7 @@ try {
   assert.equal(await page.locator(".aircraft-row-button").count(), 1);
   assert.equal((await page.locator(".aircraft-detail-panel").textContent())?.includes("N20CUI"), true);
 
-  await page.setViewportSize({ width: 1300, height: 520 });
+  await page.setViewportSize({ width: 1300, height: 380 });
   await clickUi(page.locator("[data-shell-tab='staffing']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-staffing-pilot-row]").length === 3);
   await page.waitForFunction(() => (document.querySelector("[data-staffing-roster]")?.textContent ?? "").includes("N208UI"));
@@ -410,16 +447,149 @@ try {
       && employeePanel.hidden;
   });
   assert.ok((await page.locator("[data-pilot-candidate-market]").count()) >= 1);
+  assert.equal(await page.locator("[data-staffing-hire-overlay]").isVisible(), false);
+  const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
+    return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
+  });
+  assert.equal(["auto", "scroll"].includes(hireMarketOverflow), true);
+  const hireMarketScroll = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return { scrollHeight: 0, clientHeight: 0, scrollTop: 0 };
+    }
+
+    const previousMaxHeight = element.style.maxHeight;
+    const previousHeight = element.style.height;
+    element.style.maxHeight = "120px";
+    element.style.height = "120px";
+    element.scrollTop = 0;
+    element.scrollTop = 160;
+    const snapshot = {
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      scrollTop: element.scrollTop,
+    };
+    element.style.maxHeight = previousMaxHeight;
+    element.style.height = previousHeight;
+    return snapshot;
+  });
+  assert.ok(hireMarketScroll.scrollHeight > hireMarketScroll.clientHeight);
+  assert.ok(hireMarketScroll.scrollTop > 0);
   assert.ok((await page.locator("[data-pilot-candidate-row] [data-staff-portrait-surface='hire-row']").count()) >= 1);
+  const firstCandidateRowText = (await page.locator("[data-pilot-candidate-row]").first().textContent()) ?? "";
+  assert.equal(firstCandidateRowText.includes("Available now"), false);
+  assert.equal(firstCandidateRowText.includes("Direct hire"), false);
+  assert.equal(firstCandidateRowText.includes("Contract hire"), false);
+  const hireRowPortraitBox = await page.locator("[data-pilot-candidate-row] [data-staff-portrait-frame='hire-row']").first().evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return { width: 0, height: 0 };
+    }
+
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  assert.ok(hireRowPortraitBox.width <= 8);
+  assert.ok(hireRowPortraitBox.height <= 8);
+  await page.setViewportSize({ width: 1300, height: 520 });
   const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
   const firstCandidatePortrait = await page.locator("[data-pilot-candidate-row]").first().locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
   assert.ok(firstCandidatePortrait);
+  assert.equal(firstCandidatePortrait.startsWith("/assets/staff-portraits/"), true);
   await clickUi(page.locator("[data-pilot-candidate-row]").first());
   await page.waitForFunction((expectedName) => {
+    const overlay = document.querySelector("[data-staffing-hire-overlay]");
     const detail = document.querySelector("[data-staffing-detail-body='hire']")?.textContent ?? "";
-    return detail.includes(expectedName) && detail.includes("Coverage posture");
+    return overlay instanceof HTMLElement
+      && !overlay.hidden
+      && detail.includes(expectedName)
+      && detail.includes("Hire type")
+      && detail.includes("Availability")
+      && detail.includes("Coverage posture");
   }, firstCandidateName);
+  const hireOverlayGeometry = await page.locator("[data-staffing-hire-overlay]").evaluate((overlayElement) => {
+    if (!(overlayElement instanceof HTMLElement)) {
+      return {
+        overlayPosition: "",
+        overlayHidden: true,
+        stageWidth: 0,
+      stageHeight: 0,
+      backdropWidth: 0,
+      backdropHeight: 0,
+      backdropBackgroundColor: "",
+      cardWidth: 0,
+      cardHeight: 0,
+    };
+    }
+
+    const stageElement = overlayElement.closest("[data-staffing-hire-stage]");
+    const backdrop = overlayElement.querySelector(".staffing-hire-overlay-backdrop");
+    const card = overlayElement.querySelector(".staffing-hire-overlay-card");
+    if (!(stageElement instanceof HTMLElement) || !(backdrop instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+      return {
+        overlayPosition: "",
+        overlayHidden: true,
+        stageWidth: 0,
+        stageHeight: 0,
+        backdropWidth: 0,
+        backdropHeight: 0,
+        backdropBackgroundColor: "",
+        cardWidth: 0,
+        cardHeight: 0,
+      };
+    }
+
+    const stageRect = stageElement.getBoundingClientRect();
+    const backdropRect = backdrop.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const backdropStyle = window.getComputedStyle(backdrop);
+
+    return {
+      overlayPosition: window.getComputedStyle(overlayElement).position,
+      overlayHidden: overlayElement.hidden,
+      stageWidth: stageRect.width,
+      stageHeight: stageRect.height,
+      backdropWidth: backdropRect.width,
+      backdropHeight: backdropRect.height,
+      backdropBackgroundColor: backdropStyle.backgroundColor,
+      cardWidth: cardRect.width,
+      cardHeight: cardRect.height,
+    };
+  });
+  const hireOverlayBackdropAlpha = (() => {
+    const match = hireOverlayGeometry.backdropBackgroundColor.match(/rgba?\(([^)]+)\)/i);
+    if (!match) {
+      return 1;
+    }
+    const channels = match[1].split(",").map((value) => Number.parseFloat(value.trim()));
+    return channels.length >= 4 && Number.isFinite(channels[3]) ? channels[3] : 1;
+  })();
+  assert.equal(hireOverlayGeometry.overlayPosition, "absolute");
+  assert.equal(hireOverlayGeometry.overlayHidden, false);
+  assert.ok(Math.abs(hireOverlayGeometry.backdropWidth - hireOverlayGeometry.stageWidth) <= 2);
+  assert.ok(Math.abs(hireOverlayGeometry.backdropHeight - hireOverlayGeometry.stageHeight) <= 2);
+  assert.ok(hireOverlayBackdropAlpha <= 0.08, `expected subtle overlay backdrop, got ${hireOverlayGeometry.backdropBackgroundColor}`);
+  assert.ok(hireOverlayGeometry.cardWidth < hireOverlayGeometry.stageWidth);
+  assert.ok(hireOverlayGeometry.cardHeight < hireOverlayGeometry.stageHeight);
+  const hireDetailPortraitBox = await page.locator("[data-staffing-detail-body='hire'] [data-staff-portrait-frame='hire-detail']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return { width: 0, height: 0 };
+    }
+
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, height: rect.height };
+  });
+  assert.ok(hireDetailPortraitBox.width <= 16);
+  assert.ok(hireDetailPortraitBox.height <= 16);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staff-portrait-surface='hire-detail']").getAttribute("src"), firstCandidatePortrait);
+  await clickUi(page.locator("[data-staffing-detail-close='hire']").first());
+  await page.waitForFunction(() => {
+    const overlay = document.querySelector("[data-staffing-hire-overlay]");
+    return overlay instanceof HTMLElement && overlay.hidden;
+  });
+  await clickUi(page.locator("[data-pilot-candidate-row]").first());
+  await page.waitForFunction(() => {
+    const overlay = document.querySelector("[data-staffing-hire-overlay]");
+    return overlay instanceof HTMLElement && !overlay.hidden;
+  });
   await clickUi(page.locator("[data-staffing-workspace-tab='employees']"));
   await page.waitForFunction(() => {
     const hirePanel = document.querySelector("[data-staffing-workspace-panel='hire']");
@@ -429,12 +599,14 @@ try {
       && hirePanel.hidden
       && !employeePanel.hidden;
   });
+  await page.setViewportSize({ width: 1300, height: 520 });
   assert.equal(await page.locator("[data-staffing-pilot-row]").count(), 3);
   assert.equal(await page.locator("[data-staffing-pilot-row] [data-staff-portrait-surface='employees-row']").count(), 3);
   assert.equal((await page.locator("[data-staffing-roster]").textContent())?.toLowerCase().includes("reserved"), true);
   const reservedPilotRow = page.locator("[data-staffing-pilot-row]").filter({ hasText: "N208UI" }).first();
   const reservedPilotPortrait = await reservedPilotRow.locator("[data-staff-portrait-surface='employees-row']").getAttribute("src");
   assert.ok(reservedPilotPortrait);
+  assert.equal(reservedPilotPortrait.startsWith("/assets/staff-portraits/"), true);
   await clickUi(reservedPilotRow);
   await page.waitForFunction(() => {
     const detail = document.querySelector("[data-staffing-detail-body='employees']")?.textContent ?? "";

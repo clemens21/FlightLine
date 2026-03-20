@@ -1056,7 +1056,7 @@ function formatHours(value: number): string {
   return `${new Intl.NumberFormat("en-US", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
-  }).format(Math.abs(value))}h`;
+  }).format(value)}h`;
 }
 
 function loadStoredWorkspace(saveId: string): AircraftWorkspaceTab | null {

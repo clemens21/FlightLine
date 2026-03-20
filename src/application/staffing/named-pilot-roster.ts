@@ -624,6 +624,8 @@ export function selectNamedPilotsForRequirements(
     }, {
       $schedule_id: scheduleId,
       $current_time_utc: options.currentTimeUtc,
+      $assigned_from_utc: requirement.assignedFromUtc,
+      $assigned_to_utc: requirement.assignedToUtc,
     });
     const overlapRows = saveDatabase.all<{ namedPilotId: string }>(
       `SELECT DISTINCT named_pilot_id AS namedPilotId
@@ -631,7 +633,8 @@ export function selectNamedPilotsForRequirements(
       WHERE named_pilot_id IN (${candidateIds.map((_, index) => `$named_pilot_id_${index}`).join(", ")})
         AND schedule_id <> $schedule_id
         AND status IN ('reserved', 'flying')
-        AND assigned_to_utc > $current_time_utc`,
+        AND assigned_to_utc > $current_time_utc
+        AND NOT (assigned_to_utc <= $assigned_from_utc OR assigned_from_utc >= $assigned_to_utc)`,
       overlapParams,
     );
     const overlappingPilotIds = new Set(overlapRows.map((row) => row.namedPilotId));
@@ -671,8 +674,17 @@ export function selectNamedPilotsForRequirements(
           && compareUtc(candidate.travelUntilUtc, options.currentTimeUtc) > 0
           ? candidate.travelDestinationAirportId ?? candidate.currentAirportId
           : candidate.currentAirportId;
+        const activeTransferArrivalUtc = candidate.travelUntilUtc
+          && compareUtc(candidate.travelUntilUtc, options.currentTimeUtc) > 0
+          ? candidate.travelUntilUtc
+          : undefined;
 
         if (!options.requiredOriginAirportId || effectiveAirportId === options.requiredOriginAirportId) {
+          if (activeTransferArrivalUtc && compareUtc(activeTransferArrivalUtc, requirement.assignedFromUtc) > 0) {
+            blockedByTravelCount += 1;
+            return [];
+          }
+
           return [{
             candidate,
           }];
@@ -859,7 +871,11 @@ export function loadNamedPilotRoster(
     const isTraveling = Boolean(pilot.travelUntilUtc)
       && compareUtc(currentTimeUtc, pilot.travelUntilUtc!) < 0
       && (!pilot.travelStartedAtUtc || compareUtc(pilot.travelStartedAtUtc, currentTimeUtc) <= 0);
-    const availabilityState: NamedPilotAvailabilityState = relevantAssignment?.status === "flying"
+    const availabilityState: NamedPilotAvailabilityState = pilot.packageStatus === "pending"
+      ? "pending"
+      : pilot.packageStatus === "expired" || pilot.packageStatus === "cancelled"
+        ? "expired"
+      : relevantAssignment?.status === "flying"
       ? "flying"
       : isTraining
         ? "training"

@@ -6,6 +6,7 @@
 import type { SaveId, UtcIsoString } from "../../domain/common/primitives.js";
 import type { CompanyPhase } from "../../domain/company/types.js";
 import type { FinancialPressureBand } from "../../domain/finance/types.js";
+import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 
 interface CompanyContextRow extends Record<string, unknown> {
@@ -109,7 +110,7 @@ export function loadActiveCompanyContext(
     `SELECT COUNT(*) AS countValue
     FROM staffing_package
     WHERE company_id = $company_id
-      AND status IN ('pending', 'active')`,
+      AND status = 'active'`,
     { $company_id: row.activeCompanyId },
   );
   const contractCountRow = saveDatabase.getOne<CountRow>(
@@ -119,6 +120,7 @@ export function loadActiveCompanyContext(
       AND contract_state IN ('accepted', 'assigned', 'active')`,
     { $company_id: row.activeCompanyId },
   );
+  const normalizedCurrentTimeUtc = normalizeUtcTimestamp(row.currentTimeUtc) ?? row.currentTimeUtc;
 
   return {
     saveId: row.saveId,
@@ -128,7 +130,7 @@ export function loadActiveCompanyContext(
     reputationScore: row.reputationScore,
     companyPhase: row.companyPhase,
     progressionTier: row.progressionTier,
-    currentTimeUtc: row.currentTimeUtc,
+    currentTimeUtc: normalizedCurrentTimeUtc,
     currentCashAmount: row.currentCashAmount,
     financialPressureBand: row.financialPressureBand,
     reserveBalanceAmount: row.reserveBalanceAmount ?? undefined,

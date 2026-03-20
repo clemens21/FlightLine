@@ -26,6 +26,12 @@ async function getJson(baseUrl, path) {
   return response.json();
 }
 
+async function getResponse(baseUrl, path) {
+  const response = await fetch(`${baseUrl}${path}`);
+  assert.equal(response.ok, true, `Expected GET ${path} to succeed, received ${response.status}.`);
+  return response;
+}
+
 async function postFormJson(baseUrl, path, fields) {
   const body = new URLSearchParams();
   for (const [key, value] of Object.entries(fields)) {
@@ -147,6 +153,7 @@ try {
   assert.equal(zeroStateTab.contentHtml.includes("data-pilot-candidate-market"), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-detail-panel="employees"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-detail-panel="hire"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes("data-staffing-hire-overlay"), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-detail-body="hire"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-scroll-region="hire:list"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-scroll-region="hire:detail"'), true);
@@ -164,7 +171,11 @@ try {
   assert.equal(zeroStateTab.contentHtml.includes("Support coverage"), true);
   const zeroCandidatePortrait = extractRowPortrait(zeroStateTab.contentHtml, "data-pilot-candidate-row", "hire-row");
   const zeroCandidateDetailPortrait = extractFirstSurfaceSrc(zeroStateTab.contentHtml, "hire-detail");
+  assert.equal(zeroCandidatePortrait.src.startsWith("/assets/staff-portraits/"), true);
   assert.equal(zeroCandidatePortrait.src, zeroCandidateDetailPortrait);
+  const zeroPortraitResponse = await getResponse(server.baseUrl, zeroCandidatePortrait.src);
+  assert.equal(zeroPortraitResponse.headers.get("content-type"), "image/svg+xml; charset=utf-8");
+  assert.equal((await zeroPortraitResponse.text()).includes("<svg"), true);
   const zeroCandidateMatch = zeroStateTab.contentHtml.match(/data-pilot-candidate-hire="([^"]+)"/);
   assert.ok(zeroCandidateMatch?.[1]);
   assert.equal(zeroCandidateMatch[1], zeroCandidatePortrait.id);
@@ -190,6 +201,7 @@ try {
   assert.equal(staffingTab.contentHtml.includes('data-staffing-default-view="employees"'), true);
   assert.equal(staffingTab.contentHtml.includes("Pilot Roster"), true);
   assert.equal(staffingTab.contentHtml.includes("Hire Staff"), true);
+  assert.equal(staffingTab.contentHtml.includes("data-staffing-hire-overlay"), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-detail-body="employees"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-scroll-region="employees:list"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-scroll-region="employees:detail"'), true);

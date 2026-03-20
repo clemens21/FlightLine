@@ -48,9 +48,44 @@ Use `flightline_task_intake_brief.md` as the standard intake format for new non-
 
 The intake brief is the normal front door for framing, routing, and deciding whether work stays sequential or justifies temporary extra builder capacity.
 
-If you are storing filled briefs on disk, use `../intake-briefs/incoming/` as the default inbox location.
-If Mara creates an execution-ready handoff artifact, store it in `../intake-briefs/framed/`.
-If a feature or workstream is complete and you want to preserve its artifacts without leaving them in an active lane, move the related intake and framed documents to `../intake-briefs/completed/`.
+If you are storing product-work artifacts on disk, use:
+- `product-work/requests/` for raw requests waiting on Mara framing
+- `product-work/capabilities/` for user-plus-Zoe capability briefs
+- `product-work/workstreams/` for Mara-framed implementation streams
+- `product-work/completed/` for completed product-work artifacts
+
+## Capability To Feature Workflow
+
+Use this split by default:
+
+1. You and Zoe define capabilities.
+2. Mara turns approved capabilities into bounded features or workstreams.
+3. Eli implements the bounded stream.
+4. Nadia and Owen join when risk, review need, or landing complexity justifies it.
+
+What each step means:
+
+- `capability`:
+  - player-facing intent
+  - what the player should be able to do
+  - why it matters now
+  - minimum useful scope
+  - explicit deferrals
+  - normal on-disk home: `product-work/capabilities/`
+
+- `feature` or `workstream`:
+  - bounded implementation slice
+  - affected systems
+  - validation bar
+  - stop conditions
+  - landing sequence when needed
+  - normal on-disk home: `product-work/workstreams/`
+
+Important rule:
+
+- Mara should not treat a capability brief as implementation-ready by default
+- if the capability is too broad, mistimed, inconsistent, or technically unsafe, Mara should reframe it before Eli receives anything
+- if the capability is already narrow and coherent, Mara may reduce it directly to one implementation-ready feature stream
 
 ## Default Bug Tracker
 

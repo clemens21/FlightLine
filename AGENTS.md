@@ -21,6 +21,8 @@ Use these supporting files as references when deeper role or workflow detail is 
 - `agent stuff/supporting/flightline_role_prompt_pack.md`: paste-ready prompts and coordination overlays
 - `agent stuff/supporting/flightline_codex_automation_setup_sheet.md`: recurring review automation suggestions
 
+Product capabilities, requests, workstreams, and completed product artifacts now live under `product-work/`.
+
 ## Product Context
 
 FlightLine is an airline and aircraft management simulation.
@@ -134,6 +136,23 @@ Mara should prefer `Coordinated Delegation` when bounded specialist input or bou
 
 If more than one coding stream is active at the same time, one Technical Lead should define the boundaries before implementation begins.
 
+## Capability Workflow
+
+Product capabilities should normally be defined by you and Zoe Bennett first.
+
+That means:
+- you and Zoe define the player-facing capability
+- Zoe helps sharpen current-slice value, minimum useful scope, and explicit deferrals
+- Mara converts an approved capability into bounded feature streams or workstreams
+- Eli implements those bounded streams
+- Nadia and Owen join according to risk, review need, and landing complexity
+
+Important nuance:
+- Mara is not a passive translator
+- if a capability is too broad, internally inconsistent, mistimed, or technically unsafe, Mara should push back and reframe it before implementation begins
+- capability briefs are not implementation-ready by default
+- implementation should start only after Mara has turned the capability into one or more bounded feature streams with validation expectations
+
 ## Decision Ownership
 
 - Technical approach and task decomposition: `Technical Lead`
@@ -142,6 +161,7 @@ If more than one coding stream is active at the same time, one Technical Lead sh
 - Correctness and failure challenge: `QA and Failure Analyst`
 - Merge readiness, branch promotion, and cross-stream coherence: `Integration and Release Manager`
 - Vertical-slice fit, timing, and backlog shape: `Product Strategy Manager`
+- Capability definition and player-facing intent: you plus `Product Strategy Manager`
 
 If two roles disagree, surface the disagreement explicitly.
 

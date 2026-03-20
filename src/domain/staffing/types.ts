@@ -48,7 +48,15 @@ export interface LaborAllocation {
   status: "reserved" | "consumed" | "released";
 }
 
-export type NamedPilotAvailabilityState = "ready" | "reserved" | "flying" | "resting" | "training" | "traveling";
+export type NamedPilotAvailabilityState =
+  | "ready"
+  | "reserved"
+  | "flying"
+  | "resting"
+  | "training"
+  | "traveling"
+  | "pending"
+  | "expired";
 
 export interface NamedPilot {
   namedPilotId: NamedPilotId;

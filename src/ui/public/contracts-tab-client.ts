@@ -112,6 +112,17 @@ const defaultMapState: MapState = {
 const activeContractStates = new Set(["accepted", "assigned", "active"]);
 const closedContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);
 
+export function resolveCompanyContractBadgeState(
+  contract: ContractsViewCompanyContract,
+  boardTab: ContractsBoardTab,
+): string {
+  if (boardTab === "closed" && closedContractStates.has(contract.contractState)) {
+    return contract.contractState;
+  }
+
+  return contract.routePlanItemStatus ?? contract.contractState;
+}
+
 // Mounting wraps the entire contracts surface in one event-delegated controller because the tab rerenders wholesale after most interactions.
 export function mountContractsTab(
   root: HTMLElement,
@@ -1025,7 +1036,7 @@ function renderCompanyContractRow(
       </td>
       <td>
         <div class="meta-stack">
-          ${renderBadge(contract.routePlanItemStatus ?? contract.contractState)}
+          ${renderBadge(resolveCompanyContractBadgeState(contract, boardTab))}
           <span class="muted">${escapeHtml(contract.archetype.replaceAll("_", " "))}</span>
         </div>
       </td>

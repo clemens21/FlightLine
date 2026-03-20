@@ -62,6 +62,19 @@ interface MarketOfferRow extends Record<string, unknown> {
   offerStatus: string;
 }
 
+interface AircraftSeedState {
+  conditionValue: number;
+  conditionBandInput: string;
+  statusInput: string;
+  airframeHoursTotal: number;
+  airframeCyclesTotal: number;
+  hoursSinceInspection: number;
+  cyclesSinceInspection: number;
+  hoursToService: number;
+  maintenanceStateInput: string;
+  aogFlag: boolean;
+}
+
 function resolveCabinLayout(
   preferredLayoutId: string | undefined,
   aircraftReference: AircraftReferenceRepository,
@@ -100,7 +113,7 @@ function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: 
   switch (command.payload.ownershipType) {
     case "owned": {
       return {
-        upfrontPaymentAmount: Math.round(command.payload.upfrontPaymentAmount ?? aircraftModel.marketValueUsd),
+        upfrontPaymentAmount: Math.round(aircraftModel.marketValueUsd),
         recurringPaymentAmount: null,
         paymentCadence: null,
         termMonths: null,
@@ -110,15 +123,12 @@ function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: 
     }
 
     case "financed": {
-      const termMonths = Math.max(1, command.payload.termMonths ?? 60);
-      const paymentCadence = command.payload.paymentCadence ?? "monthly";
-      const rateBandOrApr = command.payload.rateBandOrApr ?? 7;
-      const upfrontPaymentAmount = Math.round(command.payload.upfrontPaymentAmount ?? aircraftModel.marketValueUsd * 0.15);
+      const termMonths = 60;
+      const paymentCadence = "monthly";
+      const rateBandOrApr = 7;
+      const upfrontPaymentAmount = Math.round(aircraftModel.marketValueUsd * 0.15);
       const principalAmount = Math.max(0, aircraftModel.marketValueUsd - upfrontPaymentAmount);
-      const recurringPaymentAmount = Math.round(
-        command.payload.recurringPaymentAmount
-        ?? calculateFinanceRecurringPayment(principalAmount, rateBandOrApr, termMonths, paymentCadence),
-      );
+      const recurringPaymentAmount = Math.round(calculateFinanceRecurringPayment(principalAmount, rateBandOrApr, termMonths, paymentCadence));
 
       return {
         upfrontPaymentAmount,
@@ -131,12 +141,10 @@ function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: 
     }
 
     case "leased": {
-      const termMonths = Math.max(1, command.payload.termMonths ?? 12);
-      const paymentCadence = command.payload.paymentCadence ?? "monthly";
-      const recurringPaymentAmount = Math.round(
-        command.payload.recurringPaymentAmount ?? aircraftModel.targetLeaseRateMonthlyUsd,
-      );
-      const upfrontPaymentAmount = Math.round(command.payload.upfrontPaymentAmount ?? recurringPaymentAmount);
+      const termMonths = 12;
+      const paymentCadence = "monthly";
+      const recurringPaymentAmount = Math.round(aircraftModel.targetLeaseRateMonthlyUsd);
+      const upfrontPaymentAmount = Math.round(recurringPaymentAmount);
 
       return {
         upfrontPaymentAmount,
@@ -144,7 +152,7 @@ function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: 
         paymentCadence,
         termMonths,
         endAtUtc: addUtcMonths(acquiredAtUtc, termMonths),
-        rateBandOrApr: command.payload.rateBandOrApr ?? null,
+        rateBandOrApr: null,
       };
     }
   }
@@ -185,33 +193,46 @@ function deriveMarketOfferTerms(
     };
   }
 
-  const baseTerms = parseTermsJson(
+  return parseTermsJson(
     command.payload.ownershipType === "financed" ? marketOffer.financeTermsJson : marketOffer.leaseTermsJson,
     acquiredAtUtc,
   );
+}
 
-  const hasOverride =
-    command.payload.upfrontPaymentAmount !== undefined
-    || command.payload.recurringPaymentAmount !== undefined
-    || command.payload.paymentCadence !== undefined
-    || command.payload.termMonths !== undefined
-    || command.payload.rateBandOrApr !== undefined;
+function deriveDispatchAvailability(statusInput: string, maintenanceStateInput: string, aogFlag: boolean): boolean {
+  return !aogFlag
+    && statusInput === "idle"
+    && maintenanceStateInput !== "aog"
+    && maintenanceStateInput !== "overdue";
+}
 
-  if (!hasOverride) {
-    return baseTerms;
-  }
-
-  const termMonths = command.payload.termMonths ?? baseTerms.termMonths ?? null;
-
+function buildDirectAcquiredAircraftState(aircraftModel: AircraftModelRecord): AircraftSeedState {
   return {
-    upfrontPaymentAmount: Math.round(command.payload.upfrontPaymentAmount ?? baseTerms.upfrontPaymentAmount),
-    recurringPaymentAmount: command.payload.recurringPaymentAmount !== undefined
-      ? Math.round(command.payload.recurringPaymentAmount)
-      : baseTerms.recurringPaymentAmount ?? null,
-    paymentCadence: command.payload.paymentCadence ?? baseTerms.paymentCadence ?? null,
-    termMonths,
-    endAtUtc: termMonths ? addUtcMonths(acquiredAtUtc, termMonths) : null,
-    rateBandOrApr: command.payload.rateBandOrApr ?? baseTerms.rateBandOrApr ?? null,
+    conditionValue: 1,
+    conditionBandInput: "excellent",
+    statusInput: "idle",
+    airframeHoursTotal: 0,
+    airframeCyclesTotal: 0,
+    hoursSinceInspection: 0,
+    cyclesSinceInspection: 0,
+    hoursToService: aircraftModel.inspectionIntervalHours,
+    maintenanceStateInput: "current",
+    aogFlag: false,
+  };
+}
+
+function buildMarketAcquiredAircraftState(marketOffer: MarketOfferRow): AircraftSeedState {
+  return {
+    conditionValue: marketOffer.conditionValue,
+    conditionBandInput: marketOffer.conditionBandInput,
+    statusInput: marketOffer.statusInput,
+    airframeHoursTotal: marketOffer.airframeHoursTotal,
+    airframeCyclesTotal: marketOffer.airframeCyclesTotal,
+    hoursSinceInspection: marketOffer.hoursSinceInspection,
+    cyclesSinceInspection: marketOffer.cyclesSinceInspection,
+    hoursToService: marketOffer.hoursToService,
+    maintenanceStateInput: marketOffer.maintenanceStateInput,
+    aogFlag: marketOffer.aogFlag === 1,
   };
 }
 
@@ -300,7 +321,7 @@ export async function handleAcquireAircraft(
 
   const selectedLayout = aircraftModel
     ? resolveCabinLayout(
-        command.payload.activeCabinLayoutId ?? marketOffer?.activeCabinLayoutId ?? undefined,
+        marketOffer?.activeCabinLayoutId ?? command.payload.activeCabinLayoutId ?? undefined,
         dependencies.aircraftReference,
         aircraftModel,
         hardBlockers,
@@ -405,17 +426,14 @@ export async function handleAcquireAircraft(
   const displayName = effectiveDisplayName ?? aircraftModel!.displayName;
   const updatedCashAmount = companyContext!.currentCashAmount - acquisitionTerms!.upfrontPaymentAmount;
   const financialPressureBand = deriveFinancialPressureBand(updatedCashAmount);
-  const seededConditionValue = marketOffer?.conditionValue ?? command.payload.seededConditionValue ?? 1.0;
-  const seededStatusInput = marketOffer?.statusInput ?? command.payload.seededStatusInput ?? "idle";
-  const seededAirframeHoursTotal = marketOffer?.airframeHoursTotal ?? command.payload.seededAirframeHoursTotal ?? 0;
-  const seededAirframeCyclesTotal = marketOffer?.airframeCyclesTotal ?? command.payload.seededAirframeCyclesTotal ?? 0;
-  const seededConditionBandInput = marketOffer?.conditionBandInput ?? command.payload.seededConditionBandInput ?? "excellent";
-  const seededHoursSinceInspection = marketOffer?.hoursSinceInspection ?? command.payload.seededHoursSinceInspection ?? 0;
-  const seededCyclesSinceInspection = marketOffer?.cyclesSinceInspection ?? command.payload.seededCyclesSinceInspection ?? 0;
-  const seededHoursToService = marketOffer?.hoursToService ?? command.payload.seededHoursToService ?? aircraftModel!.inspectionIntervalHours;
-  const seededMaintenanceStateInput = marketOffer?.maintenanceStateInput ?? command.payload.seededMaintenanceStateInput ?? "current";
-  const seededAogFlag = marketOffer ? marketOffer.aogFlag === 1 : command.payload.seededAogFlag ?? false;
-  const dispatchAvailable = !seededAogFlag && seededStatusInput !== "grounded" && seededMaintenanceStateInput !== "aog";
+  const seededState = marketOffer
+    ? buildMarketAcquiredAircraftState(marketOffer)
+    : buildDirectAcquiredAircraftState(aircraftModel!);
+  const dispatchAvailable = deriveDispatchAvailability(
+    seededState.statusInput,
+    seededState.maintenanceStateInput,
+    seededState.aogFlag,
+  );
 
   dependencies.saveDatabase.transaction(() => {
     dependencies.saveDatabase.run(
@@ -465,10 +483,10 @@ export async function handleAcquireAircraft(
         $display_name: displayName,
         $ownership_type: command.payload.ownershipType,
         $current_airport_id: deliveryAirport!.airportKey,
-        $airframe_hours_total: seededAirframeHoursTotal,
-        $airframe_cycles_total: seededAirframeCyclesTotal,
-        $condition_value: seededConditionValue,
-        $status_input: seededStatusInput,
+        $airframe_hours_total: seededState.airframeHoursTotal,
+        $airframe_cycles_total: seededState.airframeCyclesTotal,
+        $condition_value: seededState.conditionValue,
+        $status_input: seededState.statusInput,
         $dispatch_available: dispatchAvailable ? 1 : 0,
         $acquired_at_utc: acquiredAtUtc,
       },
@@ -543,14 +561,14 @@ export async function handleAcquireAircraft(
       )`,
       {
         $aircraft_id: maintenanceProgramStateAircraftId,
-        $condition_band_input: seededConditionBandInput,
-        $hours_since_inspection: seededHoursSinceInspection,
-        $cycles_since_inspection: seededCyclesSinceInspection,
-        $hours_to_service: seededHoursToService,
+        $condition_band_input: seededState.conditionBandInput,
+        $hours_since_inspection: seededState.hoursSinceInspection,
+        $cycles_since_inspection: seededState.cyclesSinceInspection,
+        $hours_to_service: seededState.hoursToService,
         $last_inspection_at_utc: acquiredAtUtc,
         $last_heavy_service_at_utc: acquiredAtUtc,
-        $maintenance_state_input: seededMaintenanceStateInput,
-        $aog_flag: seededAogFlag ? 1 : 0,
+        $maintenance_state_input: seededState.maintenanceStateInput,
+        $aog_flag: seededState.aogFlag ? 1 : 0,
         $updated_at_utc: acquiredAtUtc,
       },
     );

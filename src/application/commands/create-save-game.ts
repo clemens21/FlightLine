@@ -5,6 +5,7 @@
 
 import type { CommandResult, CreateSaveGameCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
+import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 
 interface CreateSaveGameDependencies {
@@ -24,6 +25,7 @@ export async function handleCreateSaveGame(
   dependencies: CreateSaveGameDependencies,
 ): Promise<CommandResult> {
   const hardBlockers: string[] = [];
+  const normalizedStartTimeUtc = normalizeUtcTimestamp(command.payload.startTimeUtc);
 
   if (!command.payload.worldSeed.trim()) {
     hardBlockers.push("World seed is required.");
@@ -31,6 +33,8 @@ export async function handleCreateSaveGame(
 
   if (!command.payload.startTimeUtc.trim()) {
     hardBlockers.push("A starting UTC timestamp is required.");
+  } else if (!normalizedStartTimeUtc) {
+    hardBlockers.push(`Starting time ${command.payload.startTimeUtc} is not a valid UTC timestamp.`);
   }
 
   const existingSave = dependencies.saveDatabase.getOne<ExistingSaveRow>(
@@ -110,7 +114,7 @@ export async function handleCreateSaveGame(
       )`,
       {
         $save_id: command.saveId,
-        $current_time_utc: command.payload.startTimeUtc,
+        $current_time_utc: normalizedStartTimeUtc,
       },
     );
 

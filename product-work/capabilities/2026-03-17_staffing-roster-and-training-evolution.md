@@ -1,5 +1,11 @@
 # FlightLine Task Intake Brief
 
+## Status
+
+This remains a live umbrella capability brief.
+
+Several narrower named-pilot workstreams have already landed, but the broader later capability described here is not fully complete and should not be treated as done.
+
 ## Task Intake Brief
 
 - Request title: Pilot roster and training evolution with capability preservation

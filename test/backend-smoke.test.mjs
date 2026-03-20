@@ -91,6 +91,30 @@ function pickPreferredOffer(board, aircraft, airportReference, currentTimeUtc, c
     ?? candidateOffers[0];
 }
 
+function pickReachableRecoveryDestinationAirportId(originAirportId, aircraft, airportReference) {
+  const origin = airportReference.findAirport(originAirportId);
+
+  if (!origin) {
+    return null;
+  }
+
+  const reachableDestinations = airportReference
+    .listContractDestinations(origin, 200)
+    .map((destination) => ({
+      destination,
+      distanceNm: haversineDistanceNm(origin, destination),
+    }))
+    .filter(({ destination, distanceNm }) =>
+      destination.airportKey !== originAirportId
+      && Number.isFinite(distanceNm)
+      && distanceNm > 0
+      && distanceNm <= aircraft.rangeNm * 0.6,
+    )
+    .sort((left, right) => left.distanceNm - right.distanceNm);
+
+  return reachableDestinations[0]?.destination.airportKey ?? null;
+}
+
 const saveDirectoryPath = await mkdtemp(join(tmpdir(), "flightline-save-"));
 const airportDatabasePath = resolve(process.cwd(), "data", "airports", "flightline-airports.sqlite");
 const backend = await FlightLineBackend.create({
@@ -460,7 +484,12 @@ try {
   assert.equal(companyContextAfterAdvance.currentTimeUtc, arrivalUtc);
   assert.notEqual(companyContextAfterAdvance.currentCashAmount, companyContextAfterAccept.currentCashAmount);
 
-  const recoveryDestinationAirportId = selectedOffer.destinationAirportId === "KDEN" ? "KCOS" : "KDEN";
+  const recoveryDestinationAirportId = pickReachableRecoveryDestinationAirportId(
+    selectedOffer.destinationAirportId,
+    fleetState.aircraft[0],
+    airportReference,
+  );
+  assert.ok(recoveryDestinationAirportId, "Expected a reachable recovery destination.");
   const recoveryDepartureUtc = addHours(arrivalUtc, 2);
   const recoveryArrivalUtc = addMinutes(
     recoveryDepartureUtc,
@@ -502,7 +531,7 @@ try {
   });
 
   assert.equal(blockedByRestResult.success, false);
-  assert.match(blockedByRestResult.hardBlockers[0] ?? "", /named pilots/i);
+  assert.equal(blockedByRestResult.hardBlockers.some((blocker) => /named pilots/i.test(blocker)), true);
 
   const postRestAdvanceResult = await backend.dispatch({
     commandId: `cmd_${saveId}_advance_rest`,

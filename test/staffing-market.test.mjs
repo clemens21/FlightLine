@@ -6,14 +6,25 @@
 import assert from "node:assert/strict";
 
 import {
+  activateStaffingPackage,
+  acquireAircraft,
   createCompanySave,
   createTestHarness,
+  refreshContractBoard,
   refreshStaffingMarket,
   uniqueSaveId,
 } from "./helpers/flightline-testkit.mjs";
 
 const harness = await createTestHarness("flightline-staffing-market");
 const { backend } = harness;
+
+function collectFitBuckets(board) {
+  return [...new Set(
+    board.offers
+      .map((offer) => typeof offer.explanationMetadata?.fit_bucket === "string" ? offer.explanationMetadata.fit_bucket : undefined)
+      .filter((fitBucket) => typeof fitBucket === "string"),
+  )].sort();
+}
 
 try {
   const saveId = uniqueSaveId("staffing_market");
@@ -172,6 +183,7 @@ try {
   const expiredPilot = staffingStateAfterExpiry.namedPilots.find((pilot) => pilot.namedPilotId === reloadedPilot.namedPilotId);
   assert.ok(expiredPilot);
   assert.equal(expiredPilot.packageStatus, "expired");
+  assert.equal(expiredPilot.availabilityState, "expired");
 
   const eventLogAfterExpiry = await backend.loadRecentEventLog(saveId, 12);
   assert.ok(eventLogAfterExpiry);
@@ -194,6 +206,162 @@ try {
   });
   assert.equal(blockedExpiredTrainingResult.success, false);
   assert.match(blockedExpiredTrainingResult.hardBlockers?.[0] ?? "", /active pilot coverage/i);
+
+  const pendingSaveId = uniqueSaveId("staffing_pending");
+  const pendingStartedAtUtc = await createCompanySave(backend, pendingSaveId, {
+    startedAtUtc: "2026-03-16T13:00:00.000Z",
+    startingCashAmount: 3_500_000,
+  });
+  await acquireAircraft(backend, pendingSaveId, pendingStartedAtUtc, {
+    aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    registration: "N208PD",
+  });
+  await refreshContractBoard(backend, pendingSaveId, pendingStartedAtUtc, "bootstrap");
+  const pendingBoardBeforeStaffing = await backend.loadActiveContractBoard(pendingSaveId);
+  assert.ok(pendingBoardBeforeStaffing);
+  assert.deepEqual(collectFitBuckets(pendingBoardBeforeStaffing), ["blocked_now"]);
+
+  const pendingPackageStartsAtUtc = "2026-03-17T13:00:00.000Z";
+  const pendingActivationResult = await activateStaffingPackage(backend, pendingSaveId, pendingStartedAtUtc, {
+    laborCategory: "pilot",
+    employmentModel: "direct_hire",
+    qualificationGroup: "single_turboprop_utility",
+    coverageUnits: 1,
+    fixedCostAmount: 4_200,
+    startsAtUtc: pendingPackageStartsAtUtc,
+    endsAtUtc: "2026-03-18T13:00:00.000Z",
+  });
+  assert.equal(
+    pendingActivationResult.success,
+    true,
+    pendingActivationResult.hardBlockers?.[0] ?? "Expected future-start pilot staffing package to activate.",
+  );
+
+  const pendingCompanyContext = await backend.loadCompanyContext(pendingSaveId);
+  assert.ok(pendingCompanyContext);
+  assert.equal(pendingCompanyContext.activeStaffingPackageCount, 0);
+
+  const pendingStaffingState = await backend.loadStaffingState(pendingSaveId);
+  assert.ok(pendingStaffingState);
+  assert.equal(pendingStaffingState.totalActiveCoverageUnits, 0);
+  assert.equal(pendingStaffingState.totalPendingCoverageUnits, 1);
+  assert.equal(pendingStaffingState.totalMonthlyFixedCostAmount, 0);
+  assert.equal(pendingStaffingState.namedPilots.length, 1);
+  assert.equal(pendingStaffingState.namedPilots[0]?.packageStatus, "pending");
+  assert.equal(pendingStaffingState.namedPilots[0]?.availabilityState, "pending");
+  const pendingPackage = pendingStaffingState.staffingPackages[0];
+  assert.ok(pendingPackage);
+
+  const pendingEventLog = await backend.loadRecentEventLog(pendingSaveId, 8);
+  assert.ok(pendingEventLog);
+  assert.equal(
+    pendingEventLog.entries.some((entry) =>
+      entry.eventType === "staffing_package_scheduled"
+      && entry.sourceObjectId === pendingPackage.staffingPackageId),
+    true,
+  );
+  assert.equal(
+    pendingEventLog.entries.some((entry) =>
+      entry.eventType === "staffing_package_activated"
+      && entry.sourceObjectId === pendingPackage.staffingPackageId),
+    false,
+  );
+
+  await refreshContractBoard(backend, pendingSaveId, pendingStartedAtUtc, "manual");
+  const pendingBoardAfterFutureStaffing = await backend.loadActiveContractBoard(pendingSaveId);
+  assert.ok(pendingBoardAfterFutureStaffing);
+  assert.deepEqual(collectFitBuckets(pendingBoardAfterFutureStaffing), ["blocked_now"]);
+
+  const pendingStartAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${pendingSaveId}_advance_staffing_start`,
+    saveId: pendingSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: pendingStartedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: "2026-03-17T14:00:00.000Z",
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(
+    pendingStartAdvanceResult.success,
+    true,
+    pendingStartAdvanceResult.hardBlockers?.[0] ?? "Expected pending staffing package to activate on time advance.",
+  );
+
+  const companyContextAfterPendingStart = await backend.loadCompanyContext(pendingSaveId);
+  assert.ok(companyContextAfterPendingStart);
+  assert.equal(companyContextAfterPendingStart.activeStaffingPackageCount, 1);
+
+  const staffingStateAfterPendingStart = await backend.loadStaffingState(pendingSaveId);
+  assert.ok(staffingStateAfterPendingStart);
+  const activePackage = staffingStateAfterPendingStart.staffingPackages.find((entry) => entry.staffingPackageId === pendingPackage.staffingPackageId);
+  assert.ok(activePackage);
+  assert.equal(activePackage.status, "active");
+  assert.equal(staffingStateAfterPendingStart.totalActiveCoverageUnits, 1);
+  assert.equal(staffingStateAfterPendingStart.totalPendingCoverageUnits, 0);
+  assert.equal(staffingStateAfterPendingStart.totalMonthlyFixedCostAmount, 4_200);
+  const activePilot = staffingStateAfterPendingStart.namedPilots.find((pilot) => pilot.staffingPackageId === pendingPackage.staffingPackageId);
+  assert.ok(activePilot);
+  assert.equal(activePilot.packageStatus, "active");
+  assert.equal(activePilot.availabilityState, "ready");
+
+  const eventLogAfterPendingStart = await backend.loadRecentEventLog(pendingSaveId, 12);
+  assert.ok(eventLogAfterPendingStart);
+  assert.equal(
+    eventLogAfterPendingStart.entries.some((entry) =>
+      entry.eventType === "staffing_package_activated"
+      && entry.sourceObjectId === pendingPackage.staffingPackageId),
+    true,
+  );
+
+  const postPendingExpiryAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${pendingSaveId}_advance_staffing_expiry`,
+    saveId: pendingSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: "2026-03-17T14:00:00.000Z",
+    actorType: "player",
+    payload: {
+      targetTimeUtc: "2026-03-18T14:00:00.000Z",
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(
+    postPendingExpiryAdvanceResult.success,
+    true,
+    postPendingExpiryAdvanceResult.hardBlockers?.[0] ?? "Expected pending staffing package to expire after its end time.",
+  );
+
+  const companyContextAfterPendingExpiry = await backend.loadCompanyContext(pendingSaveId);
+  assert.ok(companyContextAfterPendingExpiry);
+  assert.equal(companyContextAfterPendingExpiry.activeStaffingPackageCount, 0);
+
+  const staffingStateAfterPendingExpiry = await backend.loadStaffingState(pendingSaveId);
+  assert.ok(staffingStateAfterPendingExpiry);
+  const expiredPendingPackage = staffingStateAfterPendingExpiry.staffingPackages.find((entry) => entry.staffingPackageId === pendingPackage.staffingPackageId);
+  assert.ok(expiredPendingPackage);
+  assert.equal(expiredPendingPackage.status, "expired");
+  assert.equal(staffingStateAfterPendingExpiry.totalActiveCoverageUnits, 0);
+  assert.equal(staffingStateAfterPendingExpiry.totalPendingCoverageUnits, 0);
+  assert.equal(staffingStateAfterPendingExpiry.totalMonthlyFixedCostAmount, 0);
+  const expiredPendingPilot = staffingStateAfterPendingExpiry.namedPilots.find((pilot) => pilot.staffingPackageId === pendingPackage.staffingPackageId);
+  assert.ok(expiredPendingPilot);
+  assert.equal(expiredPendingPilot.packageStatus, "expired");
+  assert.equal(expiredPendingPilot.availabilityState, "expired");
+
+  const blockedExpiredTransferResult = await backend.dispatch({
+    commandId: `cmd_${pendingSaveId}_expired_transfer_block`,
+    saveId: pendingSaveId,
+    commandName: "StartNamedPilotTransfer",
+    issuedAtUtc: "2026-03-18T14:00:00.000Z",
+    actorType: "player",
+    payload: {
+      namedPilotId: expiredPendingPilot.namedPilotId,
+      destinationAirportId: "KDEN",
+    },
+  });
+  assert.equal(blockedExpiredTransferResult.success, false);
+  assert.match(blockedExpiredTransferResult.hardBlockers?.[0] ?? "", /active pilot coverage/i);
 } finally {
   await harness.cleanup();
 }

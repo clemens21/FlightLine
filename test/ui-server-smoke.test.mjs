@@ -271,6 +271,22 @@ try {
   const shellHtml = await getHtml(server.baseUrl, `/save/${encodeURIComponent(saveId)}?tab=aircraft`);
   assert.match(shellHtml, /data-save-shell-app/);
   assert.match(shellHtml, /save-shell-client\.js/);
+  assert.match(shellHtml, /data-settings-open-help/);
+  assert.match(shellHtml, /data-help-center/);
+  assert.match(shellHtml, /Help Home/);
+  assert.match(shellHtml, /Do This Next/);
+  assert.match(shellHtml, /Why Am I Blocked\?/);
+  assert.match(shellHtml, /Key Concepts/);
+  assert.match(shellHtml, /What should I do next\?/);
+  assert.match(shellHtml, /How the FlightLine loop works/);
+  assert.match(shellHtml, /Contracts/);
+  assert.match(shellHtml, /Aircraft availability/);
+  assert.match(shellHtml, /Staff in the current slice/);
+  assert.match(shellHtml, /Dispatch and validation/);
+  assert.match(shellHtml, /Time Advance and Calendar/);
+  assert.match(shellHtml, /Cash flow basics/);
+  assert.match(shellHtml, /I cannot dispatch this contract/);
+  assert.match(shellHtml, /\.staffing-hire-overlay\s*\{/);
 
   const bootstrap = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/bootstrap?tab=aircraft`);
   assert.equal(bootstrap.saveId, saveId);
@@ -286,6 +302,7 @@ try {
   assert.equal(staffingTab.contentHtml.includes("data-staffing-roster"), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-detail-panel="employees"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-detail-body="employees"'), true);
+  assert.equal(staffingTab.contentHtml.includes("data-staffing-hire-overlay"), true);
   assert.ok((staffingTab.contentHtml.match(/data-staffing-pilot-row=/g) ?? []).length >= 3);
   assert.equal(staffingTab.contentHtml.includes("N208HT"), true);
   assert.equal(staffingTab.contentHtml.includes("Direct hire"), true);
@@ -423,7 +440,7 @@ try {
   assert.equal(bindRoutePlanResult.payload.tab.tabId, "dispatch");
   assert.ok(bindRoutePlanResult.payload.tab.dispatchPayload);
   assert.equal(
-    bindRoutePlanResult.payload.tab.dispatchPayload.workInputs.routePlanItems.some((item) => item.linkedAircraftId === draftAircraftId && item.plannerItemStatus === "scheduled"),
+    bindRoutePlanResult.payload.tab.dispatchPayload.workInputs.routePlanItems.some((item) => !item.linkedAircraftId && item.plannerItemStatus === "accepted_ready"),
     true,
   );
   assert.equal(

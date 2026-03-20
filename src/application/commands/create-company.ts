@@ -18,6 +18,11 @@ interface SaveStateRow extends Record<string, unknown> {
   active_company_id: string | null;
 }
 
+const startupStartingCashAmount = 3_500_000;
+const startupProgressionTier = 1;
+const startupReputationScore = 0;
+const startupCompanyPhase = "startup";
+
 // Creates the first company inside a save, including its starting finances, identity, and home-base footprint.
 export async function handleCreateCompany(
   command: CreateCompanyCommand,
@@ -28,10 +33,6 @@ export async function handleCreateCompany(
 
   if (!command.payload.displayName.trim()) {
     hardBlockers.push("Company display name is required.");
-  }
-
-  if (command.payload.startingCashAmount < 0) {
-    hardBlockers.push("Starting cash cannot be negative.");
   }
 
   const saveState = dependencies.saveDatabase.getOne<SaveStateRow>(
@@ -65,6 +66,36 @@ export async function handleCreateCompany(
     }
   }
 
+  if (saveState && !saveState.active_company_id) {
+    if (!Number.isFinite(command.payload.startingCashAmount)) {
+      hardBlockers.push("Starting cash must be a finite number.");
+    } else if (command.payload.startingCashAmount < 0) {
+      hardBlockers.push("Starting cash cannot be negative.");
+    } else if (command.payload.startingCashAmount !== startupStartingCashAmount) {
+      hardBlockers.push(`Starting cash is fixed at ${startupStartingCashAmount} during company creation.`);
+    }
+
+    if (command.payload.companyPhase && command.payload.companyPhase !== startupCompanyPhase) {
+      hardBlockers.push("Company phase is fixed at startup during company creation.");
+    }
+
+    if (command.payload.progressionTier !== undefined) {
+      if (!Number.isFinite(command.payload.progressionTier) || !Number.isInteger(command.payload.progressionTier)) {
+        hardBlockers.push("Progression tier must be a finite whole number.");
+      } else if (command.payload.progressionTier !== startupProgressionTier) {
+        hardBlockers.push(`Company progression tier is fixed at ${startupProgressionTier} during company creation.`);
+      }
+    }
+
+    if (command.payload.startingReputationScore !== undefined) {
+      if (!Number.isFinite(command.payload.startingReputationScore)) {
+        hardBlockers.push("Starting reputation score must be a finite number.");
+      } else if (command.payload.startingReputationScore !== startupReputationScore) {
+        hardBlockers.push(`Starting reputation score is fixed at ${startupReputationScore} during company creation.`);
+      }
+    }
+  }
+
   if (hardBlockers.length > 0) {
     return {
       success: false,
@@ -82,12 +113,13 @@ export async function handleCreateCompany(
   const companyBaseId = createPrefixedId("base");
   const ledgerEntryId = createPrefixedId("ledger");
   const eventLogEntryId = createPrefixedId("event");
-  const progressionTier = command.payload.progressionTier ?? 1;
-  const reputationScore = command.payload.startingReputationScore ?? 0;
-  const companyPhase = command.payload.companyPhase ?? "startup";
+  const startingCashAmount = startupStartingCashAmount;
+  const progressionTier = startupProgressionTier;
+  const reputationScore = startupReputationScore;
+  const companyPhase = startupCompanyPhase;
   const baseRole = command.payload.baseRole ?? "home_base";
   const reserveBalanceAmount = command.payload.reserveBalanceAmount ?? null;
-  const financialPressureBand = deriveFinancialPressureBand(command.payload.startingCashAmount);
+  const financialPressureBand = deriveFinancialPressureBand(startingCashAmount);
 
   dependencies.saveDatabase.transaction(() => {
     dependencies.saveDatabase.run(
@@ -158,7 +190,7 @@ export async function handleCreateCompany(
       )`,
       {
         $company_id: companyId,
-        $current_cash_amount: command.payload.startingCashAmount,
+        $current_cash_amount: startingCashAmount,
         $financial_pressure_band: financialPressureBand,
         $reserve_balance_amount: reserveBalanceAmount,
         $updated_at_utc: command.issuedAtUtc,
@@ -194,7 +226,7 @@ export async function handleCreateCompany(
         $company_id: companyId,
         $entry_time_utc: command.issuedAtUtc,
         $entry_type: "initial_capital",
-        $amount: command.payload.startingCashAmount,
+        $amount: startingCashAmount,
         $currency_code: "USD",
         $source_object_type: "company",
         $source_object_id: companyId,

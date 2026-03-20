@@ -1,5 +1,11 @@
 # Dispatch Assignment And Readiness Capability
 
+## Relationship To Prior Brief
+
+This brief supersedes [2026-03-17_dispatch-assignment-first-ui.md](/Z:/projects/FlightLine/product-work/capabilities/2026-03-17_dispatch-assignment-first-ui.md).
+
+The older brief remains useful as a narrower intermediate step, but this capability brief is now the primary live design direction for future Dispatch framing.
+
 ## Main Conclusion
 
 Dispatch should become a clear assignment-and-readiness workspace.

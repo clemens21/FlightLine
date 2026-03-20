@@ -48,6 +48,7 @@ interface ShellConfig {
 
 type ActivityPopupMode = "all" | "important_only";
 type ThemeName = "light" | "dark" | "forest";
+type HelpCenterSection = "home" | "next" | "blocked" | "concepts";
 
 interface FlashMessage {
   tone: "notice" | "error";
@@ -112,6 +113,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const loaderActionsNodeRaw = root.querySelector<HTMLElement>("[data-loader-actions]");
   const loaderRetryButtonRaw = root.querySelector<HTMLButtonElement>("[data-loader-retry]");
   const settingsMenuRaw = root.querySelector<HTMLDetailsElement>("[data-settings-menu]");
+  const settingsHelpButtonRaw = root.querySelector<HTMLButtonElement>("[data-settings-open-help]");
   const settingsThemeButtonRaw = root.querySelector<HTMLButtonElement>("[data-settings-theme]");
   const settingsThemeLabelRaw = root.querySelector<HTMLElement>("[data-settings-theme-label]");
   const settingsPopupLabelRaw = root.querySelector<HTMLElement>("[data-settings-popup-label]");
@@ -120,6 +122,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const clockLabelRaw = root.querySelector<HTMLElement>("[data-clock-label]");
   const clockRateRaw = root.querySelector<HTMLElement>("[data-clock-rate]");
   const clockPanelRaw = root.querySelector<HTMLElement>("[data-clock-panel]");
+  const helpCenterRaw = root.querySelector<HTMLElement>("[data-help-center]");
 
   if (
     !loader
@@ -136,6 +139,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     || !loaderActionsNodeRaw
     || !loaderRetryButtonRaw
     || !settingsMenuRaw
+    || !settingsHelpButtonRaw
     || !settingsThemeButtonRaw
     || !settingsThemeLabelRaw
     || !settingsPopupLabelRaw
@@ -144,6 +148,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     || !clockLabelRaw
     || !clockRateRaw
     || !clockPanelRaw
+    || !helpCenterRaw
   ) {
     return;
   }
@@ -162,6 +167,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const loaderActionsNode: HTMLElement = loaderActionsNodeRaw;
   const loaderRetryButton: HTMLButtonElement = loaderRetryButtonRaw;
   const settingsMenu: HTMLDetailsElement = settingsMenuRaw;
+  const settingsHelpButton: HTMLButtonElement = settingsHelpButtonRaw;
   const settingsThemeButton: HTMLButtonElement = settingsThemeButtonRaw;
   const settingsThemeLabel: HTMLElement = settingsThemeLabelRaw;
   const settingsPopupLabel: HTMLElement = settingsPopupLabelRaw;
@@ -170,7 +176,9 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   const clockLabel: HTMLElement = clockLabelRaw;
   const clockRateNode: HTMLElement = clockRateRaw;
   const clockPanel: HTMLElement = clockPanelRaw;
+  const helpCenter: HTMLElement = helpCenterRaw;
   const themeWindow = window as Window & { toggleTheme?: () => string | void };
+  void settingsHelpButton;
 
   // Local shell state mirrors the latest shell, tab, and clock payloads so incremental responses can update only what changed.
   const tabCache = new Map<SavePageTab, SaveTabPayload>();
@@ -189,6 +197,13 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   let clockTimerHandle: number | null = null;
   let flashTimerHandle: number | null = null;
   let activityPopupMode: ActivityPopupMode = restoreActivityPopupMode();
+  let helpCenterOpen = false;
+  let activeHelpSection: HelpCenterSection = "home";
+  const activeHelpTopics: Record<Exclude<HelpCenterSection, "home">, string | null> = {
+    next: firstHelpTopicId("next"),
+    blocked: firstHelpTopicId("blocked"),
+    concepts: firstHelpTopicId("concepts"),
+  };
 
   const tabLabels: Array<[SavePageTab, string]> = [
     ["dashboard", "Overview"],
@@ -228,9 +243,102 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     clockLabel.textContent = `${clockPayload.currentLocalTimeLabel} | ${clockPayload.currentLocalDateLabel}`;
   }
 
+  function firstHelpTopicId(section: Exclude<HelpCenterSection, "home">): string | null {
+    const button = helpCenter.querySelector<HTMLElement>(
+      `[data-help-topic-button][data-help-topic-section="${section}"]`,
+    );
+    return button?.dataset.helpTopicButton ?? null;
+  }
+
+  function normalizeHelpSection(rawSection: string | undefined): HelpCenterSection {
+    switch (rawSection) {
+      case "next":
+      case "blocked":
+      case "concepts":
+        return rawSection;
+      default:
+        return "home";
+    }
+  }
+
+  function setActiveHelpSection(section: HelpCenterSection): void {
+    activeHelpSection = section;
+  }
+
+  function renderHelpCenter(): void {
+    helpCenter.hidden = !helpCenterOpen;
+
+    const sectionTabs = helpCenter.querySelectorAll<HTMLElement>("[data-help-section-tab]");
+    sectionTabs.forEach((button) => {
+      const section = normalizeHelpSection(button.dataset.helpSectionTab);
+      const isCurrent = section === activeHelpSection;
+      button.classList.toggle("current", isCurrent);
+      button.setAttribute("aria-selected", isCurrent ? "true" : "false");
+    });
+
+    const sectionPanels = helpCenter.querySelectorAll<HTMLElement>("[data-help-section-panel]");
+    sectionPanels.forEach((panel) => {
+      const section = normalizeHelpSection(panel.dataset.helpSectionPanel);
+      panel.hidden = section !== activeHelpSection;
+    });
+
+    const topicButtons = helpCenter.querySelectorAll<HTMLElement>("[data-help-topic-button]");
+    topicButtons.forEach((button) => {
+      const section = normalizeHelpSection(button.dataset.helpTopicSection);
+      if (section === "home") {
+        button.classList.remove("current");
+        button.setAttribute("aria-current", "false");
+        return;
+      }
+
+      const isCurrent = activeHelpSection === section
+        && activeHelpTopics[section] === (button.dataset.helpTopicButton ?? "");
+      button.classList.toggle("current", isCurrent);
+      button.setAttribute("aria-current", isCurrent ? "true" : "false");
+    });
+
+    const topicPanels = helpCenter.querySelectorAll<HTMLElement>("[data-help-topic-panel]");
+    topicPanels.forEach((panel) => {
+      const section = normalizeHelpSection(panel.dataset.helpTopicSection);
+      if (section === "home") {
+        panel.hidden = true;
+        return;
+      }
+
+      panel.hidden = !(activeHelpSection === section
+        && activeHelpTopics[section] === (panel.dataset.helpTopicPanel ?? ""));
+    });
+  }
+
+  function resetHelpCenter(): void {
+    helpCenterOpen = false;
+    activeHelpSection = "home";
+    activeHelpTopics.next = firstHelpTopicId("next");
+    activeHelpTopics.blocked = firstHelpTopicId("blocked");
+    activeHelpTopics.concepts = firstHelpTopicId("concepts");
+    renderHelpCenter();
+  }
+
+  function openHelpCenter(): void {
+    helpCenterOpen = true;
+    activeHelpSection = "home";
+    activeHelpTopics.next = firstHelpTopicId("next");
+    activeHelpTopics.blocked = firstHelpTopicId("blocked");
+    activeHelpTopics.concepts = firstHelpTopicId("concepts");
+    settingsMenu.open = false;
+    clockMenu.open = false;
+    clockDateActionOpen = false;
+    renderHelpCenter();
+  }
+
+  function closeHelpCenter(): void {
+    resetHelpCenter();
+  }
+
   syncSettingsMenuTheme();
   syncActivityPopupMode();
   syncClockTrigger();
+  renderHelpCenter();
   window.addEventListener("flightline:theme-changed", () => {
     syncSettingsMenuTheme();
   });
@@ -665,6 +773,43 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       return;
     }
 
+    const openHelpButton = target.closest<HTMLButtonElement>("[data-settings-open-help]");
+    if (openHelpButton) {
+      event.preventDefault();
+      openHelpCenter();
+      return;
+    }
+
+    const helpCloseButton = target.closest<HTMLElement>("[data-help-close]");
+    if (helpCloseButton) {
+      event.preventDefault();
+      closeHelpCenter();
+      return;
+    }
+
+    const helpSectionButton = target.closest<HTMLElement>("[data-help-section-tab]");
+    if (helpSectionButton) {
+      event.preventDefault();
+      setActiveHelpSection(normalizeHelpSection(helpSectionButton.dataset.helpSectionTab));
+      renderHelpCenter();
+      return;
+    }
+
+    const helpTopicButton = target.closest<HTMLElement>("[data-help-topic-button]");
+    if (helpTopicButton) {
+      event.preventDefault();
+      const section = normalizeHelpSection(helpTopicButton.dataset.helpTopicSection);
+      const topicId = helpTopicButton.dataset.helpTopicButton ?? "";
+      if (!topicId || section === "home") {
+        return;
+      }
+
+      activeHelpTopics[section] = topicId;
+      activeHelpSection = section;
+      renderHelpCenter();
+      return;
+    }
+
     const themeButton = target.closest<HTMLElement>("[data-settings-theme]");
     if (themeButton) {
       event.preventDefault();
@@ -782,6 +927,9 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   clockMenu.addEventListener("toggle", () => {
     if (clockMenu.open) {
       settingsMenu.open = false;
+      if (helpCenterOpen) {
+        closeHelpCenter();
+      }
       clockDateActionOpen = false;
       void loadClock(undefined, true);
       return;
@@ -799,6 +947,10 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
 
   window.addEventListener("keydown", (event: KeyboardEvent) => {
     if (event.key === "Escape") {
+      if (helpCenterOpen) {
+        closeHelpCenter();
+        return;
+      }
       if (settingsMenu.open) {
         settingsMenu.open = false;
       }

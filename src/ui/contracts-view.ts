@@ -85,29 +85,37 @@ function hasCoverageUnits(
   return (summary?.activeCoverageUnits ?? 0) >= unitsRequired;
 }
 
-function canAircraftOperateOffer(
+function hasReadyPilotCoverage(
+  staffingState: StaffingStateView | null,
+  qualificationGroup: string,
+  unitsRequired: number,
+): boolean {
+  if (unitsRequired <= 0) {
+    return true;
+  }
+
+  const readyQualifiedPilots = (staffingState?.namedPilots ?? []).filter((pilot) =>
+    pilot.packageStatus === "active"
+    && pilot.availabilityState === "ready"
+    && pilotCertificationsSatisfyQualificationGroup(pilot.certifications, qualificationGroup)
+  ).length;
+
+  return readyQualifiedPilots >= unitsRequired;
+}
+
+function canAircraftStructurallyOperateOffer(
   aircraft: FleetAircraftView,
   offer: ContractBoardView["offers"][number],
   originAirport: AirportRecord,
   destinationAirport: AirportRecord,
   distanceNm: number,
-  staffingState: StaffingStateView | null,
 ): boolean {
   const originAirportSize = originAirport.airportSize ?? 0;
   const destinationAirportSize = destinationAirport.airportSize ?? 0;
   const originRunwayFt = originAirport.longestHardRunwayFt ?? 0;
   const destinationRunwayFt = destinationAirport.longestHardRunwayFt ?? 0;
 
-  if (!["available", "delivered"].includes(aircraft.deliveryState) || aircraft.aogFlag) {
-    return false;
-  }
-
-  if (!hasCoverageUnits(staffingState, "pilot", aircraft.pilotQualificationGroup, aircraft.pilotsRequired)) {
-    return false;
-  }
-
-  if (offer.volumeType === "passenger" && aircraft.flightAttendantsRequired > 0
-    && !hasCoverageUnits(staffingState, "flight_attendant", "cabin_general", aircraft.flightAttendantsRequired)) {
+  if (!["available", "delivered"].includes(aircraft.deliveryState)) {
     return false;
   }
 
@@ -140,6 +148,46 @@ function canAircraftOperateOffer(
   return (offer.cargoWeightLb ?? 0) <= cargoCapacity;
 }
 
+function hasNominalCrewCoverage(
+  aircraft: FleetAircraftView,
+  offer: ContractBoardView["offers"][number],
+  staffingState: StaffingStateView | null,
+): boolean {
+  if (!hasCoverageUnits(staffingState, "pilot", aircraft.pilotQualificationGroup, aircraft.pilotsRequired)) {
+    return false;
+  }
+
+  if (
+    offer.volumeType === "passenger"
+    && aircraft.flightAttendantsRequired > 0
+    && !hasCoverageUnits(staffingState, "flight_attendant", "cabin_general", aircraft.flightAttendantsRequired)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function hasCurrentCrewReadiness(
+  aircraft: FleetAircraftView,
+  offer: ContractBoardView["offers"][number],
+  staffingState: StaffingStateView | null,
+): boolean {
+  if (!hasReadyPilotCoverage(staffingState, aircraft.pilotQualificationGroup, aircraft.pilotsRequired)) {
+    return false;
+  }
+
+  if (
+    offer.volumeType === "passenger"
+    && aircraft.flightAttendantsRequired > 0
+    && !hasCoverageUnits(staffingState, "flight_attendant", "cabin_general", aircraft.flightAttendantsRequired)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function deriveOfferFitBucket(
   offer: ContractBoardView["offers"][number],
   airportMap: Map<string, AirportRecord>,
@@ -156,20 +204,23 @@ function deriveOfferFitBucket(
   }
 
   const distanceNm = haversineDistanceNm(originAirport, destinationAirport);
-  const compatibleAircraft = fleetAircraft.filter((aircraft) =>
-    canAircraftOperateOffer(aircraft, offer, originAirport, destinationAirport, distanceNm, staffingState));
-  const dispatchReadyAircraft = compatibleAircraft.filter((aircraft) => aircraft.dispatchAvailable);
+  const structurallyCompatibleAircraft = fleetAircraft.filter((aircraft) =>
+    canAircraftStructurallyOperateOffer(aircraft, offer, originAirport, destinationAirport, distanceNm));
+  const crewCompatibleAircraft = structurallyCompatibleAircraft.filter((aircraft) =>
+    hasNominalCrewCoverage(aircraft, offer, staffingState));
+  const currentlyOperableAircraft = crewCompatibleAircraft.filter((aircraft) =>
+    aircraft.dispatchAvailable && hasCurrentCrewReadiness(aircraft, offer, staffingState));
 
-  if (dispatchReadyAircraft.some((aircraft) => aircraft.currentAirportId === offer.originAirportId)) {
+  if (currentlyOperableAircraft.some((aircraft) => aircraft.currentAirportId === offer.originAirportId)) {
     return "flyable_now";
   }
 
-  if (dispatchReadyAircraft.length > 0) {
+  if (currentlyOperableAircraft.length > 0) {
     return "flyable_with_reposition";
   }
 
-  if (compatibleAircraft.length > 0) {
-    return "stretch_growth";
+  if (crewCompatibleAircraft.length > 0) {
+    return "blocked_now";
   }
 
   return fallbackFitBucket === "blocked_now" ? "blocked_now" : "stretch_growth";

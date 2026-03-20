@@ -6,6 +6,7 @@
  */
 
 import type { AirportId, CompanyContractId, JsonObject } from "../../domain/common/primitives.js";
+import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
 import type { FlightLegType, ValidationMessage } from "../../domain/dispatch/types.js";
 import type { LaborCategory } from "../../domain/staffing/types.js";
 import { requiredCertificationForQualificationGroup } from "../../domain/staffing/pilot-certifications.js";
@@ -67,6 +68,11 @@ interface MaintenanceProgramRow extends Record<string, unknown> {
 
 interface OverlappingScheduleRow extends Record<string, unknown> {
   scheduleId: string;
+}
+
+interface CompetingDraftContractRow extends Record<string, unknown> {
+  scheduleId: string;
+  aircraftId: string;
 }
 
 interface StaffingPackageRow extends Record<string, unknown> {
@@ -147,6 +153,18 @@ function minutesBetween(startUtc: string, endUtc: string): number {
 
 function hoursBetween(startUtc: string, endUtc: string): number {
   return minutesBetween(startUtc, endUtc) / 60;
+}
+
+function compareCanonicalUtc(leftUtc: string, rightUtc: string): number {
+  if (leftUtc < rightUtc) {
+    return -1;
+  }
+
+  if (leftUtc > rightUtc) {
+    return 1;
+  }
+
+  return 0;
 }
 
 function haversineDistanceNm(origin: AirportRecord, destination: AirportRecord): number {
@@ -305,6 +323,43 @@ export function validateProposedSchedule(
     pushMessage(messages, "blocker", "schedule.empty", "A schedule must contain at least one leg.");
   }
 
+  const normalizedProposedLegs = proposedSchedule.legs.map((leg, index) => {
+    const legKey = `leg_${index + 1}`;
+    const normalizedDepartureUtc = normalizeUtcTimestamp(leg.plannedDepartureUtc);
+    const normalizedArrivalUtc = normalizeUtcTimestamp(leg.plannedArrivalUtc);
+
+    if (!normalizedDepartureUtc) {
+      pushMessage(
+        messages,
+        "blocker",
+        "leg.invalid_timestamp",
+        "Planned departure must be a valid UTC timestamp.",
+        legKey,
+      );
+    }
+
+    if (!normalizedArrivalUtc) {
+      pushMessage(
+        messages,
+        "blocker",
+        "leg.invalid_timestamp",
+        "Planned arrival must be a valid UTC timestamp.",
+        legKey,
+      );
+    }
+
+    if (!normalizedDepartureUtc || !normalizedArrivalUtc) {
+      return null;
+    }
+
+    return {
+      ...leg,
+      plannedDepartureUtc: normalizedDepartureUtc,
+      plannedArrivalUtc: normalizedArrivalUtc,
+    } satisfies ProposedScheduleLegInput;
+  });
+  const validProposedLegs = normalizedProposedLegs.filter((leg): leg is ProposedScheduleLegInput => leg !== null);
+
   const aircraftRow = dependencies.saveDatabase.getOne<CompanyAircraftRow>(
     `SELECT
       aircraft_id AS aircraftId,
@@ -339,8 +394,8 @@ export function validateProposedSchedule(
     pushMessage(messages, "blocker", "aircraft.model_missing", `Aircraft model ${aircraftRow.aircraftModelId} is missing from the reference catalog.`);
   }
 
-  const plannedStartUtc = proposedSchedule.legs[0]?.plannedDepartureUtc;
-  const plannedEndUtc = proposedSchedule.legs[proposedSchedule.legs.length - 1]?.plannedArrivalUtc;
+  const plannedStartUtc = normalizedProposedLegs[0]?.plannedDepartureUtc;
+  const plannedEndUtc = normalizedProposedLegs[normalizedProposedLegs.length - 1]?.plannedArrivalUtc;
 
   if (plannedStartUtc && plannedEndUtc) {
     const overlappingSchedule = dependencies.saveDatabase.getOne<OverlappingScheduleRow>(
@@ -400,7 +455,7 @@ export function validateProposedSchedule(
     pushMessage(messages, "blocker", "maintenance.overdue", `Aircraft ${proposedSchedule.aircraftId} is past a hard maintenance threshold.`);
   }
 
-  const contractIds = proposedSchedule.legs
+  const contractIds = validProposedLegs
     .map((leg) => leg.linkedCompanyContractId)
     .filter((contractId): contractId is string => typeof contractId === "string");
   const uniqueContractIds = [...new Set(contractIds)];
@@ -441,7 +496,7 @@ export function validateProposedSchedule(
   let totalDistanceNm = 0;
   let totalBlockHours = 0;
 
-  proposedSchedule.legs.forEach((leg, index) => {
+  validProposedLegs.forEach((leg, index) => {
     const sequenceNumber = index + 1;
     const legKey = `leg_${sequenceNumber}`;
     const originAirport = dependencies.airportReference.findAirport(leg.originAirportId);
@@ -474,7 +529,7 @@ export function validateProposedSchedule(
         pushMessage(messages, "blocker", "leg.continuity", "Leg continuity is broken between consecutive legs.", legKey);
       }
 
-      if (leg.plannedDepartureUtc < previousLeg.plannedArrivalUtc) {
+      if (compareCanonicalUtc(leg.plannedDepartureUtc, previousLeg.plannedArrivalUtc) < 0) {
         pushMessage(messages, "blocker", "leg.overlap", "Leg times overlap or run backward.", legKey);
       }
     }
@@ -550,15 +605,44 @@ export function validateProposedSchedule(
           pushMessage(messages, "blocker", "contract.assigned_elsewhere", `Contract ${contract.companyContractId} is already assigned to another aircraft.`, legKey);
         }
 
+        const competingDraft = dependencies.saveDatabase.getOne<CompetingDraftContractRow>(
+          `SELECT
+            s.schedule_id AS scheduleId,
+            s.aircraft_id AS aircraftId
+          FROM flight_leg AS fl
+          JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
+          WHERE fl.linked_company_contract_id = $company_contract_id
+            AND s.is_draft = 1
+            AND s.schedule_state IN ('draft', 'blocked')
+            AND s.schedule_id <> $schedule_id
+            AND s.aircraft_id <> $aircraft_id
+          LIMIT 1`,
+          {
+            $company_contract_id: contract.companyContractId,
+            $schedule_id: proposedSchedule.scheduleId ?? "__new_schedule__",
+            $aircraft_id: proposedSchedule.aircraftId,
+          },
+        );
+
+        if (competingDraft) {
+          pushMessage(
+            messages,
+            "blocker",
+            "contract.planned_elsewhere",
+            `Contract ${contract.companyContractId} is already attached to another aircraft draft.`,
+            legKey,
+          );
+        }
+
         if (contract.originAirportId !== leg.originAirportId || contract.destinationAirportId !== leg.destinationAirportId) {
           pushMessage(messages, "blocker", "contract.route_mismatch", `Contract ${contract.companyContractId} does not match the leg route.`, legKey);
         }
 
-        if (contract.earliestStartUtc && leg.plannedDepartureUtc < contract.earliestStartUtc) {
+        if (contract.earliestStartUtc && compareCanonicalUtc(leg.plannedDepartureUtc, contract.earliestStartUtc) < 0) {
           pushMessage(messages, "blocker", "contract.earliest_start", `Leg departs before contract ${contract.companyContractId} may begin.`, legKey);
         }
 
-        if (leg.plannedArrivalUtc > contract.deadlineUtc) {
+        if (compareCanonicalUtc(leg.plannedArrivalUtc, contract.deadlineUtc) > 0) {
           pushMessage(messages, "blocker", "contract.deadline", `Leg arrives after contract ${contract.companyContractId} deadline.`, legKey);
         } else if (hoursBetween(leg.plannedArrivalUtc, contract.deadlineUtc) < 2) {
           pushMessage(messages, "warning", "contract.tight_deadline", `Leg leaves little margin before contract ${contract.companyContractId} deadline.`, legKey);

@@ -4,7 +4,7 @@
 
 Use this brief when handing new development work to Mara Sterling.
 
-This is the standard front door for non-trivial FlightLine work.
+This is the standard front door for non-trivial FlightLine work when the artifact is a request waiting for Mara framing.
 
 If the task is already small, clear, contained, and easy to validate, it may go directly to Eli or stay in `Single-Agent Mode`.
 If that is not clearly true, start here.
@@ -14,10 +14,12 @@ If that is not clearly true, start here.
 - Fill in what you know.
 - Mark unknowns directly instead of faking precision.
 - Use one brief per task or per intended workstream.
+- If the work starts as a broader product capability from you and Zoe, Mara should convert that capability into bounded feature or workstream framing before Eli receives implementation work.
 - For bugs that should be tracked durably, open or reference a GitHub issue first. The issue is the source of truth; this brief is for Mara framing when needed.
 - Include concrete evidence when possible.
 - Do not pre-decide the implementation unless the design choice itself is what needs review.
-- Store filled briefs in `../intake-briefs/incoming/` if you want a persistent on-disk intake inbox.
+- Store raw request briefs in `product-work/requests/` if you want a persistent on-disk inbox.
+- Store capability briefs from you and Zoe in `product-work/capabilities/`.
 - See `flightline_task_intake_brief_example.md` for one realistic filled example.
 
 ## Intake Brief Template
@@ -41,6 +43,8 @@ If that is not clearly true, start here.
 ## Mara's Required Response
 
 Mara should convert the intake into a decision-ready framing response.
+
+If the intake is really a capability brief rather than a ready feature request, Mara should first reduce it into one or more bounded feature streams instead of handing the capability straight to Eli.
 
 That response should include:
 

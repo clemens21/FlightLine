@@ -5,6 +5,14 @@
  * the browser controller is wrong, because many "logic bugs" in the UI are really shell-level layout issues.
  */
 
+import {
+  getHelpCenterTopic,
+  getHelpCenterTopicsForSection,
+  helpCenterHomeShortcutGroups,
+  helpCenterSections,
+  type HelpCenterSectionId,
+  type HelpCenterTopic,
+} from "./help-center-content.js";
 import type { SavePageTab } from "./save-shell-model.js";
 
 function escapeHtml(value: string): string {
@@ -14,6 +22,168 @@ function escapeHtml(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function renderHelpCenterSectionTabs(): string {
+  return helpCenterSections.map((section, index) => {
+    const isCurrent = index === 0;
+    return `<button
+      type="button"
+      class="help-section-button${isCurrent ? " current" : ""}"
+      data-help-section-tab="${escapeHtml(section.id)}"
+      aria-selected="${isCurrent ? "true" : "false"}"
+    >
+      <strong>${escapeHtml(section.label)}</strong>
+      <span class="muted">${escapeHtml(section.description)}</span>
+    </button>`;
+  }).join("");
+}
+
+function renderHelpTopicButton(topic: HelpCenterTopic, isCurrent: boolean, className = "help-topic-button"): string {
+  return `<button
+    type="button"
+    class="${className}${isCurrent ? " current" : ""}"
+    data-help-topic-button="${escapeHtml(topic.id)}"
+    data-help-topic-section="${escapeHtml(topic.sectionId)}"
+    aria-current="${isCurrent ? "true" : "false"}"
+  >
+    <strong>${escapeHtml(topic.title)}</strong>
+    <span class="muted">${escapeHtml(topic.summary)}</span>
+  </button>`;
+}
+
+function renderHelpRelatedTopics(topic: HelpCenterTopic): string {
+  const relatedButtons = topic.relatedTopicIds.map((relatedTopicId) => {
+    const relatedTopic = getHelpCenterTopic(relatedTopicId);
+    if (!relatedTopic) {
+      return "";
+    }
+
+    return renderHelpTopicButton(relatedTopic, false, "help-related-topic");
+  }).join("");
+
+  if (!relatedButtons) {
+    return "";
+  }
+
+  return `<section class="help-article-section">
+    <h4>Related topics</h4>
+    <div class="help-related-topics">${relatedButtons}</div>
+  </section>`;
+}
+
+function renderHelpArticle(topic: HelpCenterTopic, isCurrent: boolean): string {
+  const sectionLabel = helpCenterSections.find((section) => section.id === topic.sectionId)?.label ?? topic.sectionId;
+  return `<article
+    class="help-article"
+    data-help-topic-panel="${escapeHtml(topic.id)}"
+    data-help-topic-section="${escapeHtml(topic.sectionId)}"
+    ${isCurrent ? "" : "hidden"}
+  >
+    <header class="help-article-head">
+      <div class="eyebrow">${escapeHtml(sectionLabel)}</div>
+      <h3>${escapeHtml(topic.title)}</h3>
+      <p>${escapeHtml(topic.summary)}</p>
+    </header>
+    <section class="help-article-section">
+      <h4>What this is</h4>
+      <p>${escapeHtml(topic.whatThisIs)}</p>
+    </section>
+    <section class="help-article-section">
+      <h4>Why you might be stuck</h4>
+      <ul class="help-list">
+        ${topic.whyYouMightBeStuck.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
+      </ul>
+    </section>
+    <section class="help-article-section">
+      <h4>What to do next</h4>
+      <ol class="help-steps">
+        ${topic.whatToDoNext.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
+      </ol>
+    </section>
+    <section class="help-article-section">
+      <h4>Where to go</h4>
+      <ul class="help-list">
+        ${topic.whereToGo.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}
+      </ul>
+    </section>
+    ${renderHelpRelatedTopics(topic)}
+  </article>`;
+}
+
+function renderHelpCenterHome(): string {
+  const shortcutGroups = helpCenterHomeShortcutGroups.map((group) => {
+    const shortcutButtons = group.topicIds.map((topicId) => {
+      const topic = getHelpCenterTopic(topicId);
+      if (!topic) {
+        return "";
+      }
+
+      return renderHelpTopicButton(topic, false, "help-home-shortcut");
+    }).join("");
+
+    return `<section class="help-home-group">
+      <div class="help-home-group-head">
+        <h3>${escapeHtml(group.title)}</h3>
+        <p>${escapeHtml(group.description)}</p>
+      </div>
+      <div class="help-home-shortcuts">${shortcutButtons}</div>
+    </section>`;
+  }).join("");
+
+  return `<section class="help-section-panel help-home-panel" data-help-section-panel="home">
+    <section class="help-home-hero">
+      <div class="eyebrow">Help Home</div>
+      <h2>Need a quick recovery path?</h2>
+      <p>Start with a short guide, not a manual. This Help Center is here to tell you what FlightLine is asking for next, why you may be blocked, and which workspace should solve the problem.</p>
+    </section>
+    <section class="help-home-note">
+      <strong>First-pass scope</strong>
+      <span class="muted">This is a small player-facing reference for the current slice. It explains Contracts, Aircraft, Staff, Dispatch, Time Advance, Calendar, and Cash without trying to document every hidden rule.</span>
+    </section>
+    <div class="help-home-groups">${shortcutGroups}</div>
+  </section>`;
+}
+
+function renderHelpTopicSection(sectionId: Exclude<HelpCenterSectionId, "home">): string {
+  const topics = getHelpCenterTopicsForSection(sectionId);
+  const firstTopicId = topics[0]?.id ?? "";
+
+  return `<section class="help-section-panel help-topic-section" data-help-section-panel="${escapeHtml(sectionId)}" hidden>
+    <nav class="help-topic-list" aria-label="${escapeHtml(sectionId)} help topics">
+      ${topics.map((topic, index) => renderHelpTopicButton(topic, index === 0)).join("")}
+    </nav>
+    <div class="help-article-region">
+      ${topics.map((topic, index) => renderHelpArticle(topic, index === 0 && topic.id === firstTopicId)).join("")}
+    </div>
+  </section>`;
+}
+
+function renderHelpCenterOverlay(): string {
+  return `<section class="help-center-overlay" data-help-center hidden>
+    <button type="button" class="help-center-backdrop" data-help-close aria-label="Close Help Center"></button>
+    <div class="help-center-dialog" role="dialog" aria-modal="true" aria-labelledby="help-center-title">
+      <header class="help-center-head">
+        <div class="help-center-copy">
+          <div class="eyebrow">Help Center</div>
+          <h2 id="help-center-title">Help Center</h2>
+          <p>Short player-facing guidance for what to do next, why you may be blocked, and what the current slice is trying to tell you.</p>
+        </div>
+        <button type="button" class="button-secondary help-center-close" data-help-close>Close</button>
+      </header>
+      <div class="help-center-body">
+        <aside class="help-section-nav" aria-label="Help sections">
+          ${renderHelpCenterSectionTabs()}
+        </aside>
+        <div class="help-center-content">
+          ${renderHelpCenterHome()}
+          ${renderHelpTopicSection("next")}
+          ${renderHelpTopicSection("blocked")}
+          ${renderHelpTopicSection("concepts")}
+        </div>
+      </div>
+    </div>
+  </section>`;
 }
 
 export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab, saveShellClientAssetPath: string): string {
@@ -450,6 +620,246 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-color: var(--accent);
       background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel));
     }
+    .help-center-overlay {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      z-index: 30;
+    }
+    .help-center-backdrop {
+      position: absolute;
+      inset: 0;
+      border: 0;
+      padding: 0;
+      background: rgba(22, 29, 36, 0.18);
+      backdrop-filter: blur(10px);
+      cursor: pointer;
+    }
+    .help-center-dialog {
+      position: relative;
+      width: min(1080px, calc(100vw - 80px));
+      height: min(760px, calc(100vh - 80px));
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel-strong) 96%, transparent);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+      overflow: hidden;
+    }
+    .help-center-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 22px 24px 18px;
+      border-bottom: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 70%, transparent);
+    }
+    .help-center-copy {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .help-center-copy h2 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.05;
+    }
+    .help-center-copy p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 760px;
+    }
+    .help-center-close,
+    body[data-theme="dark"] .help-center-close,
+    body[data-theme="forest"] .help-center-close {
+      box-shadow: none;
+      min-width: 96px;
+      justify-content: center;
+    }
+    .help-center-body {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+    }
+    .help-section-nav {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      gap: 10px;
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 72%, transparent);
+      align-content: start;
+    }
+    .help-section-button,
+    body[data-theme="dark"] .help-section-button,
+    body[data-theme="forest"] .help-section-button {
+      width: 100%;
+      display: grid;
+      gap: 4px;
+      justify-items: start;
+      text-align: left;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: none;
+    }
+    .help-section-button.current {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 60%, var(--panel));
+    }
+    .help-center-content {
+      min-height: 0;
+      position: relative;
+    }
+    .help-section-panel {
+      min-height: 0;
+      height: 100%;
+    }
+    .help-home-panel {
+      overflow: auto;
+      display: grid;
+      gap: 18px;
+      padding: 20px 24px 24px;
+      align-content: start;
+    }
+    .help-home-hero,
+    .help-home-note,
+    .help-home-group {
+      display: grid;
+      gap: 10px;
+      padding: 18px 20px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .help-home-hero h2,
+    .help-home-group h3 {
+      margin: 0;
+    }
+    .help-home-hero p,
+    .help-home-group p,
+    .help-home-note span {
+      margin: 0;
+      color: var(--muted);
+    }
+    .help-home-groups {
+      display: grid;
+      gap: 16px;
+    }
+    .help-home-shortcuts {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .help-topic-section {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(260px, 0.4fr) minmax(0, 0.6fr);
+    }
+    .help-topic-list {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      gap: 10px;
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 72%, transparent);
+      align-content: start;
+    }
+    .help-topic-button,
+    .help-home-shortcut,
+    .help-related-topic,
+    body[data-theme="dark"] .help-topic-button,
+    body[data-theme="dark"] .help-home-shortcut,
+    body[data-theme="dark"] .help-related-topic,
+    body[data-theme="forest"] .help-topic-button,
+    body[data-theme="forest"] .help-home-shortcut,
+    body[data-theme="forest"] .help-related-topic {
+      width: 100%;
+      display: grid;
+      gap: 4px;
+      justify-items: start;
+      text-align: left;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      color: var(--text);
+      box-shadow: none;
+    }
+    .help-topic-button.current,
+    .help-home-shortcut.current,
+    .help-related-topic.current {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 60%, var(--panel));
+    }
+    .help-related-topic {
+      width: auto;
+      justify-items: start;
+      padding: 10px 12px;
+      border-radius: 999px;
+    }
+    .help-article-region {
+      min-height: 0;
+      overflow: auto;
+      padding: 20px 24px 24px;
+    }
+    .help-article {
+      display: grid;
+      gap: 18px;
+      align-content: start;
+    }
+    .help-article-head {
+      display: grid;
+      gap: 8px;
+    }
+    .help-article-head h3 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.05;
+    }
+    .help-article-head p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .help-article-section {
+      display: grid;
+      gap: 10px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .help-article-section h4 {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .help-article-section p {
+      margin: 0;
+    }
+    .help-list,
+    .help-steps {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 18px;
+    }
+    .help-related-topics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
     .tabbar { display: flex; gap: 10px; overflow: auto; padding: 2px 2px 4px; flex: 0 0 auto; }
     .tab-link { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; padding: 10px 14px; border: 1px solid var(--line); border-radius: 999px; color: inherit; text-decoration: none; background: var(--panel); white-space: nowrap; }
     .tab-link.current { border-color: var(--accent); background: var(--accent-soft); }
@@ -542,6 +952,124 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .badge.danger { background: var(--danger-soft); color: var(--danger); }
     .route { font-weight: 600; }
     .meta-stack { display: grid; gap: 4px; }
+    .staff-identity {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 4px;
+      align-items: center;
+      min-width: 0;
+    }
+    .staff-identity-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+      min-width: 0;
+    }
+    .staff-portrait-frame {
+      display: inline-flex;
+      width: 6px;
+      height: 6px;
+      min-width: 6px;
+      min-height: 6px;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 86%, white), var(--panel));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.28);
+      flex: 0 0 auto;
+      line-height: 0;
+      vertical-align: middle;
+    }
+    .staff-portrait-frame.detail {
+      width: 14px;
+      height: 14px;
+      min-width: 14px;
+      min-height: 14px;
+      border-radius: 999px;
+    }
+    .staff-portrait-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      flex: 0 0 auto;
+    }
+    .ghost-button {
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--muted);
+      padding: 8px 12px;
+      border-radius: 999px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .staffing-hire-workspace {
+      min-height: 0;
+      height: 100%;
+    }
+    .staffing-hire-stage {
+      position: relative;
+      min-height: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    .staffing-hire-table-panel {
+      min-height: 0;
+      flex: 1 1 auto;
+    }
+    .staffing-hire-table-body {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .staffing-hire-market-list {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
+    .staffing-hire-overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      z-index: 4;
+    }
+    .staffing-hire-overlay[hidden] {
+      display: none;
+    }
+    .staffing-hire-overlay-backdrop {
+      appearance: none;
+      position: absolute;
+      inset: 0;
+      border: 0;
+      border-radius: inherit;
+      margin: 0;
+      padding: 0;
+      background: rgba(6, 10, 16, 0.02);
+      box-shadow: none;
+      color: transparent;
+      font-size: 0;
+      line-height: 0;
+      backdrop-filter: blur(4px) saturate(0.96);
+      -webkit-backdrop-filter: blur(4px) saturate(0.96);
+      cursor: pointer;
+    }
+    body[data-theme="dark"] .staffing-hire-overlay-backdrop,
+    body[data-theme="forest"] .staffing-hire-overlay-backdrop {
+      background: rgba(6, 10, 16, 0.04);
+    }
+    .staffing-hire-overlay-card {
+      position: relative;
+      z-index: 1;
+      width: min(640px, calc(100% - 48px));
+      max-height: calc(100% - 48px);
+      overflow: hidden;
+    }
     .summary-list { display: grid; gap: 12px; }
     .summary-item {
       padding: 12px 14px;
@@ -903,6 +1431,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-workspace-body {
       min-height: 0;
+      height: 100%;
+      display: grid;
       overflow: hidden;
     }
     .staffing-workspace-host,
@@ -919,6 +1449,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staffing-workspace-shell {
       display: grid;
+      grid-template-rows: minmax(0, 1fr);
       overflow: hidden;
     }
     .aircraft-workbench {
@@ -1388,6 +1919,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .shell-root { height: auto; min-height: 100vh; padding: 18px; }
       .shell-frame { height: auto; }
       .shell-topbar { grid-template-columns: 1fr; }
+      .help-center-overlay { padding: 18px; }
+      .help-center-dialog {
+        width: min(1080px, calc(100vw - 36px));
+        height: min(760px, calc(100vh - 36px));
+      }
+      .help-center-body,
+      .help-topic-section {
+        grid-template-columns: 1fr;
+      }
+      .help-section-nav,
+      .help-topic-list {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
       .tab-surface { min-height: 60vh; }
       .aircraft-tab-grid,
       .aircraft-workbench,
@@ -1439,6 +1984,22 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
     }
     @media (max-width: 760px) {
+      .help-center-overlay { padding: 12px; }
+      .help-center-dialog {
+        width: calc(100vw - 24px);
+        height: calc(100vh - 24px);
+      }
+      .help-center-head {
+        padding: 18px;
+        grid-auto-flow: row;
+      }
+      .help-home-panel,
+      .help-article-region {
+        padding: 16px;
+      }
+      .help-home-shortcuts {
+        grid-template-columns: 1fr;
+      }
       .dispatch-aircraft-strip {
         grid-template-columns: 1fr;
       }
@@ -1502,6 +2063,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
                 <div class="settings-meta-row"><span class="muted">Activity popups</span><strong data-settings-popup-label>Loading...</strong></div>
               </div>
               <div class="settings-actions">
+                <button class="settings-action" type="button" data-settings-open-help>Open Help Center</button>
                 <button class="settings-action" type="button" data-settings-open-activity>Open activity log</button>
                 <button class="settings-action" type="button" data-settings-popup-mode-toggle>Activity popups: Loading...</button>
                 <button class="settings-action" type="button" data-settings-theme>Theme: Loading...</button>
@@ -1517,6 +2079,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         <div class="tab-panel" data-shell-tab-panel></div>
       </section>
     </section>
+    ${renderHelpCenterOverlay()}
     <script type="application/json" data-shell-config>${configJson}</script>
   </main>
   <script>

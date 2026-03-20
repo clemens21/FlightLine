@@ -1,6 +1,6 @@
-# FlightLine Task Intake Brief
+# FlightLine Request Brief
 
-Use this file as a starting point for new non-trivial work routed to Mara Sterling.
+Use this file as a starting point for new raw requests routed to Mara Sterling.
 
 Rename the file using the normal convention:
 
@@ -10,7 +10,9 @@ Example:
 
 `2026-03-17_maintenance-reload-state-mismatch.md`
 
-## Task Intake Brief
+Store the finished file in `product-work/requests/`.
+
+## Request Brief
 
 - Request title:
 - Request type: `bug`, `feature`, `refactor`, `investigation`, `review`, or `automation follow-up`
@@ -33,3 +35,4 @@ Example:
 - Mark unknowns directly instead of guessing.
 - Keep the brief focused on one task or intended workstream.
 - If the task is trivial, this brief is probably unnecessary.
+- If the work is really a broader player-facing capability, start with a capability brief in `product-work/capabilities/` instead.

@@ -254,6 +254,24 @@ try {
 
     routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
     assert.ok(routePlan);
+    assert.equal(routePlan.items[0]?.plannerItemStatus, "accepted_ready");
+    assert.equal(routePlan.items[0]?.linkedScheduleId, undefined);
+    assert.equal(routePlan.items[0]?.linkedAircraftId, undefined);
+
+    const commitResult = await backend.dispatch({
+      commandId: `cmd_${saveId}_commit_bound_route_plan`,
+      saveId,
+      commandName: "CommitAircraftSchedule",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        scheduleId: bindResult.scheduleId,
+      },
+    });
+    assert.equal(commitResult.success, true);
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
     assert.equal(routePlan.items[0]?.plannerItemStatus, "scheduled");
     assert.equal(routePlan.items[0]?.linkedScheduleId, bindResult.scheduleId);
     assert.equal(routePlan.items[0]?.linkedAircraftId, fleetState.aircraft[0].aircraftId);

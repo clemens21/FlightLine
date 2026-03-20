@@ -1,5 +1,11 @@
 # Dispatch Assignment-First UI
 
+## Status
+
+This brief is now superseded by [2026-03-18_dispatch-assignment-and-readiness-capability.md](/Z:/projects/FlightLine/product-work/capabilities/2026-03-18_dispatch-assignment-and-readiness-capability.md).
+
+Keep this file as a narrower historical step in the Dispatch design evolution, not as the primary live implementation direction.
+
 ## Purpose
 
 This brief narrows the first useful Dispatch cleanup around the player jobs that matter most right now.
@@ -9,9 +15,9 @@ It is not implementation authorization on its own.
 
 Related upstream artifacts:
 
-- [2026-03-17_dispatch-workspace-revitalization.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/completed/2026-03-17_dispatch-workspace-revitalization.md)
-- [2026-03-17_dispatch-workspace-revitalization_framed-delivery.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/completed/2026-03-17_dispatch-workspace-revitalization_framed-delivery.md)
-- [2026-03-17_named-pilot-time-advance-minimum-support.md](/Z:/projects/FlightLine/agent%20stuff/intake-briefs/design-briefs/2026-03-17_named-pilot-time-advance-minimum-support.md)
+- [2026-03-17_dispatch-workspace-revitalization.md](/Z:/projects/FlightLine/product-work/completed/2026-03-17_dispatch-workspace-revitalization.md)
+- [2026-03-17_dispatch-workspace-revitalization_framed-delivery.md](/Z:/projects/FlightLine/product-work/completed/2026-03-17_dispatch-workspace-revitalization_framed-delivery.md)
+- [2026-03-17_named-pilot-time-advance-minimum-support.md](/Z:/projects/FlightLine/product-work/completed/2026-03-17_named-pilot-time-advance-minimum-support.md)
 
 ## 1. Main Conclusion
 

@@ -10,6 +10,20 @@ import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../dist/index.js";
 
+const startupStartingCashAmount = 3_500_000;
+
+function deriveFinancialPressureBand(currentCashAmount) {
+  if (currentCashAmount < 250_000) {
+    return "stressed";
+  }
+
+  if (currentCashAmount < 1_000_000) {
+    return "tight";
+  }
+
+  return "stable";
+}
+
 function addDays(utcIsoString, days) {
   return new Date(new Date(utcIsoString).getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
@@ -48,10 +62,47 @@ try {
     payload: {
       displayName: "Aircraft Market Lifecycle",
       starterAirportId: "KDEN",
-      startingCashAmount: 50_000_000,
+      startingCashAmount: startupStartingCashAmount,
     },
   });
   assert.equal(createCompanyResult.success, true);
+
+  await backend.withExistingSaveDatabase(saveId, async (context) => {
+    const companyRow = context.saveDatabase.getOne(
+      "SELECT active_company_id AS companyId FROM save_game WHERE save_id = $save_id LIMIT 1",
+      { $save_id: saveId },
+    );
+    assert.ok(companyRow?.companyId);
+
+    context.saveDatabase.run(
+      `UPDATE company_financial_state
+       SET current_cash_amount = $current_cash_amount,
+           financial_pressure_band = $financial_pressure_band,
+           updated_at_utc = $updated_at_utc
+       WHERE company_id = $company_id`,
+      {
+        $current_cash_amount: 50_000_000,
+        $financial_pressure_band: deriveFinancialPressureBand(50_000_000),
+        $updated_at_utc: startedAtUtc,
+        $company_id: companyRow.companyId,
+      },
+    );
+
+    context.saveDatabase.run(
+      `UPDATE ledger_entry
+       SET amount = $amount
+       WHERE company_id = $company_id
+         AND entry_type = 'initial_capital'
+         AND source_object_type = 'company'
+         AND source_object_id = $company_id`,
+      {
+        $amount: 50_000_000,
+        $company_id: companyRow.companyId,
+      },
+    );
+
+    await context.saveDatabase.persist();
+  });
 
   const initialMarket = await backend.loadActiveAircraftMarket(saveId);
   assert.ok(initialMarket);

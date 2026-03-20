@@ -80,8 +80,6 @@ export async function handleSaveScheduleDraft(
 
   const scheduleId = command.payload.scheduleId ?? createPrefixedId("schedule");
   const scheduleKind = command.payload.scheduleKind ?? "operational";
-  const plannedStartUtc = command.payload.legs[0]!.plannedDepartureUtc;
-  const plannedEndUtc = command.payload.legs[command.payload.legs.length - 1]!.plannedArrivalUtc;
   const validation = validateProposedSchedule(
     {
       scheduleId,
@@ -97,6 +95,8 @@ export async function handleSaveScheduleDraft(
       currentTimeUtc: companyContext.currentTimeUtc,
     },
   );
+  const plannedStartUtc = validation.resolvedLegs[0]?.plannedDepartureUtc;
+  const plannedEndUtc = validation.resolvedLegs[validation.resolvedLegs.length - 1]?.plannedArrivalUtc;
 
   const hardBlockers = validation.snapshot.validationMessages
     .filter((message) => message.severity === "blocker")
@@ -104,6 +104,7 @@ export async function handleSaveScheduleDraft(
   const warnings = validation.snapshot.validationMessages
     .filter((message) => message.severity === "warning")
     .map((message) => message.summary);
+  const hasInvalidTimestampBlocker = validation.snapshot.validationMessages.some((message) => message.code === "leg.invalid_timestamp");
 
   const existingDraft = command.payload.scheduleId
     ? dependencies.saveDatabase.getOne<ExistingDraftRow>(
@@ -128,6 +129,19 @@ export async function handleSaveScheduleDraft(
       validationMessages: [`Draft schedule ${scheduleId} was not found for aircraft ${command.payload.aircraftId}.`],
       hardBlockers: [`Draft schedule ${scheduleId} was not found for aircraft ${command.payload.aircraftId}.`],
       warnings: [],
+      emittedEventIds: [],
+      emittedLedgerEntryIds: [],
+    };
+  }
+
+  if (hasInvalidTimestampBlocker || !plannedStartUtc || !plannedEndUtc) {
+    return {
+      success: false,
+      commandId: command.commandId,
+      changedAggregateIds: [],
+      validationMessages: [...hardBlockers, ...warnings],
+      hardBlockers,
+      warnings,
       emittedEventIds: [],
       emittedLedgerEntryIds: [],
     };
