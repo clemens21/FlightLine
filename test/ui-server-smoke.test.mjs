@@ -407,6 +407,8 @@ try {
   assert.equal(plannerAddResult.payload.success, true);
   assert.ok(plannerAddResult.payload.payload.routePlan);
   assert.equal(plannerAddResult.payload.payload.routePlan.items.length, 1);
+
+  const routePlanItem = plannerAddResult.payload.payload.routePlan.items[0];
   const secondOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId !== selectedOffer.contractOfferId);
   assert.ok(secondOffer);
   const plannerAddSecondResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/add`, {
@@ -418,8 +420,6 @@ try {
   assert.ok(plannerAddSecondResult.payload.payload.routePlan);
   assert.equal(plannerAddSecondResult.payload.payload.routePlan.items.length, 2);
 
-
-  const routePlanItem = plannerAddResult.payload.payload.routePlan.items[0];
   const plannerAcceptResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/accept`, {
     routePlanItemId: routePlanItem.routePlanItemId,
   });
@@ -435,9 +435,9 @@ try {
   assert.equal(dispatchTab.tabId, "dispatch");
   assert.equal(dispatchTab.contentHtml.includes("data-dispatch-tab-host"), true);
   assert.ok(dispatchTab.dispatchPayload);
-  assert.equal(dispatchTab.dispatchPayload.workInputs.routePlanItems.length >= 2, true);
   assert.equal(dispatchTab.dispatchPayload.aircraft.length, 4);
   assert.equal(dispatchTab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft), true);
+  assert.equal(dispatchTab.dispatchPayload.workInputs.routePlanItems.length >= 2, true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedContracts.length >= 1, true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedReadyCount >= 1, true);
   const committedDispatchAircraft = dispatchTab.dispatchPayload.aircraft.find((aircraft) => aircraft.registration === "N208HT");
@@ -561,5 +561,4 @@ try {
   ]);
   await removeWorkspaceSave(saveId);
 }
-
 
