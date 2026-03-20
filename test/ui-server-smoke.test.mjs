@@ -309,6 +309,17 @@ try {
   assert.equal(staffingTab.contentHtml.includes("Contract hire"), true);
   assert.equal(staffingTab.contentHtml.includes("Immediate hire"), false);
   assert.equal(staffingTab.contentHtml.includes("Contract end"), true);
+  const hireDetailBodyMatch = staffingTab.contentHtml.match(/data-staffing-detail-body="hire"[^>]*>([\s\S]*?)<\/div><div hidden data-staffing-detail-bank="hire">/);
+  assert.ok(hireDetailBodyMatch?.[1]);
+  const hireDetailHtml = hireDetailBodyMatch[1];
+  assert.equal(hireDetailHtml.includes("Hiring brief"), false);
+  assert.equal(hireDetailHtml.includes("Pilot candidate"), false);
+  assert.equal(hireDetailHtml.includes("Coverage posture"), false);
+  assert.equal(hireDetailHtml.includes("Open-ended named pilot hire."), false);
+  assert.equal(hireDetailHtml.includes("Monthly fixed staffing cost for this named hire."), false);
+  assert.equal(hireDetailHtml.includes("Type and availability are fixed by this staffing offer."), false);
+  assert.equal(hireDetailHtml.includes("Cabin General Coverage"), false);
+  assert.equal(hireDetailHtml.includes("data-support-coverage-start"), false);
   const trainingMatch = staffingTab.contentHtml.match(/data-pilot-training-start="([^"]+)"/);
   assert.ok(trainingMatch?.[1]);
 

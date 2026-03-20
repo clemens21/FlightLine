@@ -497,14 +497,26 @@ try {
   await clickUi(page.locator("[data-pilot-candidate-row]").first());
   await page.waitForFunction((expectedName) => {
     const overlay = document.querySelector("[data-staffing-hire-overlay]");
+    const title = document.querySelector("[data-staffing-detail-title='hire']")?.textContent ?? "";
     const detail = document.querySelector("[data-staffing-detail-body='hire']")?.textContent ?? "";
     return overlay instanceof HTMLElement
       && !overlay.hidden
-      && detail.includes(expectedName)
+      && title.includes(expectedName)
       && detail.includes("Hire type")
       && detail.includes("Availability")
-      && detail.includes("Coverage posture");
+      && detail.includes("Pilot lane");
   }, firstCandidateName);
+  const hireDetailText = (await page.locator("[data-staffing-detail-body='hire']").textContent()) ?? "";
+  assert.equal(hireDetailText.includes("Pilot candidate"), false);
+  assert.equal(hireDetailText.includes(firstCandidateName), false);
+  assert.equal(hireDetailText.includes("Coverage posture"), false);
+  assert.equal(hireDetailText.includes("Open-ended named pilot hire."), false);
+  assert.equal(hireDetailText.includes("Fixed-term named pilot hire."), false);
+  assert.equal(hireDetailText.includes("Monthly fixed staffing cost for this named hire."), false);
+  assert.equal(hireDetailText.includes("Hiring activates this candidate into the roster at the listed availability window."), false);
+  assert.equal(hireDetailText.includes("active named pilots are currently tied to this certification lane."), false);
+  assert.equal(hireDetailText.includes("Type and availability are fixed by this staffing offer."), false);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-support-coverage-start]").count(), 0);
   const hireOverlayGeometry = await page.locator("[data-staffing-hire-overlay]").evaluate((overlayElement) => {
     if (!(overlayElement instanceof HTMLElement)) {
       return {
@@ -569,7 +581,7 @@ try {
   assert.ok(hireOverlayBackdropAlpha <= 0.08, `expected subtle overlay backdrop, got ${hireOverlayGeometry.backdropBackgroundColor}`);
   assert.ok(hireOverlayGeometry.cardWidth < hireOverlayGeometry.stageWidth);
   assert.ok(hireOverlayGeometry.cardHeight < hireOverlayGeometry.stageHeight);
-  const hireDetailPortraitBox = await page.locator("[data-staffing-detail-body='hire'] [data-staff-portrait-frame='hire-detail']").evaluate((element) => {
+  const hireDetailPortraitBox = await page.locator("[data-staffing-detail-panel='hire'] [data-staff-portrait-frame='hire-detail']").evaluate((element) => {
     if (!(element instanceof HTMLElement)) {
       return { width: 0, height: 0 };
     }
@@ -579,7 +591,7 @@ try {
   });
   assert.ok(hireDetailPortraitBox.width <= 16);
   assert.ok(hireDetailPortraitBox.height <= 16);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staff-portrait-surface='hire-detail']").getAttribute("src"), firstCandidatePortrait);
+  assert.equal(await page.locator("[data-staffing-detail-panel='hire'] [data-staff-portrait-surface='hire-detail']").getAttribute("src"), firstCandidatePortrait);
   await clickUi(page.locator("[data-staffing-detail-close='hire']").first());
   await page.waitForFunction(() => {
     const overlay = document.querySelector("[data-staffing-hire-overlay]");

@@ -74,6 +74,9 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     const titleNode = host.querySelector<HTMLElement>(
       `[data-staffing-detail-title="${view}"]`,
     );
+    const portraitNode = host.querySelector<HTMLImageElement>(
+      `[data-staffing-detail-portrait="${view}"]`,
+    );
     const bodyNode = host.querySelector<HTMLElement>(
       `[data-staffing-detail-body="${view}"]`,
     );
@@ -106,6 +109,12 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
 
     titleNode.textContent = template.dataset.staffingDetailTitle
       ?? defaultDetailTitle(view);
+    if (portraitNode) {
+      const portraitSrc = template.dataset.staffingDetailPortraitSrc ?? "";
+      if (portraitSrc) {
+        portraitNode.src = portraitSrc;
+      }
+    }
     bodyNode.replaceChildren(template.content.cloneNode(true));
 
     if (view === "hire") {

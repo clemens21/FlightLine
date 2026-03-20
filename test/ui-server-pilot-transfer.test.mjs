@@ -167,8 +167,13 @@ try {
   assert.equal(zeroStateTab.contentHtml.includes("available soon"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Coverage Summary"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Packages"), false);
-  assert.equal(zeroStateTab.contentHtml.includes("Coverage posture"), true);
   assert.equal(zeroStateTab.contentHtml.includes("Support coverage"), true);
+  const zeroHireDetailBodyMatch = zeroStateTab.contentHtml.match(/data-staffing-detail-body="hire"[^>]*>([\s\S]*?)<\/div><div hidden data-staffing-detail-bank="hire">/);
+  assert.ok(zeroHireDetailBodyMatch?.[1]);
+  const zeroHireDetailHtml = zeroHireDetailBodyMatch[1];
+  assert.equal(zeroHireDetailHtml.includes("Coverage posture"), false);
+  assert.equal(zeroHireDetailHtml.includes("data-support-coverage-start"), false);
+  assert.equal(zeroHireDetailHtml.includes("Cabin General Coverage"), false);
   const zeroCandidatePortrait = extractRowPortrait(zeroStateTab.contentHtml, "data-pilot-candidate-row", "hire-row");
   const zeroCandidateDetailPortrait = extractFirstSurfaceSrc(zeroStateTab.contentHtml, "hire-detail");
   assert.equal(zeroCandidatePortrait.src.startsWith("/assets/staff-portraits/"), true);

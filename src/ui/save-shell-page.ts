@@ -966,6 +966,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       align-items: center;
       min-width: 0;
     }
+    .staffing-detail-headline {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+    }
+    .staffing-detail-headline h3 {
+      min-width: 0;
+      margin: 0;
+    }
     .staff-portrait-frame {
       display: inline-flex;
       width: 6px;
@@ -1069,6 +1080,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       width: min(640px, calc(100% - 48px));
       max-height: calc(100% - 48px);
       overflow: hidden;
+    }
+    .staffing-hire-action-row {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
     }
     .summary-list { display: grid; gap: 12px; }
     .summary-item {
