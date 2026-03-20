@@ -69,6 +69,7 @@ const reservedSaveId = uniqueSaveId("ui_staff_reserved_block");
 const trainingSaveId = uniqueSaveId("ui_staff_training_block");
 const contractReservedSaveId = uniqueSaveId("ui_staff_contract_reserved_convert_block");
 const contractFlyingSaveId = uniqueSaveId("ui_staff_contract_flying_convert_block");
+const laborRecordSaveId = uniqueSaveId("ui_staff_labor_record");
 let server = null;
 
 try {
@@ -359,6 +360,115 @@ try {
       },
     });
     assert.equal(contractFlyingAdvanceResult.success, true);
+
+    const laborRecordStartedAtUtc = await createCompanySave(backend, laborRecordSaveId, {
+      startedAtUtc: "2026-03-16T12:00:00.000Z",
+      displayName: `UI Staff Labor ${laborRecordSaveId}`,
+      startingCashAmount: 10_000_000,
+    });
+    await acquireAircraft(backend, laborRecordSaveId, laborRecordStartedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      registration: "N208LR",
+    });
+    const laborRecordRefreshResult = await refreshStaffingMarket(backend, laborRecordSaveId, laborRecordStartedAtUtc, "bootstrap");
+    assert.equal(laborRecordRefreshResult.success, true);
+    const laborRecordMarket = await backend.loadActiveStaffingMarket(laborRecordSaveId);
+    assert.ok(laborRecordMarket);
+    const laborRecordOffer = laborRecordMarket.offers.find((offer) => offer.employmentModel === "contract_hire");
+    assert.ok(laborRecordOffer);
+    const laborRecordHireResult = await backend.dispatch({
+      commandId: `cmd_${laborRecordSaveId}_hire_contract_labor_record`,
+      saveId: laborRecordSaveId,
+      commandName: "ActivateStaffingPackage",
+      issuedAtUtc: laborRecordStartedAtUtc,
+      actorType: "player",
+      payload: {
+        laborCategory: laborRecordOffer.laborCategory,
+        employmentModel: laborRecordOffer.employmentModel,
+        qualificationGroup: laborRecordOffer.qualificationGroup,
+        coverageUnits: laborRecordOffer.coverageUnits,
+        fixedCostAmount: laborRecordOffer.fixedCostAmount,
+        variableCostRate: laborRecordOffer.variableCostRate,
+        startsAtUtc: laborRecordOffer.startsAtUtc,
+        endsAtUtc: laborRecordOffer.endsAtUtc,
+        sourceOfferId: laborRecordOffer.staffingOfferId,
+      },
+    });
+    assert.equal(laborRecordHireResult.success, true);
+    const laborRecordStaffingState = await backend.loadStaffingState(laborRecordSaveId);
+    assert.ok(laborRecordStaffingState?.namedPilots[0]);
+    const laborRecordPilot = laborRecordStaffingState.namedPilots[0];
+    const laborRecordFleetState = await backend.loadFleetState(laborRecordSaveId);
+    const laborRecordAircraft = laborRecordFleetState?.aircraft.find((entry) => entry.registration === "N208LR");
+    assert.ok(laborRecordAircraft);
+    await saveAndCommitSchedule(backend, laborRecordSaveId, laborRecordStartedAtUtc, laborRecordAircraft.aircraftId, [
+      {
+        legType: "reposition",
+        originAirportId: "KDEN",
+        destinationAirportId: "KCOS",
+        plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
+        plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
+        assignedQualificationGroup: laborRecordOffer.qualificationGroup,
+      },
+    ]);
+    const laborRecordUsageAdvance = await backend.dispatch({
+      commandId: `cmd_${laborRecordSaveId}_advance_usage`,
+      saveId: laborRecordSaveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: laborRecordStartedAtUtc,
+      actorType: "player",
+      payload: {
+        targetTimeUtc: "2026-03-16T17:10:00.000Z",
+        stopConditions: ["target_time"],
+      },
+    });
+    assert.equal(laborRecordUsageAdvance.success, true);
+    const laborRecordReadyAdvance = await backend.dispatch({
+      commandId: `cmd_${laborRecordSaveId}_advance_ready`,
+      saveId: laborRecordSaveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: "2026-03-16T17:10:00.000Z",
+      actorType: "player",
+      payload: {
+        targetTimeUtc: "2026-03-17T04:00:00.000Z",
+        stopConditions: ["target_time"],
+      },
+    });
+    assert.equal(laborRecordReadyAdvance.success, true);
+    const laborRecordConvertResult = await backend.dispatch({
+      commandId: `cmd_${laborRecordSaveId}_convert_contract_pilot`,
+      saveId: laborRecordSaveId,
+      commandName: "ConvertNamedPilotToDirectHire",
+      issuedAtUtc: "2026-03-17T04:00:00.000Z",
+      actorType: "player",
+      payload: {
+        namedPilotId: laborRecordPilot.namedPilotId,
+      },
+    });
+    assert.equal(laborRecordConvertResult.success, true);
+    const laborRecordSalaryAdvance = await backend.dispatch({
+      commandId: `cmd_${laborRecordSaveId}_advance_salary`,
+      saveId: laborRecordSaveId,
+      commandName: "AdvanceTime",
+      issuedAtUtc: "2026-03-17T04:00:00.000Z",
+      actorType: "player",
+      payload: {
+        targetTimeUtc: "2026-04-17T05:00:00.000Z",
+        stopConditions: ["target_time"],
+      },
+    });
+    assert.equal(laborRecordSalaryAdvance.success, true);
+    const laborRecordDismissResult = await backend.dispatch({
+      commandId: `cmd_${laborRecordSaveId}_dismiss_labor_pilot`,
+      saveId: laborRecordSaveId,
+      commandName: "DismissNamedPilot",
+      issuedAtUtc: "2026-04-17T05:00:00.000Z",
+      actorType: "player",
+      payload: {
+        namedPilotId: laborRecordPilot.namedPilotId,
+      },
+    });
+    assert.equal(laborRecordDismissResult.success, true);
   } finally {
     await backend.close();
   }
@@ -456,6 +566,16 @@ try {
   assert.match(contractFlyingDetail, /flying/i);
   assert.doesNotMatch(contractFlyingDetail, /data-pilot-convert-direct=/i);
   assert.match(contractFlyingDetail, /Conversion is unavailable while this pilot is flying committed contract work/i);
+
+  const laborRecordStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(laborRecordSaveId)}/tab/staffing`);
+  assert.equal(laborRecordStaffingTab.tabId, "staffing");
+  const laborRecordDetail = extractEmployeeDetail(laborRecordStaffingTab.contentHtml);
+  assert.match(laborRecordDetail, /Labor record/i);
+  assert.match(laborRecordDetail, /Contract engagement fee/i);
+  assert.match(laborRecordDetail, /Contract flight hours billed/i);
+  assert.match(laborRecordDetail, /Converted to direct hire/i);
+  assert.match(laborRecordDetail, /Salary collected/i);
+  assert.match(laborRecordDetail, /Dismissed from active coverage/i);
 } finally {
   await Promise.allSettled([
     server?.stop(),
@@ -468,4 +588,5 @@ try {
   await removeWorkspaceSave(trainingSaveId);
   await removeWorkspaceSave(contractReservedSaveId);
   await removeWorkspaceSave(contractFlyingSaveId);
+  await removeWorkspaceSave(laborRecordSaveId);
 }

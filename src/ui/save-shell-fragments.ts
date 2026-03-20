@@ -12,6 +12,7 @@ import { loadActiveContractBoard, type ContractBoardView } from "../application/
 import { loadRecentEventLog, type EventLogView } from "../application/queries/event-log.js";
 import { loadFleetState, type FleetStateView } from "../application/queries/fleet-state.js";
 import { loadMaintenanceTasks, type MaintenanceTaskView } from "../application/queries/maintenance-tasks.js";
+import { loadPilotLaborHistoryCollection, type PilotLaborHistoryView } from "../application/queries/pilot-labor-history.js";
 import { loadAircraftSchedules, type AircraftScheduleView } from "../application/queries/schedule-state.js";
 import { loadActiveStaffingMarket, type StaffingMarketView } from "../application/queries/staffing-market.js";
 import { loadStaffingState, type StaffingStateView } from "../application/queries/staffing-state.js";
@@ -42,6 +43,7 @@ interface ShellSummarySource {
   fleetState: FleetStateView | null;
   staffingState: StaffingStateView | null;
   staffingMarket: StaffingMarketView | null;
+  pilotLaborHistoryByPilotId: Map<string, PilotLaborHistoryView> | null;
   maintenanceTasks: MaintenanceTaskView[];
   schedules: AircraftScheduleView[];
   eventLog: EventLogView | null;
@@ -134,6 +136,27 @@ export async function buildTabPayload(
     if (ensuredMarket.refreshed) {
       source = await loadShellSummarySource(backend, saveId, false) ?? source;
     }
+    const staffingSource = source;
+    const staffingHistorySource = await backend.withExistingSaveDatabase(saveId, (context): ShellSummarySource => ({
+      companyContext: staffingSource.companyContext,
+      companyContracts: staffingSource.companyContracts,
+      contractBoard: staffingSource.contractBoard,
+      fleetState: staffingSource.fleetState,
+      staffingState: staffingSource.staffingState,
+      staffingMarket: staffingSource.staffingMarket,
+      pilotLaborHistoryByPilotId: loadPilotLaborHistoryCollection(
+        context.saveDatabase,
+        saveId,
+        staffingSource.staffingState?.namedPilots.map((pilot) => pilot.namedPilotId) ?? [],
+      ),
+      maintenanceTasks: staffingSource.maintenanceTasks,
+      schedules: staffingSource.schedules,
+      eventLog: staffingSource.eventLog,
+      routePlan: staffingSource.routePlan,
+    }));
+    if (staffingHistorySource) {
+      source = staffingHistorySource;
+    }
     await ensureStaffPortraitAssetsForStaffing(source.staffingMarket, source.staffingState);
   }
 
@@ -172,6 +195,7 @@ async function loadShellSummarySource(
       fleetState,
       staffingState,
       staffingMarket,
+      pilotLaborHistoryByPilotId: null,
       maintenanceTasks,
       schedules,
       eventLog,

@@ -444,6 +444,12 @@ try {
   assert.ok(expiredPilot);
   assert.equal(expiredPilot.packageStatus, "expired");
   assert.equal(expiredPilot.availabilityState, "expired");
+  const expiredPilotLaborHistory = await backend.loadPilotLaborHistory(saveId, expiredPilot.namedPilotId, 12);
+  assert.ok(expiredPilotLaborHistory);
+  assert.equal(
+    expiredPilotLaborHistory.entries.some((entry) => entry.recordType === "contract_end"),
+    true,
+  );
 
   const eventLogAfterExpiry = await backend.loadRecentEventLog(saveId, 12);
   assert.ok(eventLogAfterExpiry);
@@ -761,6 +767,153 @@ try {
   assert.ok(reloadedConvertedPilot);
   assert.equal(reloadedConvertedPilot.employmentModel, "direct_hire");
   assert.deepEqual(reloadedConvertedPilot.candidateProfile, contractPilotBeforeConversion.candidateProfile);
+
+  const laborLedgerSaveId = uniqueSaveId("staffing_labor_history");
+  const laborLedgerStartedAtUtc = await createCompanySave(backend, laborLedgerSaveId, {
+    startedAtUtc: "2026-03-16T12:00:00.000Z",
+    startingCashAmount: 10_000_000,
+  });
+  await acquireAircraft(backend, laborLedgerSaveId, laborLedgerStartedAtUtc, {
+    aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    registration: "N208LH",
+  });
+  const laborLedgerRefreshResult = await refreshStaffingMarket(backend, laborLedgerSaveId, laborLedgerStartedAtUtc, "bootstrap");
+  assert.equal(laborLedgerRefreshResult.success, true);
+  const laborLedgerMarket = await backend.loadActiveStaffingMarket(laborLedgerSaveId);
+  assert.ok(laborLedgerMarket);
+  const laborLedgerPair = findCandidatePairs(laborLedgerMarket).find((pair) => pair.contractOffer && pair.directOffer);
+  assert.ok(laborLedgerPair?.contractOffer);
+  const laborLedgerContractOffer = laborLedgerPair.contractOffer;
+
+  const laborLedgerHireResult = await backend.dispatch({
+    commandId: `cmd_${laborLedgerSaveId}_hire_contract_pilot`,
+    saveId: laborLedgerSaveId,
+    commandName: "ActivateStaffingPackage",
+    issuedAtUtc: laborLedgerStartedAtUtc,
+    actorType: "player",
+    payload: {
+      laborCategory: laborLedgerContractOffer.laborCategory,
+      employmentModel: laborLedgerContractOffer.employmentModel,
+      qualificationGroup: laborLedgerContractOffer.qualificationGroup,
+      coverageUnits: laborLedgerContractOffer.coverageUnits,
+      fixedCostAmount: laborLedgerContractOffer.fixedCostAmount,
+      variableCostRate: laborLedgerContractOffer.variableCostRate,
+      startsAtUtc: laborLedgerContractOffer.startsAtUtc,
+      endsAtUtc: laborLedgerContractOffer.endsAtUtc,
+      sourceOfferId: laborLedgerContractOffer.staffingOfferId,
+    },
+  });
+  assert.equal(laborLedgerHireResult.success, true);
+
+  const laborLedgerStaffingState = await backend.loadStaffingState(laborLedgerSaveId);
+  assert.ok(laborLedgerStaffingState);
+  const laborLedgerPilot = laborLedgerStaffingState.namedPilots.find((pilot) => pilot.employmentModel === "contract_hire");
+  assert.ok(laborLedgerPilot);
+  const laborLedgerAircraft = (await backend.loadFleetState(laborLedgerSaveId))?.aircraft.find((entry) => entry.registration === "N208LH");
+  assert.ok(laborLedgerAircraft);
+  const laborLedgerDepartureUtc = "2026-03-16T15:00:00.000Z";
+  const laborLedgerFlightMinutes = estimateFlightMinutes(airportReference, "KDEN", "KCOS", 180);
+  const laborLedgerArrivalUtc = addMinutes(laborLedgerDepartureUtc, laborLedgerFlightMinutes);
+  await saveAndCommitSchedule(backend, laborLedgerSaveId, laborLedgerStartedAtUtc, laborLedgerAircraft.aircraftId, [
+    {
+      legType: "reposition",
+      originAirportId: "KDEN",
+      destinationAirportId: "KCOS",
+      plannedDepartureUtc: laborLedgerDepartureUtc,
+      plannedArrivalUtc: laborLedgerArrivalUtc,
+      assignedQualificationGroup: laborLedgerPilot.qualificationGroup,
+    },
+  ]);
+
+  const laborLedgerUsageAdvance = await backend.dispatch({
+    commandId: `cmd_${laborLedgerSaveId}_advance_contract_usage`,
+    saveId: laborLedgerSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: laborLedgerStartedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: addMinutes(laborLedgerArrivalUtc, 60),
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(laborLedgerUsageAdvance.success, true);
+
+  const laborLedgerReadyAdvance = await backend.dispatch({
+    commandId: `cmd_${laborLedgerSaveId}_advance_ready_for_conversion`,
+    saveId: laborLedgerSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: addMinutes(laborLedgerArrivalUtc, 60),
+    actorType: "player",
+    payload: {
+      targetTimeUtc: "2026-03-17T04:00:00.000Z",
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(laborLedgerReadyAdvance.success, true);
+
+  const laborLedgerConvertState = await backend.loadStaffingState(laborLedgerSaveId);
+  assert.ok(laborLedgerConvertState);
+  const laborLedgerReadyPilot = laborLedgerConvertState.namedPilots.find((pilot) => pilot.namedPilotId === laborLedgerPilot.namedPilotId);
+  assert.ok(laborLedgerReadyPilot);
+  assert.equal(laborLedgerReadyPilot.availabilityState, "ready");
+
+  const laborLedgerConvertResult = await backend.dispatch({
+    commandId: `cmd_${laborLedgerSaveId}_convert_to_direct`,
+    saveId: laborLedgerSaveId,
+    commandName: "ConvertNamedPilotToDirectHire",
+    issuedAtUtc: "2026-03-17T04:00:00.000Z",
+    actorType: "player",
+    payload: {
+      namedPilotId: laborLedgerReadyPilot.namedPilotId,
+    },
+  });
+  assert.equal(laborLedgerConvertResult.success, true);
+
+  const laborLedgerSalaryAdvance = await backend.dispatch({
+    commandId: `cmd_${laborLedgerSaveId}_advance_salary_collection`,
+    saveId: laborLedgerSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: "2026-03-17T04:00:00.000Z",
+    actorType: "player",
+    payload: {
+      targetTimeUtc: "2026-04-17T05:00:00.000Z",
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(laborLedgerSalaryAdvance.success, true);
+
+  const laborLedgerDismissResult = await backend.dispatch({
+    commandId: `cmd_${laborLedgerSaveId}_dismiss_after_salary`,
+    saveId: laborLedgerSaveId,
+    commandName: "DismissNamedPilot",
+    issuedAtUtc: "2026-04-17T05:00:00.000Z",
+    actorType: "player",
+    payload: {
+      namedPilotId: laborLedgerPilot.namedPilotId,
+    },
+  });
+  assert.equal(laborLedgerDismissResult.success, true);
+
+  const laborLedgerHistory = await backend.loadPilotLaborHistory(laborLedgerSaveId, laborLedgerPilot.namedPilotId, 20);
+  assert.ok(laborLedgerHistory);
+  assert.equal(laborLedgerHistory.displayName.length > 0, true);
+  assert.equal(laborLedgerHistory.entries.some((entry) => entry.recordType === "contract_engagement_fee"), true);
+  assert.equal(laborLedgerHistory.entries.some((entry) => entry.recordType === "contract_usage_billed" && typeof entry.hours === "number"), true);
+  assert.equal(laborLedgerHistory.entries.some((entry) => entry.recordType === "conversion"), true);
+  assert.equal(laborLedgerHistory.entries.some((entry) => entry.recordType === "salary_collected"), true);
+  assert.equal(laborLedgerHistory.entries.some((entry) => entry.recordType === "dismissal"), true);
+  assert.equal(
+    laborLedgerHistory.entries.some((entry) => entry.amount !== undefined && entry.amount < 0),
+    true,
+  );
+
+  await backend.closeSaveSession(laborLedgerSaveId);
+  const reloadedLaborLedgerHistory = await backend.loadPilotLaborHistory(laborLedgerSaveId, laborLedgerPilot.namedPilotId, 20);
+  assert.ok(reloadedLaborLedgerHistory);
+  assert.deepEqual(
+    reloadedLaborLedgerHistory.entries.map((entry) => entry.recordType),
+    laborLedgerHistory.entries.map((entry) => entry.recordType),
+  );
 
   const blockedConversionSaveId = uniqueSaveId("staffing_conversion_blocked");
   const blockedConversionStartedAtUtc = await createCompanySave(backend, blockedConversionSaveId, {

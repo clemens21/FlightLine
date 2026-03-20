@@ -3,15 +3,15 @@
 ## Status
 
 - Status:
-  Active capability with landed slices 1 and 2.
+  Completed capability with landed slices 1, 2, and 3.
 - Workflow state:
-  landed_slice
+  completed_capability
 - Current owner:
   Technical Lead (Mara Sterling)
 - Current active slice:
-  pilot labor ledger visibility
+  none
 - Next routing target:
-  Mara
+  none
 - Last updated:
   2026-03-19
 
@@ -183,7 +183,6 @@
   1. profile-backed hiring market and employment economics truth
   2. contractor conversion and dismissal controls
   3. pilot labor ledger visibility
-  4. market-pool tuning and candidate-volume follow-up if the first slice still feels too thin
 - Completed slices:
   1. profile-backed hiring market and employment economics truth
      - status:
@@ -195,19 +194,18 @@
        cleared by Nadia and landed
      - landed scope:
        contract-to-direct conversion with named-pilot identity continuity, conversion blocking while reserved or flying, dismissal controls for eligible pilots, dismissal blocking while reserved, flying, training, or traveling, truthful staffing and finance transitions after conversion and dismissal, and Staff employee-detail action plus blocked-state messaging
+  3. pilot labor ledger visibility
+     - status:
+       cleared by Nadia and landed
+     - landed scope:
+       pilot-scoped labor-history read model, staffing-tab-only labor-history hydration, employee-detail labor-record rendering, and truthful visibility for hire or contract start, conversion, dismissal, contract end, contract usage billing, and salary collection when those entries exist
+  4. market-pool tuning and candidate-volume follow-up
+     - status:
+       satisfied for now; not needed as an active remaining slice
+     - rationale:
+       slice 1 already moved the market past the original thin-pool problem, with the current pilot market generating materially more than the original three-candidate state and tests holding that larger floor in place
 - Approved next slice:
-  - objective:
-    provide a player-readable pilot labor record that explains labor events and costs without turning into a generalized payroll subsystem
-  - in scope:
-    - show a pilot activity-and-cost ledger with hire or contract start, conversion, dismissal, contract end, billed contract flight hours, and recurring salary or contractor charges
-    - keep the first labor-record view tightly explainable and pilot-scoped
-    - connect the labor record truthfully to existing finance and event history rather than inventing a parallel accounting path
-  - explicit non-goals:
-    - no wage negotiation
-    - no contractor renewal
-    - no non-pilot employment lifecycle
-  - why this slice comes first:
-    hiring and lifecycle controls are now landed, so labor visibility is the next missing explainability layer in the same capability
+  - none; capability complete
 - Deferred slices:
   - wage negotiation
   - contractor renewal
@@ -218,12 +216,14 @@
 
 - Validation bar for current approved slice:
   - build passes
-  - contract-to-direct conversion preserves pilot identity, visible profile, and accumulated company hours
-  - dismissal is blocked while reserved, flying, or training
-  - dismissal of an eligible pilot removes active coverage truthfully
-  - post-conversion economics no longer use contract-hour billing
-  - save/load preserves converted and dismissed pilot truth
-  - employee detail UI shows clear conversion and dismissal actions with clear blocked-state messaging
+  - employee detail shows a readable labor-record section for rostered pilots
+  - labor record includes the relevant first-pass events and charges when they exist:
+    hire or contract start, conversion, dismissal, contract end, contract usage billing, and recurring salary collection
+  - record entries come from existing ledger and event truth, not duplicated hand-built shadow state
+  - contract usage entries show billed completed-flight hours and charge amount truthfully
+  - salary or contractor charges stay attached to the correct pilot record through staffing package linkage
+  - save/load preserves labor-record visibility
+  - UI-server or browser coverage proves the record renders correctly for at least direct-hire, contract-hire, converted, and dismissed pilot cases
 - Related GitHub issues:
   - #40 closed after revalidation; paired-offer retirement and duplicate-hire prevention fixed in slice 1
 - Notes from Mara, Nadia, or Owen:
@@ -235,6 +235,10 @@
   - Mara revalidation on 2026-03-19: reserved and flying contract-pilot conversion now block cleanly in both command and Staff UI flows; slice 2 routed to Nadia after focused build plus staffing-market and UI-server staffing validation
   - Nadia disposition for slice 2: ready to land after focused build, staffing-market, and UI-server staffing review; no findings
   - Owen landed slice 2 on 2026-03-19 as a bounded unit after build plus staffing-market and UI-server staffing validation
+  - Zoe recommendation on 2026-03-19: treat the market-pool follow-up as satisfied for now unless later playtesting shows the landed pilot market still feels too thin or too repetitive
+  - Mara revalidation on 2026-03-19: slice 3 labor-record query and employee-detail rendering passed build, staffing-market, UI-server staffing, and browser UI smoke validation before QA handoff
+  - Nadia disposition for slice 3: ready to land after focused build, staffing-market, UI-server staffing, and browser UI smoke review; no findings
+  - Owen landed slice 3 on 2026-03-19 as a bounded unit after build, staffing-market, UI-server staffing, and browser UI smoke validation, and closed the capability dossier as complete
 
 ## Notes
 

@@ -31,6 +31,7 @@ import { loadCompanyContracts, type CompanyContractsView } from "./queries/compa
 import { loadActiveContractBoard, type ContractBoardView } from "./queries/contract-board.js";
 import { loadRecentEventLog, type EventLogView } from "./queries/event-log.js";
 import { loadFleetState, type FleetStateView } from "./queries/fleet-state.js";
+import { loadPilotLaborHistory, type PilotLaborHistoryView } from "./queries/pilot-labor-history.js";
 import { loadAircraftSchedules, type AircraftScheduleView } from "./queries/schedule-state.js";
 import { loadActiveStaffingMarket, type StaffingMarketView } from "./queries/staffing-market.js";
 import { loadStaffingState, type StaffingStateView } from "./queries/staffing-state.js";
@@ -389,6 +390,12 @@ export class FlightLineBackend {
 
   async loadStaffingState(saveId: string): Promise<StaffingStateView | null> {
     return this.withExistingSaveDatabase(saveId, (context) => loadStaffingState(context.saveDatabase, saveId));
+  }
+
+  async loadPilotLaborHistory(saveId: string, namedPilotId: string, limit = 16): Promise<PilotLaborHistoryView | null> {
+    return this.withExistingSaveDatabase(saveId, (context) =>
+      loadPilotLaborHistory(context.saveDatabase, saveId, namedPilotId, limit)
+    );
   }
 
   async loadAircraftSchedules(saveId: string, aircraftId?: string): Promise<AircraftScheduleView[]> {
