@@ -2,9 +2,9 @@
 
 ## Status
 
-This brief is now superseded by [2026-03-18_dispatch-assignment-and-readiness-capability.md](/Z:/projects/FlightLine/product-work/capabilities/2026-03-18_dispatch-assignment-and-readiness-capability.md).
+This brief has been absorbed into [2026-03-18_dispatch-assignment-and-readiness-capability.md](/Z:/projects/FlightLine/product-work/capabilities/2026-03-18_dispatch-assignment-and-readiness-capability.md).
 
-Keep this file as a narrower historical step in the Dispatch design evolution, not as the primary live implementation direction.
+Keep this file only as an archived historical precursor, not as a second live Dispatch capability.
 
 ## Purpose
 

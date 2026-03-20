@@ -1077,14 +1077,42 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-hire-overlay-card {
       position: relative;
       z-index: 1;
-      width: min(640px, calc(100% - 48px));
+      width: min(1240px, calc(100% - 40px));
       max-height: calc(100% - 48px);
       overflow: hidden;
+    }
+    .staffing-hire-overlay-card .panel-head {
+      padding: 14px 16px 10px;
+    }
+    .staffing-hire-overlay-card .panel-body {
+      padding: 14px 16px 16px;
+    }
+    .staffing-hire-detail-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-content: start;
+    }
+    .staffing-hire-detail-grid > .staffing-detail-section {
+      min-width: 0;
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+      align-content: start;
+      gap: 8px;
+      padding: 12px 14px;
+    }
+    .staffing-hire-detail-grid > .staffing-detail-section--comparison {
+      grid-column: 1 / -1;
     }
     .staffing-hire-action-row {
       margin-top: 16px;
       padding-top: 16px;
       border-top: 1px solid var(--line);
+    }
+    .staffing-hire-detail-grid > .staffing-hire-action-row {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
     }
     .staffing-detail-section {
       display: grid;
@@ -1101,6 +1129,25 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .summary-list { display: grid; gap: 12px; }
     .staffing-comparison-grid {
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .staffing-hire-detail-grid .staffing-comparison-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .staffing-hire-detail-grid .staffing-detail-section--pricing .aircraft-fact-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 4px 16px;
+    }
+    .staffing-hire-detail-grid .aircraft-fact-row {
+      grid-template-columns: 86px minmax(0, 1fr);
+      gap: 10px;
+      padding: 8px 0;
+    }
+    .staffing-hire-detail-grid .summary-item {
+      padding: 10px 12px;
+    }
+    .staffing-hire-detail-grid .summary-item strong {
+      font-size: 16px;
     }
     .summary-item {
       padding: 12px 14px;
@@ -1757,6 +1804,30 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-color: var(--accent);
       background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
     }
+    .dispatch-source-selector {
+      display: grid;
+      gap: 12px;
+    }
+    .dispatch-source-card,
+    body[data-theme="dark"] .dispatch-source-card,
+    body[data-theme="forest"] .dispatch-source-card {
+      appearance: none;
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: var(--panel-strong);
+      color: var(--text);
+      display: grid;
+      gap: 8px;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: none;
+    }
+    .dispatch-source-card.selected {
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+    }
     .dispatch-aircraft-card-head,
     .dispatch-input-card-head,
     .dispatch-input-section-head,
@@ -1819,6 +1890,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .dispatch-queue-list {
       display: grid;
       gap: 10px;
+    }
+    .dispatch-selected-work-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
     }
     .dispatch-input-card,
     .dispatch-detail-card,
@@ -2024,6 +2101,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         grid-template-columns: 1fr;
         gap: 6px;
       }
+      .staffing-hire-overlay-card {
+        width: min(980px, calc(100% - 32px));
+      }
+      .staffing-hire-detail-grid,
+      .staffing-hire-detail-grid .staffing-comparison-grid,
+      .staffing-hire-detail-grid .staffing-detail-section--pricing .aircraft-fact-list {
+        grid-template-columns: 1fr;
+      }
+      .staffing-hire-detail-grid > .staffing-detail-section--comparison {
+        grid-column: auto;
+      }
     }
     @media (max-width: 760px) {
       .help-center-overlay { padding: 12px; }
@@ -2044,6 +2132,13 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
       .dispatch-aircraft-strip {
         grid-template-columns: 1fr;
+      }
+      .staffing-hire-overlay {
+        padding: 12px;
+      }
+      .staffing-hire-overlay-card {
+        width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
       }
     }
   </style>

@@ -1,10 +1,18 @@
 # Dispatch Assignment And Readiness Capability
 
+- `Status:` active
+- `Workflow state:` landed_slice
+- `Current owner:` Mara Sterling
+- `Current active slice:` Slice 1 - dispatch source selection and selected work summary
+- `Next routing target:` Mara Sterling
+- `Last updated:` 2026-03-19
+
 ## Relationship To Prior Brief
 
-This brief supersedes [2026-03-17_dispatch-assignment-first-ui.md](/Z:/projects/FlightLine/product-work/capabilities/2026-03-17_dispatch-assignment-first-ui.md).
+This brief absorbs and replaces the narrower assignment-first guidance from [2026-03-17_dispatch-assignment-first-ui.md](/Z:/projects/FlightLine/product-work/completed/2026-03-17_dispatch-assignment-first-ui.md).
 
-The older brief remains useful as a narrower intermediate step, but this capability brief is now the primary live design direction for future Dispatch framing.
+The older brief now remains only as an archived historical precursor.
+This capability brief is the sole canonical live Dispatch capability direction for future framing.
 
 ## Main Conclusion
 
@@ -76,7 +84,9 @@ The capability must let the player:
 - choose a dispatch source:
   - accepted contract
   - planned route or chain
+- keep `Accepted Contracts` and `Planned Routes` visibly separate in the intake step rather than mixing them into one ambiguous work list
 - review one clear summary of the selected work
+- treat a planned route or chain as one package first, with leg detail secondary
 - choose an aircraft with understandable fit and readiness signals
 - see whether the required pilot or crew coverage is sufficient
 - assign specific named pilots when that staffing mode exists
@@ -229,6 +239,11 @@ This hierarchy should remain recognizable for:
 - pooled pilot coverage
 - named pilot assignment
 
+For route chains:
+
+- show the chain as one package summary first
+- keep leg-level detail secondary and expandable
+
 ### 4. Honest staffing language
 
 Until named pilots are actually in scope, Dispatch should say:
@@ -236,6 +251,11 @@ Until named pilots are actually in scope, Dispatch should say:
 - `Pilot coverage`
 - `Crew coverage`
 - `Qualification fit`
+
+Preferred wording rule:
+
+- use `Pilot coverage` when the requirement is specifically pilot coverage
+- use `Crew coverage` only when the broader pooled term is actually truthful
 
 It should not say:
 
@@ -404,10 +424,6 @@ This matters because named assignment can improve clarity, but it can also add f
 
 The calendar needs to reflect committed work, but Dispatch should not turn into a calendar editor.
 
-### 6. Should `Accepted Contracts` and `Planned Routes` remain separate input modes, or should Dispatch eventually unify them under one intake list?
-
-The safer current-slice answer is to keep them clearly separate first.
-
 ## Mara Use
 
 Mara should treat this as a capability definition with candidate feature slices, not as approved implementation scope.
@@ -418,3 +434,131 @@ The core intent to preserve is:
 - validation must become easier to trust
 - information duplication must decrease
 - the primary workflow must stay assignment-first
+
+## Current Implementation Reality
+
+The current Dispatch workspace has already improved in useful ways:
+
+- separate route-plan and accepted-work intake sections exist
+- aircraft selection is visible and persistent
+- named-pilot readiness and committed named-pilot visibility are already surfaced
+- backend validation already drives a dedicated validation rail
+- commit readiness is already summarized in a bottom action bar
+
+But it still misses the capability's main product shape:
+
+- source selection still reads like two stacked input sections instead of one clear `what am I assigning?` step
+- accepted work is still actioned row by row through auto-plan buttons rather than through one selected-work surface
+- route-plan handoff still reads as a backend operation instead of a player-facing assignment choice
+- the selected work itself does not have one primary summary home
+- readiness still feels attached to the selected aircraft draft, not clearly to the assignment decision as a whole
+
+## Decomposition
+
+### Slice 1 - Dispatch source selection and selected work summary
+
+Make Dispatch clearly answer the first decision:
+
+- what source am I dispatching from
+- what exact work package is currently selected
+- what happens if I stage that work onto the selected aircraft
+
+This slice should:
+
+- separate `Accepted Contracts` and `Planned Routes` as explicit source modes
+- make the source list selectable instead of action-per-row first
+- add one selected-work summary as the primary home for source truth
+- keep the current aircraft strip and current validation-backed draft flow underneath
+- preserve the existing backend draft commands where possible instead of reopening schedule generation logic
+
+### Slice 2 - Readiness checklist and commit impact summary
+
+Once source selection is clear, make readiness read like one trusted checklist:
+
+- checklist-first validity model
+- plain-English blocker recovery
+- commit impact summary with one primary home
+- reduced duplication between validation rail and commit bar
+
+### Slice 3 - Draft recovery, revision safety, and calendar reflection
+
+After source and readiness are trustworthy:
+
+- make staged draft state easier to resume and revise
+- make abandon or replace behavior easier to understand
+- reflect committed dispatch truth in the calendar without turning Dispatch into a calendar editor
+
+### Later slices under this capability
+
+- supporting map context if the selected-work summary still lacks orientation
+- assisted named-pilot assignment versus manual assignment policy
+- chain-detail refinement after the one-contract and package-first flows are stable
+
+## Approved Next Slice
+
+`Slice 1 - Dispatch source selection and selected work summary`
+
+Main conclusion:
+
+Dispatch should stop starting with backend-flavored handoff panels and start with one clear source-selection step plus one selected-work summary.
+
+Reason for doing it now:
+
+- this is the biggest remaining comprehension gap in the current Dispatch surface
+- the existing validation and named-pilot work already provides usable downstream truth, but the player still has to infer what assignment they are even making
+- this slice can improve clarity without reopening the schedule engine first
+
+In scope:
+
+- replace the generic `Work Inputs` framing with explicit source selection between:
+  - `Accepted Contracts`
+  - `Planned Routes`
+- make source rows selectable
+- add one selected-work summary panel as the primary home for:
+  - package identity
+  - origin and destination context
+  - payload and payout summary
+  - timing window summary
+  - package-versus-leg explanation for route chains
+- move the stage-draft action to the selected-work surface instead of making per-row buttons the primary control
+- keep the current aircraft strip, selected-aircraft summary, and current backend validation flow in place
+- preserve the current named-pilot readiness and committed-assignment truth already present in Dispatch
+
+Explicit non-goals:
+
+- no readiness-checklist redesign yet
+- no calendar embedding yet
+- no map panel yet
+- no new dispatch legality engine
+- no chain-detail redesign beyond a package-first summary
+- no live operations monitoring
+
+Affected systems or files:
+
+- `src/ui/public/dispatch-tab-client.ts`
+- `src/ui/dispatch-tab-model.ts`
+- any focused Dispatch UI test coverage that proves the new selection model
+
+Validation bar:
+
+- `npm run build`
+- focused UI or UI-server coverage proving:
+  - source-mode separation
+  - selectable source rows
+  - selected-work summary rendering
+  - stage-draft action moves to the selected-work surface
+- preserve current Dispatch draft and commit flow coverage
+- preserve current named-pilot readiness and committed-assignment coverage
+
+Stop conditions or escalation triggers:
+
+- if the new selected-work surface cannot be added without reopening the schedule-generation command shape
+- if accepted-contract selection and route-plan selection require incompatible payload models that should be normalized first
+- if the UI change starts forcing slice-2 readiness redesign in the same pass
+
+## Validation And Tracking
+
+- Slice 1 is now the active approved slice for this capability.
+- Slice 1 is now landed on `codex/dev`.
+- Slice 2 and later remain deferred until slice 1 lands and the comprehension improvement is real.
+- This capability should stay in one dossier unless execution complexity later justifies an exceptional standalone workstream.

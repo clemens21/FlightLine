@@ -306,20 +306,26 @@ try {
   await clickUi(page.locator("[data-plan-add-offer]").first());
   await page.waitForFunction(() => document.body.innerText.includes("1 item | endpoint"));
   assert.equal((await page.locator(".contracts-planner-panel").textContent())?.includes("1 item | endpoint"), true);
+  await clickUi(page.locator("[data-plan-add-offer]").nth(1));
+  await page.waitForFunction(() => document.body.innerText.includes("2 items | endpoint"));
+  assert.equal((await page.locator(".contracts-planner-panel").textContent())?.includes("2 items | endpoint"), true);
 
   await clickUi(page.locator("[data-plan-review-open]"));
   await page.waitForFunction(() => document.querySelectorAll("[data-plan-review-select]").length > 0);
   await clickUi(page.locator("[data-plan-accept-selected]"));
-  await page.waitForFunction(() => document.body.innerText.includes("Accepted 1 planned offer"));
+  await page.waitForFunction(() => document.querySelectorAll(".contracts-board-table tbody tr").length > 0);
   await clickUi(page.locator("[data-board-tab='active']"));
   await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
-  assert.ok((await page.locator(".contracts-board-table tbody tr").count()) >= 1);
 
   await clickUi(page.locator("[data-shell-tab='dispatch']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
-  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Route Plan Handoff"), true);
-  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Work"), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Dispatch Source"), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Contracts"), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Planned Routes"), true);
+  assert.equal(await page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='accepted_contracts'][role='tab']").isVisible(), true);
+  assert.equal(await page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']").isVisible(), true);
+  assert.equal(await page.locator("[data-dispatch-selected-work]").isVisible(), true);
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
 
@@ -327,7 +333,22 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20CUI"));
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("No draft to commit"), true);
 
-  await forceButtonSubmit(page, "[data-dispatch-bind-route-plan]");
+  await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']"));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Planned Routes"));
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-source-item]").length >= 2);
+  await clickUi(page.locator("[data-dispatch-source-item]").nth(0));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-route-plan-package]")?.textContent?.includes("Package")
+    && document.querySelector("[data-dispatch-route-plan-selected-row]")?.textContent?.includes("Selected row"));
+  const routePlanPackageTextFirst = await page.locator("[data-dispatch-route-plan-package]").textContent();
+  const routePlanSelectedRowTextFirst = await page.locator("[data-dispatch-route-plan-selected-row]").textContent();
+  assert.equal(routePlanPackageTextFirst?.includes("Package"), true);
+  assert.equal(routePlanSelectedRowTextFirst?.includes("Selected row"), true);
+  assert.notEqual(routePlanPackageTextFirst, routePlanSelectedRowTextFirst);
+  await clickUi(page.locator("[data-dispatch-source-item]").nth(1));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-route-plan-selected-row]")?.textContent?.includes("Selected row"));
+  const routePlanPackageTextSecond = await page.locator("[data-dispatch-route-plan-package]").textContent();
+  assert.equal(routePlanPackageTextSecond, routePlanPackageTextFirst);
+  await forceButtonSubmit(page, "[data-dispatch-stage-draft]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
@@ -337,7 +358,10 @@ try {
       && commitButton.includes("No draft to commit");
   });
 
-  await clickUi(page.locator("[data-dispatch-accepted-contract] button").first());
+  await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='accepted_contracts'][role='tab']"));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Accepted Contracts"));
+  await clickUi(page.locator("[data-dispatch-source-item]").first());
+  await forceButtonSubmit(page, "[data-dispatch-stage-draft]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";

@@ -19,13 +19,24 @@ export interface DispatchTabController {
 }
 
 const selectionStoragePrefix = "flightline:dispatch-selection:";
+type DispatchSourceMode = "accepted_contracts" | "planned_routes";
+
+interface DispatchStoredSelection {
+  aircraftId?: string;
+  legId?: string;
+  sourceMode?: DispatchSourceMode;
+  sourceId?: string;
+}
 
 export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload): DispatchTabController {
   const storedSelection = loadStoredSelection(payload.saveId);
   let selectedAircraftId = storedSelection?.aircraftId ?? payload.defaultSelectedAircraftId;
   let selectedLegId = storedSelection?.legId;
+  let selectedSourceMode: DispatchSourceMode | undefined = storedSelection?.sourceMode;
+  let selectedSourceId = storedSelection?.sourceId;
 
   function render(): void {
+    const resolvedSourceSelection = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
     const viewState = applyDispatchWorkspaceViewState(payload, {
       ...(selectedAircraftId ? { selectedAircraftId } : {}),
       ...(selectedLegId ? { selectedLegId } : {}),
@@ -33,8 +44,16 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
 
     selectedAircraftId = viewState.selectedAircraftId;
     selectedLegId = viewState.selectedLegId;
-    storeSelection(payload.saveId, selectedAircraftId, selectedLegId);
-    host.innerHTML = renderDispatchWorkspace(payload, viewState.selectedAircraft, viewState.selectedLeg);
+    selectedSourceMode = resolvedSourceSelection.sourceMode;
+    selectedSourceId = resolvedSourceSelection.sourceId;
+    storeSelection(payload.saveId, selectedAircraftId, selectedLegId, selectedSourceMode, selectedSourceId);
+    host.innerHTML = renderDispatchWorkspace(
+      payload,
+      viewState.selectedAircraft,
+      viewState.selectedLeg,
+      selectedSourceMode,
+      selectedSourceId,
+    );
   }
 
   function handleClick(event: MouseEvent): void {
@@ -48,6 +67,30 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
       event.preventDefault();
       selectedAircraftId = aircraftButton.dataset.dispatchAircraftSelect ?? selectedAircraftId;
       selectedLegId = undefined;
+      render();
+      return;
+    }
+
+    const sourceModeButton = target.closest<HTMLElement>("[data-dispatch-source-mode]");
+    if (sourceModeButton) {
+      event.preventDefault();
+      const nextMode = sourceModeButton.dataset.dispatchSourceMode as DispatchSourceMode | undefined;
+      if (nextMode) {
+        selectedSourceMode = nextMode;
+        selectedSourceId = undefined;
+        render();
+      }
+      return;
+    }
+
+    const sourceItemButton = target.closest<HTMLElement>("[data-dispatch-source-item]");
+    if (sourceItemButton) {
+      event.preventDefault();
+      const nextMode = sourceItemButton.dataset.dispatchSourceMode as DispatchSourceMode | undefined;
+      if (nextMode) {
+        selectedSourceMode = nextMode;
+      }
+      selectedSourceId = sourceItemButton.dataset.dispatchSourceItem ?? selectedSourceId;
       render();
       return;
     }
@@ -74,6 +117,8 @@ function renderDispatchWorkspace(
   payload: DispatchTabPayload,
   selectedAircraft: DispatchAircraftView | undefined,
   selectedLeg: DispatchLegView | undefined,
+  selectedSourceMode: DispatchSourceMode | undefined,
+  selectedSourceId: string | undefined,
 ): string {
   return `
     <div class="dispatch-workspace">
@@ -93,15 +138,16 @@ function renderDispatchWorkspace(
       <div class="dispatch-board">
         <section class="panel dispatch-input-panel" data-dispatch-input-lane>
           <div class="panel-head">
-            <h3>Work Inputs</h3>
+            <h3>Dispatch Source</h3>
             <div class="pill-row">
               <span class="pill">${escapeHtml(String(payload.workInputs.routePlanItems.length))} route plan</span>
               <span class="pill">${escapeHtml(String(payload.workInputs.acceptedContracts.length))} accepted</span>
             </div>
           </div>
           <div class="panel-body dispatch-input-body">
-            ${renderRoutePlanSection(payload, selectedAircraft)}
-            ${renderAcceptedWorkSection(payload, selectedAircraft)}
+            ${renderDispatchSourceSelector(payload, selectedSourceMode)}
+            ${renderSelectedWorkSummary(payload, selectedAircraft, selectedSourceMode, selectedSourceId)}
+            ${renderSourceModeBody(payload, selectedAircraft, selectedSourceMode, selectedSourceId)}
             ${renderAdvanceTimeUtility(payload)}
           </div>
         </section>
@@ -235,7 +281,7 @@ function renderSelectedAircraftSummary(selectedAircraft: DispatchAircraftView | 
       <article class="summary-item compact">
         <div class="eyebrow">Plan Stage</div>
         <strong>${escapeHtml(scheduleLabel)}</strong>
-        <span class="muted">${schedule ? `${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}` : "Use accepted work or route-plan handoff to stage a draft."}</span>
+        <span class="muted">${schedule ? `${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}` : "Use selected work to stage a draft."}</span>
       </article>
       <article class="summary-item compact">
         <div class="eyebrow">Maintenance</div>
@@ -433,7 +479,7 @@ function renderValidationRail(selectedAircraft: DispatchAircraftView | undefined
         <article class="summary-item compact">
           <div class="eyebrow">Planning status</div>
           <strong>No draft validation yet</strong>
-          <span class="muted">Use accepted work or route-plan handoff to run backend schedule validation for this aircraft.</span>
+          <span class="muted">Use selected work to run backend schedule validation for this aircraft.</span>
         </article>
         <article class="summary-item compact">
           <div class="eyebrow">Dispatch state</div>
@@ -482,41 +528,270 @@ function renderValidationRail(selectedAircraft: DispatchAircraftView | undefined
   `;
 }
 
-function renderRoutePlanSection(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView | undefined): string {
-  const routePlanItems = payload.workInputs.routePlanItems;
-  const bindLabel = selectedAircraft?.schedule?.isDraft ? "Replace draft with route plan" : "Draft route plan";
-  const bindButtonDisabled = !selectedAircraft || payload.workInputs.acceptedReadyCount === 0 || !selectedAircraft.dispatchAvailable;
+function renderDispatchSourceSelector(payload: DispatchTabPayload, selectedSourceMode: DispatchSourceMode | undefined): string {
+  const mode = selectedSourceMode ?? resolveDefaultSourceMode(payload);
+  const routePlanCount = payload.workInputs.routePlanItems.length;
+  const acceptedContractCount = payload.workInputs.acceptedContracts.length;
 
   return `
-    <section class="dispatch-input-section">
-      <div class="dispatch-input-section-head">
-        <div class="meta-stack">
-          <div class="eyebrow">Route Plan Handoff</div>
-          <strong>${escapeHtml(String(payload.workInputs.acceptedReadyCount))} accepted-ready items</strong>
-          <span class="muted">${escapeHtml(String(payload.workInputs.blockerCount))} blockers | ${escapeHtml(String(payload.workInputs.scheduledCount))} scheduled${payload.workInputs.endpointAirport ? ` | endpoint ${escapeHtml(payload.workInputs.endpointAirport.code)}` : ""}</span>
-        </div>
-        ${selectedAircraft ? `
-          <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/bind-route-plan" class="dispatch-inline-action" data-api-form>
-            <input type="hidden" name="tab" value="dispatch" />
-            <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
-            <input type="hidden" name="aircraftId" value="${escapeHtml(selectedAircraft.aircraftId)}" />
-            <button type="submit" ${bindButtonDisabled ? "disabled" : ""} data-dispatch-bind-route-plan="1" data-pending-label="Drafting route plan...">${escapeHtml(bindLabel)}</button>
-          </form>
-        ` : ""}
+    <section class="dispatch-source-selector">
+      <div class="contracts-board-tabs" role="tablist" aria-label="Dispatch source">
+        <button
+          type="button"
+          class="contracts-board-tab ${mode === "accepted_contracts" ? "current" : ""}"
+          data-dispatch-source-mode="accepted_contracts"
+          role="tab"
+          aria-selected="${mode === "accepted_contracts" ? "true" : "false"}"
+          aria-pressed="${mode === "accepted_contracts" ? "true" : "false"}"
+        >
+          <span>Accepted Contracts</span>
+          <span class="pill">${escapeHtml(String(acceptedContractCount))}</span>
+        </button>
+        <button
+          type="button"
+          class="contracts-board-tab ${mode === "planned_routes" ? "current" : ""}"
+          data-dispatch-source-mode="planned_routes"
+          role="tab"
+          aria-selected="${mode === "planned_routes" ? "true" : "false"}"
+          aria-pressed="${mode === "planned_routes" ? "true" : "false"}"
+        >
+          <span>Planned Routes</span>
+          <span class="pill">${escapeHtml(String(routePlanCount))}</span>
+        </button>
       </div>
-      ${selectedAircraft?.schedule?.isDraft ? `<div class="muted dispatch-section-note">Drafting from the route plan will replace this aircraft's current draft.</div>` : ""}
-      ${!selectedAircraft ? `<div class="muted dispatch-section-note">Select an aircraft to draft a route-plan handoff.</div>` : ""}
-      ${selectedAircraft && !selectedAircraft.dispatchAvailable ? `<div class="muted dispatch-section-note">The selected aircraft is not dispatch ready, so route-plan binding stays unavailable.</div>` : ""}
-      ${routePlanItems.length === 0
-        ? `<div class="empty-state compact">Add contracts to the route plan from Contracts, then accept them there before handing them off into Dispatch.</div>`
-        : `<div class="dispatch-input-list">${routePlanItems.map((item) => renderRoutePlanItem(item)).join("")}</div>`}
     </section>
   `;
 }
 
-function renderRoutePlanItem(item: DispatchTabPayload["workInputs"]["routePlanItems"][number]): string {
+function renderSelectedWorkSummary(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedSourceMode: DispatchSourceMode | undefined,
+  selectedSourceId: string | undefined,
+): string {
+  const resolved = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
+  if (resolved.sourceMode === "planned_routes") {
+    return renderSelectedRoutePlanSummary(payload, selectedAircraft, resolved.sourceId);
+  }
+
+  return renderSelectedAcceptedContractSummary(payload, selectedAircraft, resolved.sourceId);
+}
+
+function renderSourceModeBody(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedSourceMode: DispatchSourceMode | undefined,
+  selectedSourceId: string | undefined,
+): string {
+  const resolved = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
+  if (resolved.sourceMode === "planned_routes") {
+    return renderPlannedRoutesList(payload, resolved.sourceId);
+  }
+
+  return renderAcceptedContractsList(payload, selectedAircraft, resolved.sourceId);
+}
+
+function renderSelectedRoutePlanSummary(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedRoutePlanItemId: string | undefined,
+): string {
+  const items = payload.workInputs.routePlanItems;
+  if (items.length === 0) {
+    return `
+      <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
+        <div class="panel-head">
+          <h3>Selected work</h3>
+          <span class="pill">Planned Routes</span>
+        </div>
+        <div class="panel-body">
+          <div class="empty-state compact">No planned routes are waiting in Dispatch yet.</div>
+        </div>
+      </section>
+    `;
+  }
+
+  const selectedItem = findSelectedRoutePlanItem(items, selectedRoutePlanItemId);
+  const packageStartItem = items[0]!;
+  const packageEndItem = items[items.length - 1]!;
+  const summaryItem = selectedItem ?? packageStartItem;
+  const totalPayoutAmount = items.reduce((sum, item) => sum + item.payoutAmount, 0);
+  const stageButtonDisabled = !selectedAircraft || payload.workInputs.acceptedReadyCount === 0 || !selectedAircraft.dispatchAvailable;
+  const stageButtonLabel = selectedAircraft?.schedule?.isDraft ? "Replace draft with route plan" : "Draft route plan";
+
   return `
-    <article class="dispatch-input-card" data-dispatch-route-plan-item="${escapeHtml(item.routePlanItemId)}">
+    <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
+      <div class="panel-head">
+        <h3>Selected work</h3>
+        <div class="pill-row">
+          <span class="pill">Planned Routes</span>
+          <span class="pill">${escapeHtml(String(payload.workInputs.acceptedReadyCount))} ready</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="summary-list dispatch-selected-work-summary">
+          <article class="summary-item compact" data-dispatch-route-plan-package>
+            <div class="eyebrow">Package</div>
+            <strong>${escapeHtml(packageStartItem.originAirport.code)} -> ${escapeHtml(packageEndItem.destinationAirport.code)}</strong>
+            <span class="muted">${escapeHtml(packageStartItem.originAirport.primaryLabel)} to ${escapeHtml(packageEndItem.destinationAirport.primaryLabel)}</span>
+          </article>
+          <article class="summary-item compact">
+            <div class="eyebrow">Timing</div>
+            <strong>${escapeHtml(formatDate(packageStartItem.earliestStartUtc ?? packageStartItem.deadlineUtc))} to ${escapeHtml(formatDate(packageEndItem.deadlineUtc))}</strong>
+            <span class="muted">${escapeHtml(String(items.length))} planned item${items.length === 1 ? "" : "s"}</span>
+          </article>
+          <article class="summary-item compact">
+            <div class="eyebrow">Payload</div>
+            <strong>${escapeHtml(formatMoney(totalPayoutAmount))}</strong>
+            <span class="muted">${escapeHtml(formatPayload(summaryItem.volumeType, summaryItem.passengerCount, summaryItem.cargoWeightLb))} selected as context</span>
+          </article>
+          <article class="summary-item compact" data-dispatch-route-plan-selected-row>
+            <div class="eyebrow">Selected row</div>
+            <strong>${escapeHtml(summaryItem.originAirport.code)} -> ${escapeHtml(summaryItem.destinationAirport.code)}</strong>
+            <span class="muted">${escapeHtml(summaryItem.originAirport.primaryLabel)} to ${escapeHtml(summaryItem.destinationAirport.primaryLabel)}</span>
+          </article>
+          <article class="summary-item compact">
+            <div class="eyebrow">Chain</div>
+            <strong>${escapeHtml(String(items.length))} planned items</strong>
+            <span class="muted">${escapeHtml(describeRoutePlanPackage(items, packageStartItem, packageEndItem, summaryItem))}</span>
+          </article>
+        </div>
+        <div class="dispatch-selected-work-actions">
+          ${selectedAircraft ? `
+            <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/bind-route-plan" class="dispatch-inline-action" data-api-form>
+              <input type="hidden" name="tab" value="dispatch" />
+              <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
+              <input type="hidden" name="aircraftId" value="${escapeHtml(selectedAircraft.aircraftId)}" />
+              <button type="submit" ${stageButtonDisabled ? "disabled" : ""} data-dispatch-bind-route-plan="1" data-dispatch-stage-draft="1" data-pending-label="Drafting route plan...">${escapeHtml(stageButtonLabel)}</button>
+            </form>
+          ` : `<div class="muted">Select an aircraft to stage this route plan.</div>`}
+        </div>
+        <div class="muted dispatch-section-note">${escapeHtml(describeRoutePlanSummaryNote(items, packageStartItem, packageEndItem, summaryItem))}</div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSelectedAcceptedContractSummary(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedCompanyContractId: string | undefined,
+): string {
+  const contracts = payload.workInputs.acceptedContracts;
+  if (contracts.length === 0) {
+    return `
+      <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
+        <div class="panel-head">
+          <h3>Selected work</h3>
+          <span class="pill">Accepted Contracts</span>
+        </div>
+        <div class="panel-body">
+          <div class="empty-state compact">No accepted contracts are waiting for planning yet.</div>
+        </div>
+      </section>
+    `;
+  }
+
+  const selectedContract = (findSelectedAcceptedContract(contracts, selectedCompanyContractId) ?? contracts[0])!;
+  const actionDisabled = !selectedAircraft;
+
+  return `
+    <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
+      <div class="panel-head">
+        <h3>Selected work</h3>
+        <div class="pill-row">
+          <span class="pill">Accepted Contracts</span>
+          <span class="pill">${escapeHtml(String(contracts.length))}</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="dispatch-selected-work-summary">
+          <article class="summary-item compact">
+            <div class="eyebrow">Package</div>
+            <strong>${escapeHtml(selectedContract.originAirport.code)} -> ${escapeHtml(selectedContract.destinationAirport.code)}</strong>
+            <span class="muted">${escapeHtml(selectedContract.originAirport.primaryLabel)} to ${escapeHtml(selectedContract.destinationAirport.primaryLabel)}</span>
+          </article>
+          <article class="summary-item compact">
+            <div class="eyebrow">Timing</div>
+            <strong>${escapeHtml(formatDate(selectedContract.deadlineUtc))}</strong>
+            <span class="muted">${selectedContract.earliestStartUtc ? `Earliest ${escapeHtml(formatDate(selectedContract.earliestStartUtc))}` : "No earliest start window"}</span>
+          </article>
+          <article class="summary-item compact">
+            <div class="eyebrow">Payload</div>
+            <strong>${escapeHtml(formatPayload(selectedContract.volumeType, selectedContract.passengerCount, selectedContract.cargoWeightLb))}</strong>
+            <span class="muted">${escapeHtml(formatMoney(selectedContract.acceptedPayoutAmount))}</span>
+          </article>
+          <article class="summary-item compact">
+            <div class="eyebrow">Draft impact</div>
+            <strong>${escapeHtml(selectedAircraft ? selectedAircraft.registration : "No aircraft selected")}</strong>
+            <span class="muted">${escapeHtml(selectedAircraft?.schedule?.isDraft ? "Replacing the current draft." : "Staging a new draft on selection.")}</span>
+          </article>
+        </div>
+        <div class="dispatch-selected-work-actions">
+          ${selectedAircraft ? `
+            <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/auto-plan-contract" class="dispatch-inline-action" data-api-form>
+              <input type="hidden" name="tab" value="dispatch" />
+              <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
+              <input type="hidden" name="companyContractId" value="${escapeHtml(selectedContract.companyContractId)}" />
+              <input type="hidden" name="aircraftId" value="${escapeHtml(selectedAircraft.aircraftId)}" />
+              <button type="submit" ${actionDisabled ? "disabled" : ""} data-dispatch-auto-plan-contract="1" data-dispatch-stage-draft="1" data-pending-label="Drafting schedule...">Draft selected contract${selectedAircraft ? ` on ${escapeHtml(selectedAircraft.registration)}` : ""}</button>
+            </form>
+          ` : `<div class="muted">Select an aircraft to stage this contract.</div>`}
+        </div>
+        <div class="muted dispatch-section-note">${escapeHtml(describeAcceptedContractSummaryNote(selectedAircraft, selectedContract))}</div>
+      </div>
+    </section>
+  `;
+}
+
+function renderPlannedRoutesList(payload: DispatchTabPayload, selectedRoutePlanItemId: string | undefined): string {
+  const routePlanItems = payload.workInputs.routePlanItems;
+  if (routePlanItems.length === 0) {
+    return `<div class="empty-state compact">Add contracts to the route plan from Contracts, then accept them there before handing them off into Dispatch.</div>`;
+  }
+
+  return `
+    <section class="dispatch-input-list dispatch-source-list" aria-label="Planned routes">
+      ${routePlanItems.map((item) => renderRoutePlanItem(item, item.routePlanItemId === selectedRoutePlanItemId)).join("")}
+    </section>
+  `;
+}
+
+function renderAcceptedContractsList(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedCompanyContractId: string | undefined,
+): string {
+  const contracts = payload.workInputs.acceptedContracts;
+  const attachedContractIds = new Set(
+    selectedAircraft?.schedule?.legs
+      .map((leg) => leg.linkedCompanyContractId)
+      .filter((entry): entry is string => Boolean(entry)) ?? [],
+  );
+
+  if (contracts.length === 0) {
+    return `<div class="empty-state compact">No accepted contracts are waiting for a dispatch plan.</div>`;
+  }
+
+  return `
+    <section class="dispatch-input-list dispatch-source-list" aria-label="Accepted contracts">
+      ${contracts.map((contract) => renderAcceptedContract(contract, contract.companyContractId === selectedCompanyContractId, attachedContractIds.has(contract.companyContractId))).join("")}
+    </section>
+  `;
+}
+
+function renderRoutePlanItem(
+  item: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+  selected: boolean,
+): string {
+  return `
+    <button
+      type="button"
+      class="dispatch-input-card dispatch-source-card ${selected ? "selected" : ""}"
+      data-dispatch-source-item="${escapeHtml(item.routePlanItemId)}"
+      data-dispatch-source-mode="planned_routes"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
       <div class="dispatch-input-card-head">
         <div class="meta-stack">
           <strong>${escapeHtml(item.originAirport.code)} -> ${escapeHtml(item.destinationAirport.code)}</strong>
@@ -532,43 +807,23 @@ function renderRoutePlanItem(item: DispatchTabPayload["workInputs"]["routePlanIt
         <span>${escapeHtml(formatMoney(item.payoutAmount))}</span>
         <span>Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
       </div>
-    </article>
-  `;
-}
-
-function renderAcceptedWorkSection(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView | undefined): string {
-  const attachedContractIds = new Set(
-    selectedAircraft?.schedule?.legs
-      .map((leg) => leg.linkedCompanyContractId)
-      .filter((entry): entry is string => Boolean(entry)) ?? [],
-  );
-
-  return `
-    <section class="dispatch-input-section">
-      <div class="dispatch-input-section-head">
-        <div class="meta-stack">
-          <div class="eyebrow">Accepted Work</div>
-          <strong>${escapeHtml(String(payload.workInputs.acceptedContracts.length))} contracts waiting for planning</strong>
-          <span class="muted">Auto-plan preserves the existing backend draft flow and will replace the selected aircraft draft if one exists.</span>
-        </div>
-      </div>
-      ${payload.workInputs.acceptedContracts.length === 0
-        ? `<div class="empty-state compact">No accepted contracts are waiting for a dispatch plan.</div>`
-        : `<div class="dispatch-input-list">${payload.workInputs.acceptedContracts.map((contract) => renderAcceptedContract(payload.saveId, contract, selectedAircraft, attachedContractIds.has(contract.companyContractId))).join("")}</div>`}
-    </section>
+    </button>
   `;
 }
 
 function renderAcceptedContract(
-  saveId: string,
   contract: DispatchTabPayload["workInputs"]["acceptedContracts"][number],
-  selectedAircraft: DispatchAircraftView | undefined,
+  selected: boolean,
   alreadyInDraft: boolean,
 ): string {
-  const actionDisabled = !selectedAircraft;
-
   return `
-    <article class="dispatch-input-card" data-dispatch-accepted-contract="${escapeHtml(contract.companyContractId)}">
+    <button
+      type="button"
+      class="dispatch-input-card dispatch-source-card ${selected ? "selected" : ""}"
+      data-dispatch-source-item="${escapeHtml(contract.companyContractId)}"
+      data-dispatch-source-mode="accepted_contracts"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
       <div class="dispatch-input-card-head">
         <div class="meta-stack">
           <strong>${escapeHtml(contract.originAirport.code)} -> ${escapeHtml(contract.destinationAirport.code)}</strong>
@@ -584,14 +839,7 @@ function renderAcceptedContract(
         <span>${escapeHtml(formatMoney(contract.acceptedPayoutAmount))}</span>
         <span>Due ${escapeHtml(formatDate(contract.deadlineUtc))}</span>
       </div>
-      <form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/auto-plan-contract" class="dispatch-inline-form" data-api-form>
-        <input type="hidden" name="tab" value="dispatch" />
-        <input type="hidden" name="saveId" value="${escapeHtml(saveId)}" />
-        <input type="hidden" name="companyContractId" value="${escapeHtml(contract.companyContractId)}" />
-        <input type="hidden" name="aircraftId" value="${escapeHtml(selectedAircraft?.aircraftId ?? "")}" />
-        <button type="submit" ${actionDisabled ? "disabled" : ""} data-pending-label="Drafting schedule...">Auto-plan${selectedAircraft ? ` on ${escapeHtml(selectedAircraft.registration)}` : ""}</button>
-      </form>
-    </article>
+    </button>
   `;
 }
 
@@ -866,28 +1114,150 @@ function humanize(value: string): string {
   return value.replaceAll("_", " ");
 }
 
-function loadStoredSelection(saveId: string): { aircraftId?: string; legId?: string } | null {
+function loadStoredSelection(saveId: string): DispatchStoredSelection | null {
   try {
     const raw = window.sessionStorage.getItem(`${selectionStoragePrefix}${saveId}`);
     if (!raw) {
       return null;
     }
 
-    return JSON.parse(raw) as { aircraftId?: string; legId?: string };
+    return JSON.parse(raw) as DispatchStoredSelection;
   } catch {
     return null;
   }
 }
 
-function storeSelection(saveId: string, aircraftId: string | undefined, legId: string | undefined): void {
+function storeSelection(
+  saveId: string,
+  aircraftId: string | undefined,
+  legId: string | undefined,
+  sourceMode: DispatchSourceMode | undefined,
+  sourceId: string | undefined,
+): void {
   try {
     window.sessionStorage.setItem(`${selectionStoragePrefix}${saveId}`, JSON.stringify({
       ...(aircraftId ? { aircraftId } : {}),
       ...(legId ? { legId } : {}),
+      ...(sourceMode ? { sourceMode } : {}),
+      ...(sourceId ? { sourceId } : {}),
     }));
   } catch {
     // Ignore storage failures in desktop mode.
   }
+}
+
+function resolveDefaultSourceMode(payload: DispatchTabPayload): DispatchSourceMode {
+  return payload.workInputs.acceptedContracts.length > 0 ? "accepted_contracts" : "planned_routes";
+}
+
+function resolveSourceSelection(
+  payload: DispatchTabPayload,
+  sourceMode: DispatchSourceMode | undefined,
+  sourceId: string | undefined,
+): { sourceMode: DispatchSourceMode; sourceId?: string } {
+  if (sourceMode) {
+    const modeItems = getSourceItems(payload, sourceMode);
+    const resolvedSourceId = sourceId && modeItems.some((item) => item.id === sourceId)
+      ? sourceId
+      : modeItems[0]?.id;
+
+    return {
+      sourceMode,
+      ...(resolvedSourceId ? { sourceId: resolvedSourceId } : {}),
+    };
+  }
+
+  const defaultMode = resolveDefaultSourceMode(payload);
+  const defaultItems = getSourceItems(payload, defaultMode);
+  const alternateMode: DispatchSourceMode = defaultMode === "accepted_contracts" ? "planned_routes" : "accepted_contracts";
+  const resolvedMode = defaultItems.length > 0 ? defaultMode : alternateMode;
+  const resolvedItems = getSourceItems(payload, resolvedMode);
+  const resolvedSourceId = sourceId && resolvedItems.some((item) => item.id === sourceId)
+    ? sourceId
+    : resolvedItems[0]?.id;
+
+  return {
+    sourceMode: resolvedMode,
+    ...(resolvedSourceId ? { sourceId: resolvedSourceId } : {}),
+  };
+}
+
+function getSourceItems(
+  payload: DispatchTabPayload,
+  sourceMode: DispatchSourceMode,
+): { id: string; title: string; subtitle: string; status: string; meta: string; originAirportCode: string; destinationAirportCode: string }[] {
+  if (sourceMode === "planned_routes") {
+    return payload.workInputs.routePlanItems.map((item) => ({
+      id: item.routePlanItemId,
+      title: `${item.originAirport.code} -> ${item.destinationAirport.code}`,
+      subtitle: `${item.originAirport.primaryLabel} to ${item.destinationAirport.primaryLabel}`,
+      status: item.plannerItemStatus,
+      meta: `${formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb)} | ${formatMoney(item.payoutAmount)} | Due ${formatDate(item.deadlineUtc)}`,
+      originAirportCode: item.originAirport.code,
+      destinationAirportCode: item.destinationAirport.code,
+    }));
+  }
+
+  return payload.workInputs.acceptedContracts.map((contract) => ({
+    id: contract.companyContractId,
+    title: `${contract.originAirport.code} -> ${contract.destinationAirport.code}`,
+    subtitle: `${contract.originAirport.primaryLabel} to ${contract.destinationAirport.primaryLabel}`,
+    status: contract.contractState,
+    meta: `${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | ${formatMoney(contract.acceptedPayoutAmount)} | Due ${formatDate(contract.deadlineUtc)}`,
+    originAirportCode: contract.originAirport.code,
+    destinationAirportCode: contract.destinationAirport.code,
+  }));
+}
+
+function findSelectedRoutePlanItem(
+  items: DispatchTabPayload["workInputs"]["routePlanItems"],
+  selectedRoutePlanItemId: string | undefined,
+): DispatchTabPayload["workInputs"]["routePlanItems"][number] | undefined {
+  return items.find((item) => item.routePlanItemId === selectedRoutePlanItemId) ?? items[0];
+}
+
+function findSelectedAcceptedContract(
+  items: DispatchTabPayload["workInputs"]["acceptedContracts"],
+  selectedCompanyContractId: string | undefined,
+): DispatchTabPayload["workInputs"]["acceptedContracts"][number] | undefined {
+  return items.find((item) => item.companyContractId === selectedCompanyContractId) ?? items[0];
+}
+
+function describeRoutePlanPackage(
+  items: DispatchTabPayload["workInputs"]["routePlanItems"],
+  packageStartItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+  packageEndItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+  selectedItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+): string {
+  if (!selectedItem) {
+    return "No route plan item is selected.";
+  }
+
+  const acceptedReadyCount = items.filter((item) => item.plannerItemStatus === "accepted_ready").length;
+  const blockerCount = items.filter((item) => item.plannerItemStatus === "candidate_available" || item.plannerItemStatus === "candidate_stale").length;
+  const scheduledCount = items.filter((item) => item.plannerItemStatus === "scheduled").length;
+
+  return `Route package starts at ${packageStartItem.originAirport.code}, ends at ${packageEndItem.destinationAirport.code}, and has ${acceptedReadyCount} ready, ${blockerCount} blocked, and ${scheduledCount} scheduled item${items.length === 1 ? "" : "s"}. Staging binds the accepted-ready chain in order; the selected row stays as context only.`;
+}
+
+function describeRoutePlanSummaryNote(
+  items: DispatchTabPayload["workInputs"]["routePlanItems"],
+  packageStartItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+  packageEndItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+  selectedItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+): string {
+  return items.length > 1
+    ? `Selected row: ${selectedItem.originAirport.code} -> ${selectedItem.destinationAirport.code}. Dispatch stages the ready items in the chain from ${packageStartItem.originAirport.code} to ${packageEndItem.destinationAirport.code}, not just the selected row.`
+    : `This selected row is the whole planned route package.`;
+}
+
+function describeAcceptedContractSummaryNote(
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedContract: DispatchTabPayload["workInputs"]["acceptedContracts"][number],
+): string {
+  return selectedAircraft
+    ? `Drafting ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code} will use ${selectedAircraft.registration} and replace any current draft on that aircraft.`
+    : `Select an aircraft first to stage ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code}.`;
 }
 
 function escapeHtml(value: string): string {
