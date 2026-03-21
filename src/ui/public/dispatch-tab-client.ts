@@ -829,6 +829,8 @@ function renderSelectedRoutePlanSummary(
   const packageStartItem = items[0]!;
   const packageEndItem = items[items.length - 1]!;
   const summaryItem = selectedItem ?? packageStartItem;
+  const packageEndpoint = payload.workInputs.endpointAirport ?? packageEndItem.destinationAirport;
+  const routePathCodes = buildRoutePathCodes(items);
   const totalPayoutAmount = items.reduce((sum, item) => sum + item.payoutAmount, 0);
   const stageButtonDisabled = !selectedAircraft || payload.workInputs.acceptedReadyCount === 0 || !selectedAircraft.dispatchAvailable;
   const stageButtonLabel = selectedAircraft?.schedule?.isDraft ? "Replace draft with route plan" : "Draft route plan";
@@ -844,10 +846,14 @@ function renderSelectedRoutePlanSummary(
       </div>
       <div class="panel-body">
         <div class="summary-list dispatch-selected-work-summary">
-          <article class="summary-item compact" data-dispatch-route-plan-package>
-            <div class="eyebrow">Package</div>
-            <strong>${escapeHtml(packageStartItem.originAirport.code)} -> ${escapeHtml(packageEndItem.destinationAirport.code)}</strong>
-            <span class="muted">${escapeHtml(packageStartItem.originAirport.primaryLabel)} to ${escapeHtml(packageEndItem.destinationAirport.primaryLabel)}</span>
+          <article class="summary-item compact" data-dispatch-route-context="planned_routes" data-dispatch-route-plan-package>
+            <div class="eyebrow">Route context</div>
+            <strong>${escapeHtml(packageStartItem.originAirport.code)} -> ${escapeHtml(packageEndpoint.code)}</strong>
+            <div class="pill-row" data-dispatch-route-ribbon>
+              ${renderRouteRibbon(routePathCodes)}
+            </div>
+            <span class="muted">${escapeHtml(describeRouteRibbon(routePathCodes, items.length))}</span>
+            <span class="muted">${escapeHtml(describeRoutePlanPackageSummary(payload, packageStartItem, packageEndItem))}</span>
           </article>
           <article class="summary-item compact">
             <div class="eyebrow">Timing</div>
@@ -857,12 +863,14 @@ function renderSelectedRoutePlanSummary(
           <article class="summary-item compact">
             <div class="eyebrow">Payload</div>
             <strong>${escapeHtml(formatMoney(totalPayoutAmount))}</strong>
-            <span class="muted">${escapeHtml(formatPayload(summaryItem.volumeType, summaryItem.passengerCount, summaryItem.cargoWeightLb))} selected as context</span>
+            <span class="muted">${escapeHtml(formatPayload(summaryItem.volumeType, summaryItem.passengerCount, summaryItem.cargoWeightLb))} selected as row context</span>
           </article>
-          <article class="summary-item compact" data-dispatch-route-plan-selected-row>
+          <article class="summary-item compact" data-dispatch-route-selected-row data-dispatch-route-plan-selected-row>
             <div class="eyebrow">Selected row</div>
             <strong>${escapeHtml(summaryItem.originAirport.code)} -> ${escapeHtml(summaryItem.destinationAirport.code)}</strong>
             <span class="muted">${escapeHtml(summaryItem.originAirport.primaryLabel)} to ${escapeHtml(summaryItem.destinationAirport.primaryLabel)}</span>
+            <span class="muted">Stop ${escapeHtml(String(summaryItem.sequenceNumber))} of ${escapeHtml(String(items.length))}</span>
+            <span class="muted">Window ${escapeHtml(formatWindow(summaryItem.earliestStartUtc, summaryItem.deadlineUtc))}</span>
           </article>
           <article class="summary-item compact" data-dispatch-draft-impact>
             <div class="eyebrow">Draft impact</div>
@@ -872,7 +880,7 @@ function renderSelectedRoutePlanSummary(
           <article class="summary-item compact">
             <div class="eyebrow">Chain</div>
             <strong>${escapeHtml(String(items.length))} planned items</strong>
-            <span class="muted">${escapeHtml(describeRoutePlanPackage(items, packageStartItem, packageEndItem, summaryItem))}</span>
+            <span class="muted">${escapeHtml(describeRoutePlanChain(items, packageStartItem, packageEndItem, summaryItem))}</span>
           </article>
         </div>
         <div class="dispatch-selected-work-actions">
@@ -913,6 +921,7 @@ function renderSelectedAcceptedContractSummary(
 
   const selectedContract = (findSelectedAcceptedContract(contracts, selectedCompanyContractId) ?? contracts[0])!;
   const actionDisabled = !selectedAircraft;
+  const routePathCodes = [selectedContract.originAirport.code, selectedContract.destinationAirport.code];
 
   return `
     <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
@@ -925,10 +934,14 @@ function renderSelectedAcceptedContractSummary(
       </div>
       <div class="panel-body">
         <div class="dispatch-selected-work-summary">
-          <article class="summary-item compact">
-            <div class="eyebrow">Package</div>
+          <article class="summary-item compact" data-dispatch-route-context="accepted_contracts" data-dispatch-accepted-route-context>
+            <div class="eyebrow">Route context</div>
             <strong>${escapeHtml(selectedContract.originAirport.code)} -> ${escapeHtml(selectedContract.destinationAirport.code)}</strong>
-            <span class="muted">${escapeHtml(selectedContract.originAirport.primaryLabel)} to ${escapeHtml(selectedContract.destinationAirport.primaryLabel)}</span>
+            <div class="pill-row" data-dispatch-route-ribbon>
+              ${renderRouteRibbon(routePathCodes)}
+            </div>
+            <span class="muted">${escapeHtml(describeAcceptedRouteContext(selectedContract))}</span>
+            <span class="muted">${escapeHtml(describeAcceptedContractPackageSummary(selectedContract))}</span>
           </article>
           <article class="summary-item compact">
             <div class="eyebrow">Timing</div>
@@ -1017,14 +1030,16 @@ function renderRoutePlanItem(
           <span class="muted">${escapeHtml(item.originAirport.primaryLabel)} to ${escapeHtml(item.destinationAirport.primaryLabel)}</span>
         </div>
         <div class="pill-row">
-          ${renderBadge(item.plannerItemStatus)}
+          <span class="pill">Stop ${escapeHtml(String(item.sequenceNumber))}</span>
           ${item.linkedAircraftId ? `<span class="pill">linked</span>` : ""}
+          ${selected ? `<span class="pill">selected row</span>` : ""}
         </div>
       </div>
-      <div class="dispatch-input-card-meta">
-        <span>${escapeHtml(formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb))}</span>
-        <span>${escapeHtml(formatMoney(item.payoutAmount))}</span>
-        <span>Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+      <div class="pill-row dispatch-chain-facts">
+        <span class="pill">Status ${escapeHtml(labelForUi(item.plannerItemStatus))}</span>
+        <span class="pill">Window ${escapeHtml(formatWindow(item.earliestStartUtc, item.deadlineUtc))}</span>
+        <span class="pill">Payload ${escapeHtml(formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb))}</span>
+        <span class="pill">Payout ${escapeHtml(formatMoney(item.payoutAmount))}</span>
       </div>
     </button>
   `;
@@ -1049,14 +1064,16 @@ function renderAcceptedContract(
           <span class="muted">${escapeHtml(contract.originAirport.primaryLabel)} to ${escapeHtml(contract.destinationAirport.primaryLabel)}</span>
         </div>
         <div class="pill-row">
-          ${renderBadge(contract.contractState)}
+          <span class="pill">Single leg</span>
           ${alreadyInDraft ? `<span class="pill">in selected draft</span>` : ""}
+          ${selected ? `<span class="pill">selected work</span>` : ""}
         </div>
       </div>
-      <div class="dispatch-input-card-meta">
-        <span>${escapeHtml(formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb))}</span>
-        <span>${escapeHtml(formatMoney(contract.acceptedPayoutAmount))}</span>
-        <span>Due ${escapeHtml(formatDate(contract.deadlineUtc))}</span>
+      <div class="pill-row dispatch-chain-facts">
+        <span class="pill">Status ${escapeHtml(labelForUi(contract.contractState))}</span>
+        <span class="pill">Window ${escapeHtml(formatWindow(contract.earliestStartUtc, contract.deadlineUtc))}</span>
+        <span class="pill">Payload ${escapeHtml(formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb))}</span>
+        <span class="pill">Payout ${escapeHtml(formatMoney(contract.acceptedPayoutAmount))}</span>
       </div>
     </button>
   `;
@@ -1735,7 +1752,7 @@ function getSourceItems(
       title: `${item.originAirport.code} -> ${item.destinationAirport.code}`,
       subtitle: `${item.originAirport.primaryLabel} to ${item.destinationAirport.primaryLabel}`,
       status: item.plannerItemStatus,
-      meta: `${formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb)} | ${formatMoney(item.payoutAmount)} | Due ${formatDate(item.deadlineUtc)}`,
+      meta: `Status ${labelForUi(item.plannerItemStatus)} | Stop ${item.sequenceNumber} | Window ${formatWindow(item.earliestStartUtc, item.deadlineUtc)} | Payload ${formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb)} | Payout ${formatMoney(item.payoutAmount)}`,
       originAirportCode: item.originAirport.code,
       destinationAirportCode: item.destinationAirport.code,
     }));
@@ -1746,7 +1763,7 @@ function getSourceItems(
     title: `${contract.originAirport.code} -> ${contract.destinationAirport.code}`,
     subtitle: `${contract.originAirport.primaryLabel} to ${contract.destinationAirport.primaryLabel}`,
     status: contract.contractState,
-    meta: `${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | ${formatMoney(contract.acceptedPayoutAmount)} | Due ${formatDate(contract.deadlineUtc)}`,
+    meta: `Status ${labelForUi(contract.contractState)} | Window ${formatWindow(contract.earliestStartUtc, contract.deadlineUtc)} | Payload ${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | Payout ${formatMoney(contract.acceptedPayoutAmount)}`,
     originAirportCode: contract.originAirport.code,
     destinationAirportCode: contract.destinationAirport.code,
   }));
@@ -1766,7 +1783,7 @@ function findSelectedAcceptedContract(
   return items.find((item) => item.companyContractId === selectedCompanyContractId) ?? items[0];
 }
 
-function describeRoutePlanPackage(
+function describeRoutePlanChain(
   items: DispatchTabPayload["workInputs"]["routePlanItems"],
   packageStartItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
   packageEndItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
@@ -1780,7 +1797,7 @@ function describeRoutePlanPackage(
   const blockerCount = items.filter((item) => item.plannerItemStatus === "candidate_available" || item.plannerItemStatus === "candidate_stale").length;
   const scheduledCount = items.filter((item) => item.plannerItemStatus === "scheduled").length;
 
-  return `Route package starts at ${packageStartItem.originAirport.code}, ends at ${packageEndItem.destinationAirport.code}, and has ${acceptedReadyCount} ready, ${blockerCount} blocked, and ${scheduledCount} scheduled item${items.length === 1 ? "" : "s"}. Staging binds the accepted-ready chain in order; the selected row stays as context only.`;
+  return `${packageStartItem.originAirport.code} to ${packageEndItem.destinationAirport.code} has ${acceptedReadyCount} ready, ${blockerCount} blocked, and ${scheduledCount} scheduled item${items.length === 1 ? "" : "s"}. Staging binds the accepted-ready chain in order; the selected row stays as context only.`;
 }
 
 function describeRoutePlanSummaryNote(
@@ -1794,6 +1811,10 @@ function describeRoutePlanSummaryNote(
     : `This selected row is the whole planned route package.`;
 }
 
+function describeAcceptedRouteContext(selectedContract: DispatchTabPayload["workInputs"]["acceptedContracts"][number]): string {
+  return `Single contract path from ${selectedContract.originAirport.code} to ${selectedContract.destinationAirport.code}.`;
+}
+
 function describeAcceptedContractSummaryNote(
   selectedAircraft: DispatchAircraftView | undefined,
   selectedContract: DispatchTabPayload["workInputs"]["acceptedContracts"][number],
@@ -1801,6 +1822,57 @@ function describeAcceptedContractSummaryNote(
   return selectedAircraft
     ? `Drafting ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code} will use ${selectedAircraft.registration}. ${describeDraftReplacementImpact(selectedAircraft)}`
     : `Select an aircraft first to stage ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code}.`;
+}
+
+function buildRoutePathCodes(items: DispatchTabPayload["workInputs"]["routePlanItems"]): string[] {
+  if (items.length === 0) {
+    return [];
+  }
+
+  return [
+    items[0]!.originAirport.code,
+    ...items.map((item) => item.destinationAirport.code),
+  ];
+}
+
+function renderRouteRibbon(routePathCodes: string[]): string {
+  if (routePathCodes.length === 0) {
+    return `<span class="muted">No route context</span>`;
+  }
+
+  return routePathCodes.map((code, index) => `
+    ${index > 0 ? `<span class="muted">-&gt;</span>` : ""}
+    <span class="pill" data-dispatch-route-step="${escapeHtml(code)}">${escapeHtml(code)}</span>
+  `).join("");
+}
+
+function describeRouteRibbon(routePathCodes: string[], itemCount: number): string {
+  if (routePathCodes.length === 0) {
+    return "No route context is available yet.";
+  }
+
+  return itemCount > 1
+    ? `Route ribbon shows ${routePathCodes.length - 1} planned legs with intermediate stops in order.`
+    : `Route ribbon shows the single planned leg from origin to destination.`;
+}
+
+function formatWindow(earliestStartUtc: string | undefined, deadlineUtc: string): string {
+  return `${formatDate(earliestStartUtc ?? deadlineUtc)} - ${formatDate(deadlineUtc)}`;
+}
+
+function describeRoutePlanPackageSummary(
+  payload: DispatchTabPayload,
+  packageStartItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+  packageEndItem: DispatchTabPayload["workInputs"]["routePlanItems"][number],
+): string {
+  const endpointAirport = payload.workInputs.endpointAirport ?? packageEndItem.destinationAirport;
+  return `Package context stays on ${packageStartItem.originAirport.code} -> ${endpointAirport.code}; selected-row detail stays below as stop-by-stop context.`;
+}
+
+function describeAcceptedContractPackageSummary(
+  selectedContract: DispatchTabPayload["workInputs"]["acceptedContracts"][number],
+): string {
+  return `Single contract path keeps package context aligned with the selected row: ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code}.`;
 }
 
 function describeDraftReplacementImpact(selectedAircraft: DispatchAircraftView | undefined): string {

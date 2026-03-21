@@ -1,10 +1,10 @@
 # Dispatch Assignment And Readiness Capability
 
 - `Status:` active
-- `Workflow state:` landed_slice
-- `Current owner:` Mara Sterling
-- `Current active slice:` Slice 4 - named-pilot assignment and manual override
-- `Next routing target:` Mara Sterling
+- `Workflow state:` ready_to_land
+- `Current owner:` Owen Hart
+- `Current active slice:` Slice 5 - supporting map context and chain-detail refinement
+- `Next routing target:` Owen Hart
 - `Last updated:` 2026-03-20
 
 ## Relationship To Prior Brief
@@ -505,74 +505,74 @@ After named-pilot assignment is stable:
 
 ## Approved Next Slice
 
-`Slice 4 - Named-pilot assignment and manual override`
+`Slice 5 - Supporting map context and chain-detail refinement`
 
 Main conclusion:
 
-Dispatch should stop choosing named pilots behind the curtain at commit time.
-It should show the player who can cover the selected draft, prefill a recommended assignment, and allow manual override before commit.
+Dispatch now makes source selection, readiness, draft control, and named-pilot assignment trustworthy.
+The remaining gap is orientation.
+The final slice should add lightweight route context and clearer chain detail so multi-stop work can be understood at a glance, without opening a full map subsystem.
 
 Reason for doing it now:
 
-- slice 3 made draft control and calendar reflection trustworthy enough to move forward
-- the capability still promises specific named-pilot assignment when the named-pilot layer exists
-- current commit flow still hides pilot selection inside `selectNamedPilotsForRequirements`, which means Dispatch is not yet the source of truth for that decision
+- slices 1 through 4 resolved the core decision and commit-truth gaps first
+- the remaining Dispatch friction is player-facing readability rather than backend truth
+- current selected-work and timeline panels still make route-chain context harder to scan than it should be
+- a compact schematic route-context layer is enough for the vertical slice; a full geospatial map is not
 
 In scope:
 
-- keep this pilots-only
-- show the eligible named-pilot pool for the selected aircraft and draft
-- present an assisted recommended assignment using the current backend selection truth
-- allow manual override of the recommended pilot selection before commit
-- show why an unavailable pilot cannot cover the draft when that reason is already knowable from current state
-- pass explicit pilot selection through the commit path when the player overrides the recommendation
-- preserve the existing auto-selection path as the fallback when no manual override is supplied
-- keep the current readiness checklist and commit-impact structure intact while making pilot identity an explicit pre-commit decision
+- keep this work inside Dispatch only
+- add a compact supporting route-context surface for selected work
+- use a lightweight schematic route view or route ribbon instead of a full interactive map
+- show origin, destination, intermediate stops, and selected row or selected leg context clearly
+- tighten planned-route chain detail so each row exposes status, window, payload, and payout in one scan
+- keep package-wide context and selected-row context visible without duplicative or conflicting copy
+- improve accepted-contract detail only where needed so the single-contract path stays consistent with the new route context
+- preserve the current source selection, readiness checklist, draft control, and pilot-assignment flow
 
 Explicit non-goals:
 
-- no non-pilot named assignment
-- no crew-pairing optimizer beyond the current assisted recommendation
-- no map panel in this slice
-- no new dispatch legality engine
-- no broader labor-market redesign
+- no full geospatial map workspace
+- no map tiles, external map provider, or pan/zoom map interaction
+- no calendar embedding
 - no live operations monitoring
+- no new dispatch legality engine
+- no route-planning redesign outside Dispatch consumption
 
 Affected systems or files:
 
-- `src\application\commands\types.ts`
-- `src\application\commands\commit-aircraft-schedule.ts`
-- `src\application\dispatch\schedule-validation.ts`
-- `src\application\staffing\named-pilot-roster.ts`
-- `src\application\queries\staffing-state.ts`
 - `src\ui\dispatch-tab-model.ts`
-- `src\ui\server.ts`
-- `src/ui/public/dispatch-tab-client.ts`
-- any focused Dispatch backend and browser coverage that proves manual override truth
+- `src\ui\public\dispatch-tab-client.ts`
+- `src\ui\server.ts` only if shared browser assets or shell wiring must move
+- focused Dispatch UI-server and browser coverage that proves route-context and chain-detail truth
 
 Validation bar:
 
 - `npm run build`
-- focused backend coverage proving explicit selected pilots are honored on commit
-- focused backend coverage proving fallback auto-selection still works when no override is supplied
-- focused UI or browser coverage proving:
-  - recommended pilots render for the selected draft
-  - manual override is visible and changes the selected commit set
-  - blocked or unavailable pilots surface truthful reasons
-- preserve current Dispatch draft and commit flow coverage
-- preserve current named-pilot readiness and committed-assignment coverage
+- focused UI or UI-server coverage proving:
+  - selected work shows clearer package-level route context
+  - planned-route chain detail is readable row-by-row
+  - selected row and package context stay distinct
+  - accepted-contract flow remains clear and intact
+- preserve current Dispatch source selection, readiness, draft control, and named-pilot override coverage
+- preserve:
+  - `node test\\backend-smoke.test.mjs`
+  - `node test\\ui-server-smoke.test.mjs`
+  - `node test\\ui-smoke.test.mjs`
 
 Stop conditions or escalation triggers:
 
-- if explicit pilot override requires a broader schedule-reservation model than the current commit path can absorb
-- if pilot recommendation truth depends on backend shape not present in current draft or staffing payloads
-- if the slice starts pulling map context or broader chain-detail redesign into the same pass
+- if the slice starts needing a real map engine or external mapping dependency
+- if route-context rendering needs backend geo shape that the current payload does not expose cleanly
+- if chain-detail refinement starts forcing a broader route-planning redesign
+- if accepted-contract and planned-route detail want materially different workspace patterns instead of one bounded refinement
 
 ## Validation And Tracking
 
 - Slice 1 landed on `codex/dev` in commits `2781d90` and `bb7ecef`.
 - Slice 2 landed on `codex/dev` in commit `d599517`.
 - Slice 3 landed on `codex/dispatch-capability` in commit `04ff029`.
-- Slice 4 landed on `codex/dispatch-capability`.
-- Slice 5 remains the next approved follow-on but is not active yet.
+- Slice 4 landed on `codex/dispatch-capability` in commit `47ddcbd`.
+- Slice 5 is now active and is the final planned slice for this capability.
 - This capability should stay in one dossier unless execution complexity later justifies an exceptional standalone workstream.

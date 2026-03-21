@@ -176,6 +176,7 @@ export interface DispatchAcceptedContractView {
 
 export interface DispatchRoutePlanItemView {
   routePlanItemId: string;
+  sequenceNumber: number;
   sourceType: string;
   plannerItemStatus: string;
   originAirport: DispatchAirportView;
@@ -605,6 +606,7 @@ function buildRoutePlanItemView(
 ): DispatchRoutePlanItemView {
   return {
     routePlanItemId: item.routePlanItemId,
+    sequenceNumber: item.sequenceNumber,
     sourceType: item.sourceType,
     plannerItemStatus: item.plannerItemStatus,
     originAirport: describeAirport(item.originAirportId, airportReference),

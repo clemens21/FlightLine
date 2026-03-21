@@ -362,6 +362,18 @@ try {
   await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']"));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Planned Routes"));
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-source-item]").length >= 2);
+  await page.waitForFunction(() => {
+    const packageContext = document.querySelector("[data-dispatch-route-plan-package]")?.textContent ?? "";
+    const selectedRow = document.querySelector("[data-dispatch-route-plan-selected-row]")?.textContent ?? "";
+    const ribbonSteps = document.querySelectorAll("[data-dispatch-route-step]").length;
+    return packageContext.includes("Package context")
+      && selectedRow.includes("Selected row")
+      && ribbonSteps >= 2;
+  });
+  assert.equal((await page.locator("[data-dispatch-route-plan-package]").textContent())?.includes("Package context"), true);
+  assert.equal((await page.locator("[data-dispatch-route-plan-selected-row]").textContent())?.includes("Selected row"), true);
+  assert.equal(await page.locator("[data-dispatch-route-ribbon]").isVisible(), true);
+  assert.ok((await page.locator("[data-dispatch-route-step]").count()) >= 2);
   await clickUi(page.locator("[data-dispatch-source-item]").nth(0));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-route-plan-package]")?.textContent?.includes("Package")
     && document.querySelector("[data-dispatch-route-plan-selected-row]")?.textContent?.includes("Selected row"));
@@ -370,6 +382,10 @@ try {
   assert.equal(routePlanPackageTextFirst?.includes("Package"), true);
   assert.equal(routePlanSelectedRowTextFirst?.includes("Selected row"), true);
   assert.notEqual(routePlanPackageTextFirst, routePlanSelectedRowTextFirst);
+  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Status"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Window"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Payload"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Payout"), true);
   await clickUi(page.locator("[data-dispatch-source-item]").nth(1));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-route-plan-selected-row]")?.textContent?.includes("Selected row"));
   const routePlanPackageTextSecond = await page.locator("[data-dispatch-route-plan-package]").textContent();
@@ -387,6 +403,11 @@ try {
   await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='accepted_contracts'][role='tab']"));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Accepted Contracts"));
   await clickUi(page.locator("[data-dispatch-source-item]").first());
+  assert.equal((await page.locator("[data-dispatch-source-item]").first().textContent())?.includes("Status"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").first().textContent())?.includes("Window"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").first().textContent())?.includes("Payload"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").first().textContent())?.includes("Payout"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Single contract path"), true);
   await forceButtonSubmit(page, "[data-dispatch-stage-draft]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";

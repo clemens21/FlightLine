@@ -435,6 +435,14 @@ try {
   assert.equal(dispatchTab.tabId, "dispatch");
   assert.equal(dispatchTab.contentHtml.includes("data-dispatch-tab-host"), true);
   assert.ok(dispatchTab.dispatchPayload);
+  assert.equal(
+    dispatchTab.dispatchPayload.workInputs.routePlanItems.every((item, index) => item.sequenceNumber === index + 1),
+    true,
+  );
+  assert.equal(
+    dispatchTab.dispatchPayload.workInputs.routePlanItems.every((item) => typeof item.originAirport.code === "string" && typeof item.destinationAirport.code === "string"),
+    true,
+  );
   assert.equal(dispatchTab.dispatchPayload.aircraft.length, 4);
   assert.equal(dispatchTab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft), true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.routePlanItems.length >= 2, true);
