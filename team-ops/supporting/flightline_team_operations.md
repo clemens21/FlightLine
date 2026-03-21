@@ -47,7 +47,7 @@ If you need real simultaneous build work, do not fake it. Either:
 Use this branch model by default:
 
 - `main`:
-  - the promoted line
+  - the promoted line and the source of truth for promoted work
   - local `main` and GitHub `main` should normally stay aligned
 - `codex/dev`:
   - the clean integration branch for the next bounded landing set
@@ -55,11 +55,17 @@ Use this branch model by default:
 - `codex/<workstream>`:
   - the normal home for active implementation work
   - one bounded workstream branch per active implementation stream
+  - should normally be pushed to GitHub early so active work is not trapped on one machine
+- local-only scratch or rescue branches:
+  - allowed only as short-lived exceptions
+  - not the durable home for meaningful active work
 
 Important rule:
 
 - do not leave mixed unfinished work parked on `codex/dev`
+- do not leave meaningful active work local-only longer than necessary
 - if work on `codex/dev` stops being one coherent landing candidate, preserve it on a `codex/<workstream>` branch and return `codex/dev` to a clean integration state
+- if a temporary `codex/wip-*` or `codex/unframed-*` branch is created to rescue mixed work, convert that work into a real workstream branch or delete the rescue branch after resolution
 
 ## Default Intake Artifact
 
@@ -208,6 +214,7 @@ Eli should:
 - challenge weak implementation direction before building
 - keep scope bounded
 - surface ambiguity immediately
+- push active non-trivial workstream branches to GitHub early enough that the work is durably backed up
 - stop and escalate when the current stream now needs re-framing, broader role support, or further decomposition instead of opening new sub-streams independently
 - use the closeout template when done
 
@@ -385,10 +392,11 @@ Use `flightline_branch_promotion_rules.md`.
 
 The short version is:
 1. do not treat `dev` as automatically promotable
-2. let Mara define the intended landing scope
-3. let Nadia block risky weakly-validated work
-4. let Owen decide promotion readiness
-5. push GitHub `main` only from a reviewed local `main`
+2. keep real active work on GitHub-backed `codex/<workstream>` branches
+3. let Mara define the intended landing scope
+4. let Nadia block risky weakly-validated work
+5. let Owen decide promotion readiness
+6. push GitHub `main` only from a reviewed local `main`
 
 ## Final Guidance
 

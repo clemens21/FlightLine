@@ -192,7 +192,7 @@ For several active development efforts at once:
 Use this default branch model unless the human explicitly changes it:
 
 - `main`:
-  - the current promoted line
+  - the current promoted line and the source of truth for promoted work
   - local `main` and GitHub `main` should normally stay aligned
 - `codex/dev`:
   - the clean integration branch for the next intended landing set
@@ -200,12 +200,19 @@ Use this default branch model unless the human explicitly changes it:
 - `codex/<workstream>`:
   - the normal home for active implementation work
   - one bounded workstream branch per active implementation stream
+  - should normally be pushed to GitHub early if the work is non-trivial or should not be lost
+- local-only scratch or rescue branches:
+  - allowed only as short-lived exceptions
+  - not the durable source of truth for active workstreams
 
 Important rules:
 
 - do not leave mixed unfinished work parked on `codex/dev`
 - do not treat `codex/dev` as the default scratch branch
+- do not rely on a local-only branch as the durable home for meaningful in-progress work
+- if a workstream matters, push the `codex/<workstream>` branch to GitHub rather than trusting one machine
 - if active work on `codex/dev` becomes mixed, move or preserve it on a `codex/<workstream>` branch before the next promotion decision
+- if mixed work must be rescued quickly, a `codex/wip-*` or `codex/unframed-*` branch is acceptable as a temporary quarantine branch, but it should be reframed into a real workstream branch or removed once the rescue purpose is over
 - if several streams are active, use separate workstream branches or separate worktrees rather than stacking unrelated work on `codex/dev`
 
 ## Required Handoff Contract
