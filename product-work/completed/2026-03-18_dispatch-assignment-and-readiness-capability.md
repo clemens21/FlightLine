@@ -1,10 +1,10 @@
 # Dispatch Assignment And Readiness Capability
 
-- `Status:` active
-- `Workflow state:` ready_to_land
-- `Current owner:` Owen Hart
-- `Current active slice:` Slice 5 - supporting map context and chain-detail refinement
-- `Next routing target:` Owen Hart
+- `Status:` Completed capability with landed slices 1 through 5.
+- `Workflow state:` completed_capability
+- `Current owner:` Technical Lead (Mara Sterling)
+- `Current active slice:` none
+- `Next routing target:` none
 - `Last updated:` 2026-03-20
 
 ## Relationship To Prior Brief
@@ -574,5 +574,5 @@ Stop conditions or escalation triggers:
 - Slice 2 landed on `codex/dev` in commit `d599517`.
 - Slice 3 landed on `codex/dispatch-capability` in commit `04ff029`.
 - Slice 4 landed on `codex/dispatch-capability` in commit `47ddcbd`.
-- Slice 5 is now active and is the final planned slice for this capability.
+- Slice 5 landed on `codex/dispatch-capability` in commit `9248410`.
 - This capability should stay in one dossier unless execution complexity later justifies an exceptional standalone workstream.
