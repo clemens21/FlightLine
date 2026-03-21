@@ -335,6 +335,12 @@ try {
   await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planner candidates"));
   await page.waitForFunction(() => document.querySelector("[name='plannerMatchCurrentEndpoint']") instanceof HTMLInputElement
     && (document.querySelector("[name='plannerMatchCurrentEndpoint']")?.checked ?? false) === true);
+  assert.equal(await page.locator("[data-contracts-map]").count(), 0);
+  assert.equal(await page.locator("[data-contracts-plan-map]").count(), 1);
+  const plannerSummaryText = await page.locator(".planner-summary-panel").textContent();
+  assert.ok(plannerSummaryText?.includes("Current endpoint"));
+  assert.ok(plannerSummaryText?.includes("Payout total"));
+  assert.ok(plannerSummaryText?.includes("Continuity"));
   assert.equal(await page.locator(".planner-candidate-panel [data-accept-offer]").count(), 0);
   const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
   const initialPlannerAddCount = await plannerAddButtons.count();
@@ -342,6 +348,7 @@ try {
   const plannerCandidateOfferId = await plannerAddButtons.first().getAttribute("data-planner-add-candidate");
   assert.ok(plannerCandidateOfferId);
   const initialRoutePlanItemCount = await page.locator(".planner-chain-panel .planner-item").count();
+  assert.ok((await page.locator(".planner-chain-panel").textContent())?.includes("Accepted work"));
   await clickUi(plannerAddButtons.first());
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
   await page.waitForFunction((offerId) => {
@@ -350,6 +357,9 @@ try {
   }, plannerCandidateOfferId);
   await page.waitForFunction((offerId) => !document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
   await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planned"));
+  assert.ok((await page.locator(".planner-chain-panel .planner-item-source.accepted").count()) >= 1);
+  assert.ok((await page.locator(".planner-chain-panel .planner-item-source.planned").count()) >= 1);
+  assert.ok((await page.locator(".planner-chain-panel").textContent())?.includes("Planned candidate"));
   await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
     context.saveDatabase.run(
       `DELETE FROM contract_offer WHERE contract_offer_id = $contract_offer_id`,

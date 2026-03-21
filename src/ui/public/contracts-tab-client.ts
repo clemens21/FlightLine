@@ -68,6 +68,17 @@ interface PlannerCandidateView {
   detail: string;
 }
 
+interface PlannerChainSummary {
+  items: ContractsRoutePlanItem[];
+  endpointAirport: ContractsViewAirport | null;
+  itemCount: number;
+  acceptedWorkCount: number;
+  plannedCandidateCount: number;
+  payoutTotal: number;
+  orderLabel: string;
+  continuityIssues: string[];
+}
+
 interface ContractsUiState {
   payload: ContractsViewPayload;
   filters: FilterState;
@@ -240,8 +251,8 @@ export function mountContractsTab(
         state.workspaceTab = nextTab;
         if (nextTab === "planning") {
           state.acceptanceNextStepTab = null;
-        }
-        if (nextTab === "board") {
+          focusPlannerChain(state);
+        } else {
           focusSelectedRoute(state);
         }
         render();
@@ -528,7 +539,7 @@ export function mountContractsTab(
       ...state.map,
       zoom: nextZoom,
     };
-    renderMap(root, state, resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state)));
+    renderVisibleMap(root, state, resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state)));
   };
 
   const handlePointerDown = (event: PointerEvent) => {
@@ -556,7 +567,7 @@ export function mountContractsTab(
     };
     lastX = event.clientX;
     lastY = event.clientY;
-    renderMap(root, state, resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state)));
+    renderVisibleMap(root, state, resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state)));
   };
 
   const handlePointerUp = (event: PointerEvent) => {
@@ -815,7 +826,11 @@ export function mountContractsTab(
       };
       state.acceptanceNextStepTab = null;
       ensureActiveTabSelection(state);
-      focusSelectedRoute(state);
+      if (state.workspaceTab === "planning") {
+        focusPlannerChain(state);
+      } else {
+        focusSelectedRoute(state);
+      }
       options.onShellUpdate?.(result.shell);
       options.onMessage?.(state.message);
       render();
@@ -996,9 +1011,7 @@ export function mountContractsTab(
       </div>
     `;
 
-    if (state.workspaceTab === "board") {
-      renderMap(root, state, selectedRoute);
-    }
+    renderVisibleMap(root, state, selectedRoute);
     restoreFocusState(root, focusState);
   }
 }
@@ -1195,35 +1208,57 @@ function renderPlannerPanel(
   plannerCandidates: PlannerCandidateView[],
   state: ContractsUiState,
 ): string {
+  const summary = buildPlannerChainSummary(routePlan);
   const routePlanHtml = routePlan && routePlan.items.length > 0
     ? renderPlannerRoutePlan(routePlan, plannerReview)
     : `<div class="empty-state compact">Saved route plans and accepted work will appear here.</div>`;
 
   return `
     <div class="planner-shell">
-      <section class="panel planner-candidate-panel">
+      <section class="panel planner-summary-panel">
         <div class="panel-head">
           <div>
-            <h4>Planner candidates</h4>
-            <span class="muted">${escapeHtml(renderPlannerCandidateSubtitle(state, plannerCandidates.length))}</span>
+            <h4>Route summary</h4>
+            <span class="muted">${escapeHtml(summary.itemCount === 0 ? "No route chain is built yet." : `${summary.itemCount} chained items | ${summary.acceptedWorkCount} accepted work | ${summary.plannedCandidateCount} planned candidate${summary.plannedCandidateCount === 1 ? "" : "s"}`)}</span>
           </div>
         </div>
         <div class="panel-body">
-          ${renderPlannerCandidateFilters(state)}
-          ${renderPlannerCandidateList(plannerCandidates)}
+          ${renderPlannerSummary(summary)}
         </div>
       </section>
-      <section class="panel planner-chain-panel">
-        <div class="panel-head">
-          <div>
-            <h4>Route chain</h4>
-            <span class="muted">${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "No endpoint set yet")}</span>
+      <div class="planner-workbench">
+        <section class="panel planner-candidate-panel">
+          <div class="panel-head">
+            <div>
+              <h4>Planner candidates</h4>
+              <span class="muted">${escapeHtml(renderPlannerCandidateSubtitle(state, plannerCandidates.length))}</span>
+            </div>
           </div>
-        </div>
-        <div class="panel-body">
-          ${routePlanHtml}
-        </div>
-      </section>
+          <div class="panel-body">
+            ${renderPlannerCandidateFilters(state)}
+            ${renderPlannerCandidateList(plannerCandidates)}
+          </div>
+        </section>
+        <section class="panel planner-chain-panel">
+          <div class="panel-head">
+            <div>
+              <h4>Route chain</h4>
+              <span class="muted">${escapeHtml(summary.endpointAirport ? `${summary.endpointAirport.code} - ${summary.endpointAirport.name}` : state.payload.routePlan?.endpointAirportId ?? "No endpoint set yet")}</span>
+            </div>
+            <div class="pill-row">
+              <span class="pill">${escapeHtml(String(summary.itemCount))} items</span>
+              <span class="pill">${escapeHtml(String(summary.payoutTotal))} payout total</span>
+            </div>
+          </div>
+          <div class="panel-body">
+            <section class="planner-chain-map-card">
+              ${renderPlannerChainMap(summary)}
+              <div class="map-attribution">Chain context lives in Route Planning. The map follows the current chain order and highlights accepted work versus planned candidates.</div>
+            </section>
+            ${routePlanHtml}
+          </div>
+        </section>
+      </div>
     </div>
   `;
 }
@@ -1242,14 +1277,14 @@ function renderPlannerRoutePlan(routePlan: ContractsViewPayload["routePlan"], pl
           <button type="button" class="button-secondary" data-plan-review-close>Cancel review</button>
           <button type="button" data-plan-accept-selected ${selectedCount === 0 ? "disabled" : ""}>Accept selected planned offers</button>
         </div>
-        ${renderPlannerReviewSection("Ready to accept", reviewModel.readyToAccept, plannerReview.selectedRoutePlanItemIds, true)}
-        ${renderPlannerReviewSection("Already accepted / scheduled", reviewModel.acceptedOrScheduled, plannerReview.selectedRoutePlanItemIds, false)}
-        ${renderPlannerReviewSection("Unavailable / stale", reviewModel.unavailableOrStale, plannerReview.selectedRoutePlanItemIds, false)}
+        ${renderPlannerReviewSection("Planned candidates ready to accept", reviewModel.readyToAccept, plannerReview.selectedRoutePlanItemIds, true)}
+        ${renderPlannerReviewSection("Accepted work already in the chain", reviewModel.acceptedOrScheduled, plannerReview.selectedRoutePlanItemIds, false)}
+        ${renderPlannerReviewSection("Unavailable or stale snapshots", reviewModel.unavailableOrStale, plannerReview.selectedRoutePlanItemIds, false)}
       </div>
     `;
   }
 
-  const displayItems = [...routePlan.items].sort((left, right) => right.sequenceNumber - left.sequenceNumber);
+  const displayItems = [...routePlan.items].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
   return `
     <div class="planner-list">
       ${displayItems.map((item) => renderPlannerRoutePlanItem(item)).join("")}
@@ -1258,22 +1293,29 @@ function renderPlannerRoutePlan(routePlan: ContractsViewPayload["routePlan"], pl
 }
 
 function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
+  const sourceLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
+  const sourceTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
   const statusLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
-    ? "Planned"
-    : item.plannerItemStatus;
-  const actionsHtml = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
-    ? `<div class="muted">Planned candidate</div>`
-    : `<div class="muted">${escapeHtml(item.plannerItemStatus.replaceAll("_", " "))}</div>`;
+    ? "Ready to accept"
+    : item.plannerItemStatus.replaceAll("_", " ");
+  const actionLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
+    ? "Planned candidate"
+    : item.plannerItemStatus.replaceAll("_", " ");
+  const actionsHtml = `<div class="muted">${escapeHtml(actionLabel)}</div>`;
 
   return `
-    <article class="planner-item ${item.plannerItemStatus}">
+    <article class="planner-item ${item.plannerItemStatus} ${item.sourceType}">
       <div class="planner-item-head">
-        <span class="planner-sequence">${item.sequenceNumber}</span>
-        <div class="pill-row">${renderBadge(statusLabel)}</div>
+        <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
+        <div class="pill-row">
+          <span class="planner-sequence">${item.sequenceNumber}</span>
+          ${renderBadge(statusLabel)}
+        </div>
       </div>
       <div class="meta-stack">
         <strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
         <span class="muted">${escapeHtml(formatPayload(item))} | due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+        <span class="muted">${escapeHtml(actionLabel)}</span>
       </div>
       <div class="planner-item-actions">
         <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up">Up</button>
@@ -1354,6 +1396,7 @@ function renderPlannerCandidateRow(candidate: PlannerCandidateView): string {
     : candidate.state === "stale"
     ? "Stale"
     : "Unavailable";
+  const sourceLabel = "Planned candidate";
   const actionHtml = candidate.state === "actionable"
     ? `<button type="button" class="button-secondary" data-planner-add-candidate="${escapeHtml(candidate.offer.contractOfferId)}">Add to chain</button>`
     : `<span class="muted">${escapeHtml(statusLabel)}</span>`;
@@ -1361,8 +1404,9 @@ function renderPlannerCandidateRow(candidate: PlannerCandidateView): string {
     ? candidate.offer.fitBucket ?? candidate.offer.offerStatus
     : candidate.state;
   return `
-    <article class="planner-item ${candidate.state}">
+    <article class="planner-item ${candidate.state} candidate-offer">
       <div class="planner-item-head">
+        <div class="planner-item-source planned">${escapeHtml(sourceLabel)}</div>
         <div class="meta-stack">
           <strong>${escapeHtml(candidate.offer.origin.code)} -> ${escapeHtml(candidate.offer.destination.code)}</strong>
           <span class="muted">${escapeHtml(formatPayload(candidate.offer))} | due ${escapeHtml(formatDate(candidate.offer.latestCompletionUtc))}</span>
@@ -1414,12 +1458,19 @@ function renderPlannerReviewItem(
   canSelect: boolean,
 ): string {
   const isSelected = selectedRoutePlanItemIds.includes(item.routePlanItemId);
+  const sourceLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
+  const sourceTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
+  const stateLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
+    ? "Ready to accept"
+    : item.plannerItemStatus.replaceAll("_", " ");
   return `
-    <article class="planner-review-item ${item.plannerItemStatus}">
+    <article class="planner-review-item ${item.plannerItemStatus} ${item.sourceType}">
       ${canSelect ? `<label class="planner-review-toggle"><input type="checkbox" data-plan-review-select="${escapeHtml(item.routePlanItemId)}" ${isSelected ? "checked" : ""} /><span>Select</span></label>` : `<div class="planner-review-toggle static"><span>Locked</span></div>`}
       <div class="meta-stack">
+        <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
         <strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
         <span class="muted">${escapeHtml(formatPayload(item))} | due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+        <span class="muted">${escapeHtml(stateLabel)}</span>
       </div>
       <div class="pill-row">${renderBadge(item.plannerItemStatus)}</div>
     </article>
@@ -2023,6 +2074,31 @@ function focusSelectedRoute(state: ContractsUiState): void {
   };
 }
 
+function focusPlannerChain(state: ContractsUiState): void {
+  const summary = buildPlannerChainSummary(state.payload.routePlan);
+  if (summary.items.length === 0) {
+    state.map = { ...defaultMapState };
+    return;
+  }
+
+  const points = summary.items.flatMap((item) => [item.origin, item.destination]).map(toMercatorPoint);
+  const minLongitudeNorm = Math.min(...points.map((point) => point.longitudeNorm));
+  const maxLongitudeNorm = Math.max(...points.map((point) => point.longitudeNorm));
+  const minLatitudeNorm = Math.min(...points.map((point) => point.latitudeNorm));
+  const maxLatitudeNorm = Math.max(...points.map((point) => point.latitudeNorm));
+  const widthNorm = Math.max(0.015, maxLongitudeNorm - minLongitudeNorm);
+  const heightNorm = Math.max(0.015, maxLatitudeNorm - minLatitudeNorm);
+  const zoomX = Math.log2((mapViewWidthPx - mapPaddingPx * 2) / Math.max(widthNorm * mapTileSizePx, 1));
+  const zoomY = Math.log2((mapViewHeightPx - mapPaddingPx * 2) / Math.max(heightNorm * mapTileSizePx, 1));
+  const zoom = clamp(Math.floor(Math.min(zoomX, zoomY)), minMapZoom, maxMapZoom);
+
+  state.map = {
+    zoom,
+    centerLongitudeNorm: wrapUnitInterval((minLongitudeNorm + maxLongitudeNorm) / 2),
+    centerLatitudeNorm: clamp((minLatitudeNorm + maxLatitudeNorm) / 2, 0.02, 0.98),
+  };
+}
+
 // The route map is rendered as a lightweight SVG overlay instead of a heavier mapping library.
 function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: SelectedRoute | null): void {
   const svg = root.querySelector<SVGSVGElement>("[data-contracts-map]");
@@ -2030,10 +2106,42 @@ function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: Se
     return;
   }
 
-  const worldSizePx = mapTileSizePx * 2 ** state.map.zoom;
-  const tileCount = 2 ** state.map.zoom;
-  const centerWorldX = state.map.centerLongitudeNorm * worldSizePx;
-  const centerWorldY = state.map.centerLatitudeNorm * worldSizePx;
+  renderRouteMapSvg(svg, state.map, selectedRoute
+    ? (viewportLeftPx, viewportTopPx, worldSizePx) => renderSelectedOverlay(selectedRoute, viewportLeftPx, viewportTopPx, worldSizePx)
+    : () => `<text x="500" y="280" text-anchor="middle" class="map-label muted">Select a contract row to draw the route.</text>`);
+}
+
+function renderPlannerMap(root: HTMLElement, state: ContractsUiState): void {
+  const svg = root.querySelector<SVGSVGElement>("[data-contracts-plan-map]");
+  if (!svg) {
+    return;
+  }
+
+  const summary = buildPlannerChainSummary(state.payload.routePlan);
+  renderRouteMapSvg(svg, state.map, (viewportLeftPx, viewportTopPx, worldSizePx) =>
+    summary.items.length > 0
+      ? renderPlannerChainOverlay(summary, viewportLeftPx, viewportTopPx, worldSizePx)
+      : `<text x="500" y="280" text-anchor="middle" class="map-label muted">The route plan map appears here once the chain has items.</text>`);
+}
+
+function renderVisibleMap(root: HTMLElement, state: ContractsUiState, selectedRoute: SelectedRoute | null): void {
+  if (state.workspaceTab === "planning") {
+    renderPlannerMap(root, state);
+    return;
+  }
+
+  renderMap(root, state, selectedRoute);
+}
+
+function renderRouteMapSvg(
+  svg: SVGSVGElement,
+  map: MapState,
+  overlayRenderer: (viewportLeftPx: number, viewportTopPx: number, worldSizePx: number) => string,
+): void {
+  const worldSizePx = mapTileSizePx * 2 ** map.zoom;
+  const tileCount = 2 ** map.zoom;
+  const centerWorldX = map.centerLongitudeNorm * worldSizePx;
+  const centerWorldY = map.centerLatitudeNorm * worldSizePx;
   const viewportLeftPx = centerWorldX - mapViewWidthPx / 2;
   const viewportTopPx = centerWorldY - mapViewHeightPx / 2;
   const xStartTile = Math.floor(viewportLeftPx / mapTileSizePx);
@@ -2045,15 +2153,11 @@ function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: Se
   for (let tileY = yStartTile; tileY <= yEndTile; tileY += 1) {
     for (let tileX = xStartTile; tileX <= xEndTile; tileX += 1) {
       const wrappedTileX = ((tileX % tileCount) + tileCount) % tileCount;
-      tileImages.push(`
-        <image href="${buildTileUrl(state.map.zoom, wrappedTileX, tileY)}" x="${tileX * mapTileSizePx - viewportLeftPx}" y="${tileY * mapTileSizePx - viewportTopPx}" width="${mapTileSizePx}" height="${mapTileSizePx}" class="map-tile" preserveAspectRatio="none" />
-      `);
+      tileImages.push(`<image href="${buildTileUrl(map.zoom, wrappedTileX, tileY)}" x="${tileX * mapTileSizePx - viewportLeftPx}" y="${tileY * mapTileSizePx - viewportTopPx}" width="${mapTileSizePx}" height="${mapTileSizePx}" class="map-tile" preserveAspectRatio="none" />`);
     }
   }
 
-  const selectedOverlay = selectedRoute
-    ? renderSelectedOverlay(selectedRoute, viewportLeftPx, viewportTopPx, worldSizePx)
-    : `<text x="500" y="280" text-anchor="middle" class="map-label muted">Select a contract row to draw the route.</text>`;
+  const overlay = overlayRenderer(viewportLeftPx, viewportTopPx, worldSizePx);
 
   svg.innerHTML = `
     <rect x="0" y="0" width="${mapViewWidthPx}" height="${mapViewHeightPx}" rx="24" class="map-bg" />
@@ -2070,9 +2174,170 @@ function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: Se
       }).join("")}
     </g>
     <g class="map-overlay">
-      ${selectedOverlay}
+      ${overlay}
     </g>
   `;
+}
+
+function buildPlannerChainSummary(routePlan: ContractsViewPayload["routePlan"]): PlannerChainSummary {
+  const items = [...(routePlan?.items ?? [])].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
+  const endpointAirport = resolveRoutePlanEndpointAirport(routePlan, items);
+  const acceptedWorkCount = items.filter((item) => item.sourceType === "accepted_contract").length;
+  const plannedCandidateCount = items.filter((item) => item.sourceType === "candidate_offer").length;
+  const payoutTotal = items.reduce((sum, item) => sum + item.payoutAmount, 0);
+  const orderLabel = items.length > 0
+    ? items.map((item) => String(item.sequenceNumber)).join(" -> ")
+    : "No chain items yet";
+
+  return {
+    items,
+    endpointAirport,
+    itemCount: items.length,
+    acceptedWorkCount,
+    plannedCandidateCount,
+    payoutTotal,
+    orderLabel,
+    continuityIssues: buildPlannerContinuityIssues(routePlan, items, endpointAirport),
+  };
+}
+
+function renderPlannerSummary(summary: PlannerChainSummary): string {
+  const continuityStatus = summary.continuityIssues.length === 0
+    ? "Chain continuity is intact."
+    : `${summary.continuityIssues.length} continuity issue${summary.continuityIssues.length === 1 ? "" : "s"} detected.`;
+  return `
+    <div class="planner-summary-grid">
+      <article class="planner-summary-card">
+        <span class="eyebrow">Current endpoint</span>
+        <strong>${escapeHtml(summary.endpointAirport ? summary.endpointAirport.code : "Not set")}</strong>
+        <span class="muted">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "The chain still needs an endpoint.")}</span>
+      </article>
+      <article class="planner-summary-card">
+        <span class="eyebrow">Payout total</span>
+        <strong>${escapeHtml(formatMoney(summary.payoutTotal))}</strong>
+        <span class="muted">${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"} in chain`)}</span>
+      </article>
+      <article class="planner-summary-card">
+        <span class="eyebrow">Order</span>
+        <strong>${escapeHtml(summary.orderLabel)}</strong>
+        <span class="muted">${escapeHtml(`${summary.acceptedWorkCount} accepted work / ${summary.plannedCandidateCount} planned candidate${summary.plannedCandidateCount === 1 ? "" : "s"}`)}</span>
+      </article>
+      <article class="planner-summary-card ${summary.continuityIssues.length > 0 ? "warning" : "accent"}">
+        <span class="eyebrow">Continuity</span>
+        <strong>${escapeHtml(continuityStatus)}</strong>
+        <span class="muted">${escapeHtml(summary.continuityIssues.length === 0 ? "No breaks or endpoint mismatches are visible." : "Review the issues below before dispatch.")}</span>
+      </article>
+    </div>
+    ${summary.continuityIssues.length > 0
+      ? `<div class="planner-continuity-list">${summary.continuityIssues.map((issue) => `<div class="planner-continuity-issue">${escapeHtml(issue)}</div>`).join("")}</div>`
+      : `<div class="planner-continuity-list"><div class="planner-continuity-issue ok">Chain continuity is intact.</div></div>`}
+  `;
+}
+
+function renderPlannerChainMap(summary: PlannerChainSummary): string {
+  return `
+    <svg class="contracts-map contracts-plan-map" data-contracts-plan-map viewBox="0 0 1000 560" role="img" aria-label="${escapeHtml(summary.itemCount > 0 ? `Route planning chain map with ${summary.itemCount} items` : "Empty route planning chain map")}"></svg>
+  `;
+}
+
+function renderPlannerChainOverlay(
+  summary: PlannerChainSummary,
+  viewportLeftPx: number,
+  viewportTopPx: number,
+  worldSizePx: number,
+): string {
+  const segments = summary.items.map((item) => {
+    const origin = projectAirportToViewport(item.origin, viewportLeftPx, viewportTopPx, worldSizePx);
+    const destination = projectAirportToViewport(item.destination, viewportLeftPx, viewportTopPx, worldSizePx);
+    const routeTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
+    const routeLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
+    const routeStatus = item.plannerItemStatus.replaceAll("_", " ");
+    return `
+      <g class="map-segment ${routeTone}">
+        <circle cx="${origin.x}" cy="${origin.y}" r="14" class="map-sequence ${routeTone}" />
+        <text x="${origin.x}" y="${origin.y + 5}" text-anchor="middle" class="map-sequence-text">${item.sequenceNumber}</text>
+        <circle cx="${origin.x}" cy="${origin.y}" r="28" class="map-range-ring origin ${routeTone}" />
+        <circle cx="${destination.x}" cy="${destination.y}" r="28" class="map-range-ring destination ${routeTone}" />
+        <line x1="${origin.x}" y1="${origin.y}" x2="${destination.x}" y2="${destination.y}" class="map-route ${routeTone}" />
+        <circle cx="${origin.x}" cy="${origin.y}" r="8" class="map-point ${routeTone}" />
+        <circle cx="${destination.x}" cy="${destination.y}" r="8" class="map-point ${routeTone}" />
+        <text x="${origin.x + 14}" y="${origin.y - 16}" class="map-label">${escapeHtml(item.origin.code)}</text>
+        <text x="${destination.x + 14}" y="${destination.y - 16}" class="map-label">${escapeHtml(item.destination.code)}</text>
+        <text x="${destination.x + 14}" y="${destination.y + 18}" class="map-label map-segment-label">${escapeHtml(routeLabel)} | ${escapeHtml(routeStatus)}</text>
+      </g>
+    `;
+  }).join("");
+
+  const endpointPoint = summary.endpointAirport
+    ? projectAirportToViewport(summary.endpointAirport, viewportLeftPx, viewportTopPx, worldSizePx)
+    : null;
+
+  return `
+    ${segments}
+    ${endpointPoint
+      ? `<circle cx="${endpointPoint.x}" cy="${endpointPoint.y}" r="18" class="map-range-ring destination" /><text x="${endpointPoint.x + 14}" y="${endpointPoint.y + 4}" class="map-label">${escapeHtml(summary.endpointAirport?.code ?? "")}</text>`
+      : `<text x="500" y="280" text-anchor="middle" class="map-label muted">No chain endpoint is set yet.</text>`}
+  `;
+}
+
+function resolveRoutePlanEndpointAirport(
+  routePlan: ContractsViewPayload["routePlan"],
+  items: ContractsRoutePlanItem[],
+): ContractsViewAirport | null {
+  if (!routePlan?.endpointAirportId) {
+    return null;
+  }
+
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!item) {
+      continue;
+    }
+    if (item.destination.airportId === routePlan.endpointAirportId) {
+      return item.destination;
+    }
+    if (item.origin.airportId === routePlan.endpointAirportId) {
+      return item.origin;
+    }
+  }
+
+  return null;
+}
+
+function buildPlannerContinuityIssues(
+  routePlan: ContractsViewPayload["routePlan"],
+  items: ContractsRoutePlanItem[],
+  endpointAirport: ContractsViewAirport | null,
+): string[] {
+  const issues: string[] = [];
+
+  if (items.length === 0) {
+    issues.push("No route chain has been built yet.");
+    return issues;
+  }
+
+  for (let index = 1; index < items.length; index += 1) {
+    const previous = items[index - 1];
+    const current = items[index];
+    if (!previous || !current) {
+      continue;
+    }
+    if (previous.destination.airportId !== current.origin.airportId) {
+      issues.push(`Sequence ${current.sequenceNumber} starts at ${current.origin.code}, but the previous leg ends at ${previous.destination.code}.`);
+    }
+  }
+
+  const tail = items.at(-1);
+  if (routePlan?.endpointAirportId && tail && tail.destination.airportId !== routePlan.endpointAirportId) {
+    issues.push(`Current endpoint ${routePlan.endpointAirportId} does not match the chain tail ${tail.destination.code}.`);
+  }
+
+  const staleItems = items.filter((item) => item.plannerItemStatus === "candidate_stale");
+  if (staleItems.length > 0) {
+    issues.push(`${staleItems.length} planned candidate${staleItems.length === 1 ? "" : "s"} are stale.`);
+  }
+
+  return issues;
 }
 
 function renderSelectedOverlay(
@@ -2127,7 +2392,7 @@ function buildTileUrl(zoom: number, tileX: number, tileY: number): string {
 
 function resolveContractsMapSvg(target: EventTarget | null): SVGSVGElement | null {
   return target instanceof Element
-    ? target.closest<SVGSVGElement>("[data-contracts-map]")
+    ? target.closest<SVGSVGElement>("[data-contracts-map], [data-contracts-plan-map]")
     : null;
 }
 

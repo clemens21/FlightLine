@@ -1427,13 +1427,124 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 18px;
     }
+    .planner-summary-panel {
+      min-height: 0;
+    }
+    .planner-summary-panel .panel-body {
+      display: grid;
+      gap: 14px;
+    }
+    .planner-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .planner-summary-card,
+    .planner-continuity-issue {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: var(--panel-strong);
+      display: grid;
+      gap: 6px;
+    }
+    .planner-summary-card.accent {
+      border-color: rgba(13,106,119,.22);
+      background: color-mix(in srgb, var(--accent-soft) 54%, var(--panel-strong));
+    }
+    .planner-summary-card.warning {
+      border-color: rgba(239,177,95,.3);
+      background: color-mix(in srgb, var(--warn-soft) 48%, var(--panel-strong));
+    }
+    .planner-summary-card strong,
+    .planner-continuity-issue strong {
+      font-size: 16px;
+    }
+    .planner-continuity-list {
+      display: grid;
+      gap: 8px;
+    }
+    .planner-continuity-issue {
+      font-size: 13px;
+    }
+    .planner-continuity-issue.ok {
+      border-color: rgba(13,106,119,.22);
+      background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-strong));
+    }
+    .planner-workbench {
+      display: grid;
+      grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
+      gap: 18px;
+      min-height: 0;
+    }
     .planner-candidate-panel .panel-body {
       display: grid;
       gap: 14px;
     }
+    .planner-candidate-panel {
+      min-height: 0;
+    }
+    .planner-review {
+      display: grid;
+      gap: 14px;
+    }
+    .planner-review-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .planner-review-section {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+    }
+    .planner-review-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .planner-review-list {
+      display: grid;
+      gap: 10px;
+    }
+    .planner-review-item {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: var(--panel-strong);
+      display: grid;
+      gap: 10px;
+    }
+    .planner-review-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+    }
+    .planner-review-toggle input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+    }
+    .planner-review-toggle.static {
+      opacity: .8;
+    }
     .planner-chain-panel .panel-body {
       min-height: 0;
       overflow: auto;
+      display: grid;
+      gap: 14px;
+    }
+    .planner-chain-map-card {
+      display: grid;
+      gap: 10px;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -1454,9 +1565,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 10px;
     }
     .planner-item-head {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
       gap: 10px;
     }
     .planner-sequence {
@@ -1475,6 +1586,47 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       flex-wrap: wrap;
       gap: 8px;
     }
+    .planner-item .meta-stack {
+      min-width: 0;
+    }
+    .planner-item .meta-stack strong,
+    .planner-review-item .meta-stack strong {
+      overflow-wrap: anywhere;
+    }
+    .planner-review-item .meta-stack {
+      min-width: 0;
+    }
+    .planner-item.candidate-offer,
+    .planner-review-item.candidate_offer {
+      border-color: rgba(111,201,212,.18);
+    }
+    .planner-item.accepted_contract,
+    .planner-review-item.accepted_contract {
+      border-color: rgba(239,177,95,.24);
+    }
+    .planner-item-source {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      line-height: 1;
+    }
+    .planner-item-source.planned {
+      background: color-mix(in srgb, var(--accent-soft) 56%, var(--panel-strong));
+      color: var(--accent);
+    }
+    .planner-item-source.accepted {
+      background: color-mix(in srgb, var(--warn-soft) 56%, var(--panel-strong));
+      color: var(--warn);
+    }
+    .planner-item.stale,
+    .planner-review-item.candidate_stale {
+      opacity: .82;
+    }
     .contracts-map {
       width: 100%;
       height: 100%;
@@ -1483,6 +1635,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-radius: 18px;
       touch-action: none;
       overflow: hidden;
+    }
+    .contracts-plan-map {
+      min-height: 360px;
     }
     .map-attribution {
       font-size: 11px;
@@ -1507,6 +1662,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .map-range-ring.origin { stroke: rgba(111,201,212,.4); }
     .map-range-ring.destination { stroke: rgba(239,177,95,.4); }
     .map-label { fill: var(--text); font-size: 20px; font-weight: 600; paint-order: stroke; stroke: rgba(9, 15, 21, .55); stroke-width: 6px; stroke-linejoin: round; }
+    .map-sequence { fill: rgba(9, 16, 24, .9); stroke: var(--panel-strong); stroke-width: 2; }
+    .map-sequence.accepted { fill: rgba(239,177,95,.9); }
+    .map-sequence.planned { fill: rgba(111,201,212,.92); }
+    .map-sequence-text { fill: #091018; font-size: 11px; font-weight: 700; }
+    .map-segment-label { font-size: 12px; font-weight: 500; }
     .contracts-accepted-body { overflow: auto; }
     .aircraft-tab-grid {
       min-height: 0;
@@ -2105,7 +2265,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .dispatch-validation-summary,
       .dispatch-commit-metrics,
       .contracts-grid,
-      .contracts-side-column {
+      .contracts-side-column,
+      .planner-workbench,
+      .planner-summary-grid {
         grid-template-columns: 1fr;
         height: auto;
       }

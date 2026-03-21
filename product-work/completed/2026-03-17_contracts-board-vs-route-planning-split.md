@@ -1,10 +1,10 @@
 # Contracts Board vs Route Planning Split
 
-Status: active
-Workflow state: ready_for_owen
+Status: Completed capability with landed slices 1 through 3.
+Workflow state: completed_capability
 Current owner: Owen Hart
-Current active slice: Slice 2 - Planner-native candidate sourcing
-Next routing target: Owen Hart
+Current active slice: none
+Next routing target: none
 Last updated: 2026-03-20
 
 ## Purpose
@@ -80,38 +80,19 @@ This capability will land in three slices:
 - keep planned-candidate acceptance strictly inside route-planning review
 - preserve the existing Dispatch handoff model instead of redesigning Dispatch inputs
 
-## 3. Current Active Slice
+## 3. Completion Summary
 
-Slice 1 is landed on the capability branch in commit `aba8f31`.
+All three slices are landed and the capability is complete.
 
-Slice 2 should add planner-native candidate sourcing without rebuilding a second market board.
+- Slice 1 split the Contracts workspace and cleaned up the board.
+- Slice 2 added planner-native candidate sourcing inside `Route Planning`.
+- Slice 3 finished the route-planning summary, chain map, and explicit chain labeling.
 
-The current implementation pass should include only:
+The final completed state keeps the original product boundaries intact:
 
-- a lightweight candidate list inside `Route Planning`
-- candidate sourcing from the existing `available` offers already present in `ContractsViewPayload`
-- planner-local filters lighter than the board:
-  - search
-  - destination
-  - payload type
-  - fit bucket
-  - `match current endpoint`
-- default `match current endpoint = on` when the route plan already has an endpoint
-- candidate rows that allow `Add to chain` only
-- clear non-actionable states for already planned or stale candidates
-- accepted work continuing to enter the planner from board-side `Send to route plan`
-
-Slice 2 does not redesign planner review, planner acceptance, Dispatch inputs, or the board workspace.
-
-Preferred slice-2 behavior:
-
-- Route Planning can grow a chain from inside its own tab
-- candidate sourcing stays lighter than the board instead of cloning the board UI
-- direct acceptance still belongs to the board
-- planner candidates should clearly distinguish:
-  - actionable candidate
-  - already planned
-  - stale or unavailable
+- the board remains the discovery and direct-accept surface
+- route planning remains the chain-building and route-review surface
+- Dispatch handoff behavior stays unchanged
 
 ## 4. Explicit Non-Goals
 
