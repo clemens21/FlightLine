@@ -1,17 +1,24 @@
 # Contracts Board vs Route Planning Split
 
+Status: active
+Workflow state: ready_for_owen
+Current owner: Owen Hart
+Current active slice: Slice 1 - Contracts workspace split and board cleanup
+Next routing target: Owen Hart
+Last updated: 2026-03-20
+
 ## Purpose
 
-This brief defines the minimum useful product split between contract discovery and route planning inside the Contracts workspace.
+This dossier defines the active product split between contract discovery and route planning inside the Contracts workspace.
 
-It is a derivative design brief for future Mara framing.
-It is not implementation authorization on its own.
+It is the canonical source of truth for this capability.
+Mara owns decomposition and active-slice framing inside this file.
 
 ## 1. Main Conclusion
 
 Yes, the current Contracts tab is conflating two different jobs and should be split.
 
-The right first move is:
+The right capability direction is:
 
 - keep `Contract Board` focused on searching, evaluating, and accepting one contract
 - move route planning into its own sub-tab under Contracts
@@ -39,26 +46,67 @@ The product call here is direct:
 If the player wants one contract, the board should let them find it and accept it quickly.
 If the player wants a chain, they should enter a dedicated planning mode.
 
-## 2. Recommended Minimum Useful Scope
+## 2. Current Approved Direction
 
-The first refresh should include only:
+This capability will land in three slices:
+
+### Slice 1 - Contracts workspace split and board cleanup
+
+- add Contracts sub-tabs: `Contract Board` and `Route Planning`
+- keep `Accepted / Active` and `Closed` as board lifecycle views in the first pass
+- remove the planner rail, planner review controls, and all `Add to plan` actions from the board
+- keep available-offer rows to `Accept now`, row selection, and selected-route inspection only
+- keep board accept in-place and show a quick next-step CTA instead of auto-switching tabs
+- let `Accepted / Active` use `Send to route plan`
+- keep `Closed` review-only
+- keep the board map to selected-contract context only
+- move the saved route plan into its own `Route Planning` tab, reusing current route-plan state and planner review behavior
+- preserve legacy route-plan candidate offers already present in saves
+
+### Slice 2 - Planner-native candidate sourcing
+
+- add a lightweight candidate list inside `Route Planning`
+- source that list from existing available offers, not a second full market board
+- default planner sourcing to `match current endpoint` when the chain already has one
+- keep planner-side filters lighter than the board
+- allow `Add to chain` only from planner candidates
+- keep accepted work entering the planner from board-side `Send to route plan`
+
+### Slice 3 - Route Planning explainability and chain review
+
+- make `Planned candidate` versus `Accepted work` visually explicit across the planning surface
+- add a route-planning summary area for endpoint, payout total, order, and obvious continuity issues
+- move chain-level map/context into `Route Planning`
+- keep planned-candidate acceptance strictly inside route-planning review
+- preserve the existing Dispatch handoff model instead of redesigning Dispatch inputs
+
+## 3. Current Active Slice
+
+Slice 1 is intentionally smaller than the original brief wording.
+
+The first implementation pass should include only:
 
 - a Contracts sub-tab split between `Contract Board` and `Route Planning`
 - `Contract Board` focused on market search, single-contract review, and direct accept
-- `Route Planning` focused on building a route chain and accepting selected planned contracts from inside that mode
+- `Route Planning` focused on existing saved route-plan review and acceptance only
 - removal of planner controls from the main board surface
 - removal of planner controls from available-offer rows on the board
-- a dedicated candidate-sourcing surface inside `Route Planning`
-- clear distinction inside the planner between candidate offers and already accepted contracts
+- selected-contract map context only on the board
+- existing cancel behavior retained on `Accepted / Active`
+- `Send to route plan` for accepted work
+- a quick in-place next-step CTA after board acceptance
+
+Slice 1 does not include planner-native candidate sourcing.
+That work is reserved for slice 2.
 
 Preferred first-pass behavior:
 
-- available offers can be `Accept`ed from the board
+- available offers can be `Accept now` from the board
 - accepted contracts can be sent into route planning
-- route planning can stage candidate offers into a chain, review that chain, and accept selected planned contracts from inside planning mode
-- route planning can also sequence already accepted work
+- route planning can review the saved chain and accept selected planned contracts already in that chain
+- route planning can sequence already accepted work already present in the saved chain
 
-## 3. Explicit Non-Goals
+## 4. Explicit Non-Goals
 
 The first split should explicitly exclude:
 
@@ -72,7 +120,7 @@ The first split should explicitly exclude:
 
 This is a workflow separation pass, not a new meta-system.
 
-## 4. Why The Current UI Is Confusing
+## 5. Why The Current UI Is Confusing
 
 The current implementation mixes discovery and planning in one workstation flow:
 
@@ -85,7 +133,7 @@ The current implementation mixes discovery and planning in one workstation flow:
 That is not just visual clutter.
 It creates a muddled product story about what Contracts is for.
 
-## 5. Required Workspace Split
+## 6. Required Workspace Split
 
 Contracts should gain two clear sub-tabs:
 
@@ -130,7 +178,7 @@ It should answer:
 - which planned contracts should be accepted as part of this chain?
 - does the route chain make sense before dispatch?
 
-Primary actions:
+Primary actions across the full capability:
 
 - browse or filter route-planning candidates
 - add candidate offer to chain
@@ -142,10 +190,10 @@ Primary actions:
 - accept selected planned contracts
 - hand off to Dispatch later
 
-It should not rely on the `Contract Board` as its only way to source chain candidates.
-If route planning is a real sub-tab, it needs its own sourcing surface inside that mode.
+Slice 1 does not need to solve planner-native sourcing yet.
+Slice 2 should add its own lightweight sourcing surface inside this tab.
 
-## 6. Required Board Rules
+## 7. Required Board Rules
 
 The `Contract Board` should remain simple.
 
@@ -165,17 +213,16 @@ Available offers should not allow:
 
 ### Accepted / Active and Closed views
 
-These may remain as board lifecycle views if useful, but they should stop carrying route-planning weight.
+These remain as board lifecycle views in the first pass, but they should stop carrying route-planning weight.
 
-If retained:
+Required first-pass rules:
 
 - `Accepted / Active` should support inspection and a clear `Send to route plan` action for accepted work
 - `Closed` should remain review-only
 
 If those lifecycle views make the board feel too broad later, that is a separate cleanup.
-Do not bundle that decision into this split unless Mara thinks it is necessary.
 
-## 7. Required Route Planning Rules
+## 8. Required Route Planning Rules
 
 The `Route Planning` tab should be able to work with both candidate offers and accepted contracts.
 
@@ -188,6 +235,11 @@ That means:
 - no candidate-offer staging on the board
 - no hidden planner state attached to simple browsing
 - no confusion between `planned candidate` and `accepted work`
+
+First-pass constraint:
+
+- slice 1 may preserve existing planned candidates already present in saves
+- slice 2 is where new candidate-offer sourcing inside the planner begins
 
 ### Acceptance rule
 
@@ -219,7 +271,12 @@ It should surface:
 The planner should produce a cleaner handoff into Dispatch later.
 It should not become a second general-purpose market board.
 
-## 8. Explainability Rules
+Dispatch boundary rule:
+
+- this capability must reuse the existing route-plan handoff model into Dispatch
+- it must not redesign Dispatch source selection or selected-work behavior
+
+## 9. Explainability Rules
 
 The player should always be able to answer:
 
@@ -266,7 +323,38 @@ The planner should communicate:
 - deliberate acceptance from inside the chain
 - later dispatch handoff
 
-## 9. Mara Framing Gate
+## 10. Validation And Tracking
+
+Slice 1 validation bar:
+
+- `npm run build`
+- focused Contracts UI coverage for `Contract Board` versus `Route Planning`
+- coverage proving available-offer rows no longer expose `Add to plan`
+- coverage proving `Accepted / Active` exposes `Send to route plan`
+- coverage proving `Closed` remains review-only
+- coverage proving existing route-plan items still render in `Route Planning`
+- smoke coverage that Contracts still loads, accept still works, and Dispatch still sees accepted/planned work through the current handoff
+
+Slice 2 validation bar:
+
+- route-planner/backend coverage for adding candidate offers from `Route Planning`
+- Contracts UI coverage that planner candidate list respects endpoint-match default and never exposes direct accept
+- UI-server or smoke coverage that the board stays planner-free while `Route Planning` can add candidates inside its own tab
+
+Slice 3 validation bar:
+
+- UI coverage that accepted work and planned candidates are visibly distinct in `Route Planning`
+- route-planner coverage that review/accept still works with mixed accepted-contract and candidate-offer items
+- Dispatch smoke coverage that route-plan handoff remains unchanged and selected planned routes still appear correctly in Dispatch
+
+Final integrated validation:
+
+- `npm run build`
+- Contracts UI regressions
+- route-planner regressions
+- `ui-smoke` and `ui-server-smoke` covering Contracts -> Route Planning -> Dispatch
+
+## 11. Mara Framing Gate
 
 This brief is ready to hand to Mara only if future framing preserves these boundaries:
 
@@ -297,36 +385,34 @@ This brief is ready to hand to Mara only if future framing preserves these bound
 - no network planning
 - no adjacent named-crew or aircraft-assignment mechanics here
 
-## 10. Deferred Backlog
+## 12. Deferred Backlog
 
 These are reasonable later additions, but they should stay out of this first board split:
 
-- bulk acceptance workflows
+- bulk acceptance workflows beyond route-planning review
 - deeper route-profit forecasting
 - aircraft pre-selection inside route planning
 - dispatch-style staffing or maintenance validation inside Contracts
 - network-wide chaining across several aircraft
 
-## 11. Open Questions That Actually Matter
+## 13. Resolved Product Decisions
 
-### 1. Should the `Contract Board` keep `Accepted / Active` and `Closed` as secondary board views, or should it narrow harder to market-only later?
+- Slice 1 is only the workspace split and board cleanup.
+- `Accepted / Active` and `Closed` stay on the board in the first pass.
+- Board acceptance stays in place and uses a quick next-step CTA instead of an automatic tab switch.
+- Route Planning will use a lightweight endpoint-aware candidate list in slice 2, not a cloned market board.
+- The board keeps only selected-contract route map context after the split.
 
-The first-pass answer can be conservative: keep them if they do not dilute the main board job.
+## 14. Open Questions That Actually Matter
 
-### 2. What is the cleanest action label for moving accepted work into planning?
+### 1. How should the planner candidate list rank endpoint-matching offers once slice 2 begins?
 
-The label should make acceptance status obvious.
-`Send to route plan` is clearer than `Add to plan`.
+This is now a slice-2 execution question, not a slice-1 blocker.
 
-### 3. How should `Route Planning` source candidate offers without recreating the board inside that tab?
+### 2. How much planner-side filtering is enough before the candidate list starts recreating the board?
 
-This matters because the planning tab needs enough sourcing to build a chain, but not a second full discovery workstation.
+The current preferred answer is: less than the board, and only enough to build chains reliably.
 
-### 4. Should accepting a contract on the board offer an immediate next step into route planning?
+### 3. What is the right shape for the quick next-step CTA after board acceptance?
 
-This matters because the player may want to accept a contract and continue shopping, or accept it and chain it right away.
-
-### 5. How much chain-level map context should remain on the board once the planner moves out?
-
-The preferred first-pass answer is: less than today.
-The board only needs enough map context to support the selected contract.
+This should stay small and avoid interrupting board flow.

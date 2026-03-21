@@ -5,6 +5,7 @@
 
 import assert from "node:assert/strict";
 
+import { addAcceptedContractToRoutePlan } from "../dist/ui/route-plan-state.js";
 import {
   acquireAircraft,
   activateStaffingPackage,
@@ -91,6 +92,34 @@ try {
     assert.ok(leadAircraft);
     assert.ok(constrainedAircraft);
     assert.ok(draftAircraft);
+
+    const board = await backend.loadActiveContractBoard(saveId);
+    assert.ok(board);
+    const seededOffers = board.offers.filter((offer) => offer.offerStatus === "available").slice(0, 2);
+    assert.equal(seededOffers.length, 2);
+
+    const seededAcceptedContractIds = [];
+    for (const [index, offer] of seededOffers.entries()) {
+      const accepted = await dispatchOrThrow(backend, {
+        commandId: `cmd_${saveId}_seed_accept_${index}`,
+        saveId,
+        commandName: "AcceptContractOffer",
+        issuedAtUtc: startedAtUtc,
+        actorType: "player",
+        payload: {
+          contractOfferId: offer.contractOfferId,
+        },
+      });
+      seededAcceptedContractIds.push(String(accepted.metadata?.companyContractId ?? ""));
+    }
+
+    await backend.withExistingSaveDatabase(saveId, async (context) => {
+      for (const companyContractId of seededAcceptedContractIds) {
+        const mutation = addAcceptedContractToRoutePlan(context.saveDatabase, saveId, companyContractId);
+        assert.equal(mutation.success, true);
+      }
+      await context.saveDatabase.persist();
+    });
 
     await saveAndCommitSchedule(
       backend,
@@ -309,22 +338,29 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
 
   await clickUi(page.locator("[data-shell-tab='contracts']"));
+  await page.waitForFunction(() => document.querySelectorAll(".contracts-workspace-tab[data-workspace-tab='board']").length === 1);
+  await page.waitForFunction(() => document.querySelectorAll(".contracts-workspace-tab[data-workspace-tab='planning']").length === 1);
   await page.waitForFunction(() => document.querySelectorAll(".contracts-board-table tbody tr").length > 0);
+  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
+  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
+  assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
   assert.ok((await page.locator(".contracts-board-table tbody tr").count()) > 0);
 
-  await clickUi(page.locator("[data-plan-add-offer]").first());
-  await page.waitForFunction(() => document.body.innerText.includes("1 item | endpoint"));
-  assert.equal((await page.locator(".contracts-planner-panel").textContent())?.includes("1 item | endpoint"), true);
-  await clickUi(page.locator("[data-plan-add-offer]").nth(1));
-  await page.waitForFunction(() => document.body.innerText.includes("2 items | endpoint"));
-  assert.equal((await page.locator(".contracts-planner-panel").textContent())?.includes("2 items | endpoint"), true);
-
-  await clickUi(page.locator("[data-plan-review-open]"));
-  await page.waitForFunction(() => document.querySelectorAll("[data-plan-review-select]").length > 0);
-  await clickUi(page.locator("[data-plan-accept-selected]"));
-  await page.waitForFunction(() => document.querySelectorAll(".contracts-board-table tbody tr").length > 0);
+  await clickUi(page.locator("[data-accept-offer]").first());
+  await page.waitForFunction(() => document.body.innerText.includes("Open Route Planning"));
+  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
+  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
+  assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
+  await clickUi(page.locator(".contracts-next-step [data-workspace-tab='planning']"));
+  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
+  await page.waitForFunction(() => document.body.innerText.includes("Route Planning"));
+  assert.equal(await page.locator(".contracts-planner-panel").count(), 1);
+  assert.match((await page.locator(".contracts-planner-panel").textContent()) ?? "", /item[s]? \| endpoint/);
+  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='board']"));
+  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
   await clickUi(page.locator("[data-board-tab='active']"));
   await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
+  assert.ok((await page.locator("[data-plan-add-contract]").count()) >= 1);
 
   await clickUi(page.locator("[data-shell-tab='dispatch']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);

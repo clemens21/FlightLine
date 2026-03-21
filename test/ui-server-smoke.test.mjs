@@ -399,37 +399,30 @@ try {
   const selectedOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId === flyableOfferId);
   assert.ok(selectedOffer);
 
-  const plannerAddResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/add`, {
-    sourceType: "candidate_offer",
-    sourceId: selectedOffer.contractOfferId,
+  const acceptResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/accept`, {
+    contractOfferId: selectedOffer.contractOfferId,
   });
-  assert.equal(plannerAddResult.response.ok, true);
-  assert.equal(plannerAddResult.payload.success, true);
-  assert.ok(plannerAddResult.payload.payload.routePlan);
-  assert.equal(plannerAddResult.payload.payload.routePlan.items.length, 1);
+  assert.equal(acceptResult.response.ok, true);
+  assert.equal(acceptResult.payload.success, true);
+  assert.ok(acceptResult.payload.payload.acceptedContracts.length >= 1);
+  assert.ok(acceptResult.payload.payload.companyContracts.length >= 1);
 
-  const routePlanItem = plannerAddResult.payload.payload.routePlan.items[0];
-  const secondOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId !== selectedOffer.contractOfferId);
-  assert.ok(secondOffer);
-  const plannerAddSecondResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/add`, {
-    sourceType: "candidate_offer",
-    sourceId: secondOffer.contractOfferId,
-  });
-  assert.equal(plannerAddSecondResult.response.ok, true);
-  assert.equal(plannerAddSecondResult.payload.success, true);
-  assert.ok(plannerAddSecondResult.payload.payload.routePlan);
-  assert.equal(plannerAddSecondResult.payload.payload.routePlan.items.length, 2);
+  const activeContract = acceptResult.payload.payload.companyContracts.find((contract) => contract.contractState === "accepted" || contract.contractState === "assigned" || contract.contractState === "active")
+    ?? acceptResult.payload.payload.companyContracts[0];
+  assert.ok(activeContract);
 
-  const plannerAcceptResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/accept`, {
-    routePlanItemId: routePlanItem.routePlanItemId,
+  const sendToPlanResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/add`, {
+    sourceType: "accepted_contract",
+    sourceId: activeContract.companyContractId,
   });
-  assert.equal(plannerAcceptResult.response.ok, true);
-  assert.equal(plannerAcceptResult.payload.success, true);
-  assert.ok(plannerAcceptResult.payload.payload.acceptedContracts.length >= 1);
-  assert.equal(
-    plannerAcceptResult.payload.payload.acceptedContracts.some((contract) => contract.routePlanItemId === routePlanItem.routePlanItemId),
-    true,
-  );
+  assert.equal(sendToPlanResult.response.ok, true);
+  assert.equal(sendToPlanResult.payload.success, true);
+  assert.ok(sendToPlanResult.payload.payload.routePlan);
+  assert.equal(sendToPlanResult.payload.payload.routePlan.items.length >= 1, true);
+
+  const routePlanItem = sendToPlanResult.payload.payload.routePlan.items[0];
+  assert.ok(routePlanItem);
+  assert.equal(routePlanItem.sourceType, "accepted_contract");
 
   const dispatchTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/dispatch`);
   assert.equal(dispatchTab.tabId, "dispatch");
@@ -445,7 +438,7 @@ try {
   );
   assert.equal(dispatchTab.dispatchPayload.aircraft.length, 4);
   assert.equal(dispatchTab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft), true);
-  assert.equal(dispatchTab.dispatchPayload.workInputs.routePlanItems.length >= 2, true);
+  assert.equal(dispatchTab.dispatchPayload.workInputs.routePlanItems.length >= 1, true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedContracts.length >= 1, true);
   assert.equal(dispatchTab.dispatchPayload.workInputs.acceptedReadyCount >= 1, true);
   const committedDispatchAircraft = dispatchTab.dispatchPayload.aircraft.find((aircraft) => aircraft.registration === "N208HT");

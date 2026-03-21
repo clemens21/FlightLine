@@ -1,8 +1,8 @@
 /*
  * Browser controller for the contracts tab inside the save shell.
- * It owns filter state, board tabs, planner actions, map focus, and the client-side refresh loop for contracts data.
+ * It owns filter state, workspace tabs, board tabs, planner actions, map focus, and the client-side refresh loop for contracts data.
  * The browser here is intentionally rich because the contracts board behaves more like a workstation than a form page:
- * selection, planner staging, filtering, map context, and in-place acceptance all stay client-side for responsiveness.
+ * selection, filtering, map context, and in-place acceptance all stay client-side for responsiveness.
  */
 
 import type {
@@ -27,7 +27,6 @@ interface FilterState {
   passengerCountMax: string;
   cargoWeightMin: string;
   cargoWeightMax: string;
-  matchPlannerEndpoint: boolean;
 }
 
 interface MapState {
@@ -52,11 +51,13 @@ interface ContractsUiState {
   filters: FilterState;
   appliedTextFilters: AppliedTextFilters;
   plannerReview: PlannerReviewState;
+  workspaceTab: ContractsWorkspaceTab;
   boardTab: ContractsBoardTab;
   sortField: SortField | null;
   sortDirection: SortDirection;
   selectedOfferId: string | null;
   selectedCompanyContractId: string | null;
+  acceptanceNextStepTab: ContractsWorkspaceTab | null;
   message: { tone: "notice" | "error"; text: string; notificationLevel?: NotificationLevel | undefined } | null;
   map: MapState;
 }
@@ -68,6 +69,7 @@ interface FocusState {
 }
 
 type ContractsBoardTab = "available" | "active" | "closed";
+type ContractsWorkspaceTab = "board" | "planning";
 type SortField = "distanceNm" | "hoursRemaining";
 type SortDirection = "asc" | "desc";
 type RouteLike = ContractsViewOffer | ContractsViewCompanyContract;
@@ -123,6 +125,10 @@ export function resolveCompanyContractBadgeState(
   return contract.routePlanItemStatus ?? contract.contractState;
 }
 
+export function resolveContractsWorkspaceTabLabel(tab: ContractsWorkspaceTab): string {
+  return tab === "planning" ? "Route Planning" : "Contract Board";
+}
+
 // Mounting wraps the entire contracts surface in one event-delegated controller because the tab rerenders wholesale after most interactions.
 export function mountContractsTab(
   root: HTMLElement,
@@ -155,7 +161,6 @@ export function mountContractsTab(
       passengerCountMax: "",
       cargoWeightMin: "",
       cargoWeightMax: "",
-      matchPlannerEndpoint: false,
     },
     appliedTextFilters: {
       searchText: "",
@@ -166,11 +171,13 @@ export function mountContractsTab(
       isOpen: false,
       selectedRoutePlanItemIds: [],
     },
+    workspaceTab: "board",
     boardTab: "available",
     sortField: null,
     sortDirection: "asc",
     selectedOfferId: selectDefaultOfferId(initialPayload),
     selectedCompanyContractId: selectDefaultCompanyContractId(initialPayload, "active"),
+    acceptanceNextStepTab: null,
     message: null,
     map: { ...defaultMapState },
   };
@@ -190,11 +197,30 @@ export function mountContractsTab(
       return;
     }
 
+    const workspaceTabButton = target.closest<HTMLElement>("[data-workspace-tab]");
+    if (workspaceTabButton) {
+      const nextTab = workspaceTabButton.dataset.workspaceTab as ContractsWorkspaceTab | undefined;
+      if (nextTab) {
+        state.workspaceTab = nextTab;
+        if (nextTab === "planning") {
+          state.acceptanceNextStepTab = null;
+        }
+        if (nextTab === "board") {
+          focusSelectedRoute(state);
+        }
+        render();
+      }
+      return;
+    }
+
     const boardTabButton = target.closest<HTMLElement>("[data-board-tab]");
     if (boardTabButton) {
       const nextTab = boardTabButton.dataset.boardTab as ContractsBoardTab | undefined;
       if (nextTab) {
         state.boardTab = nextTab;
+        if (nextTab !== "available") {
+          state.acceptanceNextStepTab = null;
+        }
         ensureActiveTabSelection(state);
         focusSelectedRoute(state);
         render();
@@ -255,19 +281,6 @@ export function mountContractsTab(
       return;
     }
 
-    const addOfferButton = target.closest<HTMLButtonElement>("[data-plan-add-offer]");
-    if (addOfferButton) {
-      event.preventDefault();
-      event.stopPropagation();
-      const sourceId = addOfferButton.dataset.planAddOffer ?? "";
-      void plannerAction(
-        options.plannerAddUrl,
-        new URLSearchParams({ sourceType: "candidate_offer", sourceId }),
-        addOfferButton,
-        "Adding...",
-      );
-      return;
-    }
     const addContractButton = target.closest<HTMLButtonElement>("[data-plan-add-contract]");
     if (addContractButton) {
       event.preventDefault();
@@ -277,7 +290,7 @@ export function mountContractsTab(
         options.plannerAddUrl,
         new URLSearchParams({ sourceType: "accepted_contract", sourceId }),
         addContractButton,
-        "Adding...",
+        "Sending...",
       );
       return;
     }
@@ -597,6 +610,7 @@ export function mountContractsTab(
         text: result.message ?? "Contract accepted.",
         notificationLevel: result.notificationLevel,
       };
+      state.acceptanceNextStepTab = "planning";
 
       if (!getFilteredOffers(state).some((offer) => offer.contractOfferId === state.selectedOfferId)) {
         state.selectedOfferId = selectDefaultOfferId(state.payload);
@@ -733,6 +747,7 @@ export function mountContractsTab(
         text: result.message ?? "Route plan updated.",
         notificationLevel: result.notificationLevel,
       };
+      state.acceptanceNextStepTab = null;
       ensureActiveTabSelection(state);
       focusSelectedRoute(state);
       options.onShellUpdate?.(result.shell);
@@ -761,144 +776,161 @@ export function mountContractsTab(
     const availableCount = state.payload.offers.filter((offer) => offer.offerStatus === "available").length;
     const activeCount = getActiveContracts(state.payload).length;
     const closedCount = getClosedContracts(state.payload).length;
-    const visibleCount = state.boardTab === "available"
-      ? sortedOffers.length
-      : sortedCompanyContracts.length;
+    const routePlanCount = state.payload.routePlan?.items.length ?? 0;
     const selectedLabel = selectedRoute
       ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
       : "Select a row to focus the route map.";
+    const toolbarHeadline = state.workspaceTab === "planning"
+      ? `${formatNumber(routePlanCount)} route plan item${routePlanCount === 1 ? "" : "s"}`
+      : renderHeadline(state.boardTab, availableCount, activeCount, closedCount);
+    const toolbarSubtitle = state.workspaceTab === "planning"
+      ? `Route plan endpoint ${escapeHtml(state.payload.plannerEndpointAirportId ?? "-")} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
+      : `Board expires ${escapeHtml(formatDate(state.payload.board.expiresAtUtc))} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`;
+
+    const boardWorkspaceHtml = `
+      <div class="contracts-grid">
+        <section class="panel contracts-main-panel">
+          <div class="panel-head contracts-main-head">
+            <div>
+              <h3>Contract Board</h3>
+              <span class="muted">Browse the market, then switch views to review accepted work and closed jobs.</span>
+            </div>
+            <div class="contracts-board-tabs" role="tablist" aria-label="Contract board views">
+              ${renderBoardTab("available", "Available", availableCount, state.boardTab)}
+              ${renderBoardTab("active", "Accepted / Active", activeCount, state.boardTab)}
+              ${renderBoardTab("closed", "Closed", closedCount, state.boardTab)}
+            </div>
+          </div>
+          <div class="panel-body contracts-main-body">
+            <section class="contracts-filters">
+              <label>Search
+                <input name="searchText" value="${escapeHtml(state.filters.searchText)}" placeholder="Airport, city, or route code" />
+              </label>
+              <label>Departure airport
+                <input name="originCode" value="${escapeHtml(state.filters.originCode)}" placeholder="Type code or airport" />
+              </label>
+              ${selectedRoute
+                ? `<div class="filter-shortcut"><span class="muted">Selected destination: ${escapeHtml(selectedRoute.route.destination.code)}</span><button type="button" class="button-secondary" data-use-selected-destination>Use as departure filter</button></div>`
+                : `<div class="filter-shortcut"><span class="muted">Select a contract row to use its destination as the next departure filter.</span></div>`}
+              <label>Destination airport
+                <input name="destinationCode" value="${escapeHtml(state.filters.destinationCode)}" placeholder="Type code or airport" />
+              </label>
+              <label>Payload Type
+                <select name="volumeType">
+                  <option value="all">All</option>
+                  <option value="passenger" ${state.filters.volumeType === "passenger" ? "selected" : ""}>Passenger</option>
+                  <option value="cargo" ${state.filters.volumeType === "cargo" ? "selected" : ""}>Cargo</option>
+                </select>
+              </label>
+              ${state.boardTab === "available"
+                ? `<label>Fit
+                  <select name="fitBucket">
+                    <option value="all">All</option>
+                    <option value="flyable_now" ${state.filters.fitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option>
+                    <option value="flyable_with_reposition" ${state.filters.fitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option>
+                    <option value="stretch_growth" ${state.filters.fitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option>
+                    <option value="blocked_now" ${state.filters.fitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option>
+                  </select>
+                </label>`
+                : `<div class="contracts-filter-placeholder"><div class="eyebrow">View</div><strong>${escapeHtml(renderTabDescription(state.boardTab))}</strong></div>`}
+              <div class="range-field">
+                <span>Payout</span>
+                <div class="range-inputs">
+                  <input name="payoutMin" type="number" min="0" value="${escapeHtml(state.filters.payoutMin)}" placeholder="Min" />
+                  <input name="payoutMax" type="number" min="0" value="${escapeHtml(state.filters.payoutMax)}" placeholder="Max" />
+                </div>
+              </div>
+              <div class="range-field">
+                <span>Passengers</span>
+                <div class="range-inputs">
+                  <input name="passengerCountMin" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMin)}" placeholder="Min" />
+                  <input name="passengerCountMax" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMax)}" placeholder="Max" />
+                </div>
+              </div>
+              <div class="range-field">
+                <span>Cargo (lb)</span>
+                <div class="range-inputs">
+                  <input name="cargoWeightMin" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMin)}" placeholder="Min" />
+                  <input name="cargoWeightMax" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMax)}" placeholder="Max" />
+                </div>
+              </div>
+            </section>
+
+            ${state.acceptanceNextStepTab === "planning" && state.message?.tone === "notice"
+              ? `<div class="panel-inline-callout contracts-next-step"><div><strong>${escapeHtml(state.message.text)}</strong><div class="muted">Use Accepted / Active to inspect the newly accepted work, or switch to Route Planning to stage the next step.</div></div><div class="pill-row"><button type="button" class="button-secondary" data-board-tab="active">View Accepted / Active</button><button type="button" class="button-secondary" data-workspace-tab="planning">Open Route Planning</button></div></div>`
+              : ""}
+
+            <div class="contracts-board-wrap">
+              ${state.boardTab === "available"
+                ? renderOffersTable(sortedOffers, state.selectedOfferId, state)
+                : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state)}
+            </div>
+          </div>
+        </section>
+        <div class="contracts-side-column">
+          <section class="panel contracts-map-panel">
+            <div class="panel-head">
+              <div>
+                <h3>Route Map</h3>
+                <span class="muted">${escapeHtml(selectedLabel)}</span>
+              </div>
+              <button type="button" class="button-secondary" data-map-reset>Refocus</button>
+            </div>
+            <div class="panel-body contracts-map-body">
+              <svg class="contracts-map" data-contracts-map viewBox="0 0 1000 560" role="img" aria-label="Selected contract route map"></svg>
+              <div class="map-attribution">Base map data from OpenStreetMap contributors. Aviation chart overlays can come later.</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    `;
+
+    const planningWorkspaceHtml = `
+      <section class="panel contracts-planner-panel contracts-planning-panel">
+        <div class="panel-head">
+          <div>
+            <h3>Route Planning</h3>
+            <span class="muted">${escapeHtml(renderPlannerHeadline(state.payload))}</span>
+          </div>
+          <div class="planner-panel-actions">
+            ${state.payload.routePlan?.items.length
+              ? `${state.plannerReview.isOpen ? "" : `<button type="button" class="button-secondary" data-plan-review-open>Review & accept planned offers</button>`}<button type="button" class="button-secondary" data-plan-clear>Clear plan</button>`
+              : ""}
+          </div>
+        </div>
+        <div class="panel-body contracts-planner-body">
+          ${renderPlannerPanel(state.payload.routePlan, state.plannerReview)}
+        </div>
+      </section>
+    `;
 
     root.innerHTML = `
       <div class="contracts-app-shell">
         <div class="contracts-toolbar">
           <div>
             <div class="eyebrow">Contracts Network</div>
-            <strong>${escapeHtml(renderHeadline(state.boardTab, availableCount, activeCount, closedCount))}</strong>
-            <span class="muted">Board expires ${escapeHtml(formatDate(state.payload.board.expiresAtUtc))} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time${state.payload.plannerEndpointAirportId ? ` | endpoint ${escapeHtml(state.payload.plannerEndpointAirportId)}` : ""}</span>
+            <strong>${escapeHtml(toolbarHeadline)}</strong>
+            <span class="muted">${toolbarSubtitle}</span>
           </div>
           <div class="pill-row">
-            <span class="pill">${escapeHtml(String(visibleCount))} visible</span>
+            <span class="pill">${escapeHtml(String(availableCount + activeCount + closedCount))} visible</span>
             <span class="pill">${escapeHtml(String(availableCount))} open market</span>
             <span class="pill">${escapeHtml(String(activeCount))} accepted / active</span>
             <span class="pill">${escapeHtml(String(closedCount))} closed</span>
+            <span class="pill">${escapeHtml(String(routePlanCount))} route plan</span>
           </div>
         </div>
-        <div class="contracts-grid">
-          <section class="panel contracts-main-panel">
-            <div class="panel-head contracts-main-head">
-              <div>
-                <h3>Contract Board</h3>
-                <span class="muted">Browse the market, then switch views to review accepted work and closed jobs.</span>
-              </div>
-              <div class="contracts-board-tabs" role="tablist" aria-label="Contract board views">
-                ${renderBoardTab("available", "Available", availableCount, state.boardTab)}
-                ${renderBoardTab("active", "Accepted / Active", activeCount, state.boardTab)}
-                ${renderBoardTab("closed", "Closed", closedCount, state.boardTab)}
-              </div>
-            </div>
-            <div class="panel-body contracts-main-body">
-              <section class="contracts-filters">
-                <label>Search
-                  <input name="searchText" value="${escapeHtml(state.filters.searchText)}" placeholder="Airport, city, or route code" />
-                </label>
-                <label>Departure airport
-                  <input name="originCode" value="${escapeHtml(state.filters.originCode)}" placeholder="Type code or airport" />
-                </label>
-                ${selectedRoute
-                  ? `<div class="filter-shortcut"><span class="muted">Selected destination: ${escapeHtml(selectedRoute.route.destination.code)}</span><button type="button" class="button-secondary" data-use-selected-destination>Use as departure filter</button></div>`
-                  : `<div class="filter-shortcut"><span class="muted">Select a contract row to use its destination as the next departure filter.</span></div>`}
-                <label>Destination airport
-                  <input name="destinationCode" value="${escapeHtml(state.filters.destinationCode)}" placeholder="Type code or airport" />
-                </label>
-                <label>Payload Type
-                  <select name="volumeType">
-                    <option value="all">All</option>
-                    <option value="passenger" ${state.filters.volumeType === "passenger" ? "selected" : ""}>Passenger</option>
-                    <option value="cargo" ${state.filters.volumeType === "cargo" ? "selected" : ""}>Cargo</option>
-                  </select>
-                </label>
-                ${state.boardTab === "available"
-                  ? `<label>Fit
-                    <select name="fitBucket">
-                      <option value="all">All</option>
-                      <option value="flyable_now" ${state.filters.fitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option>
-                      <option value="flyable_with_reposition" ${state.filters.fitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option>
-                      <option value="stretch_growth" ${state.filters.fitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option>
-                      <option value="blocked_now" ${state.filters.fitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option>
-                    </select>
-                  </label>`
-                  : `<div class="contracts-filter-placeholder"><div class="eyebrow">View</div><strong>${escapeHtml(renderTabDescription(state.boardTab))}</strong></div>`}
-                <div class="range-field">
-                  <span>Payout</span>
-                  <div class="range-inputs">
-                    <input name="payoutMin" type="number" min="0" value="${escapeHtml(state.filters.payoutMin)}" placeholder="Min" />
-                    <input name="payoutMax" type="number" min="0" value="${escapeHtml(state.filters.payoutMax)}" placeholder="Max" />
-                  </div>
-                </div>
-                <div class="range-field">
-                  <span>Passengers</span>
-                  <div class="range-inputs">
-                    <input name="passengerCountMin" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMin)}" placeholder="Min" />
-                    <input name="passengerCountMax" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMax)}" placeholder="Max" />
-                  </div>
-                </div>
-                <div class="range-field">
-                  <span>Cargo (lb)</span>
-                  <div class="range-inputs">
-                    <input name="cargoWeightMin" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMin)}" placeholder="Min" />
-                    <input name="cargoWeightMax" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMax)}" placeholder="Max" />
-                  </div>
-                </div>
-                <label class="checkbox-field">
-                  <input name="matchPlannerEndpoint" type="checkbox" ${state.filters.matchPlannerEndpoint ? "checked" : ""} />
-                  <span>Match current endpoint</span>
-                </label>
-
-              </section>
-
-              <div class="contracts-board-wrap">
-                ${state.boardTab === "available"
-                  ? renderOffersTable(sortedOffers, state.selectedOfferId, state)
-                  : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state)}
-              </div>
-            </div>
-          </section>
-          <div class="contracts-side-column">
-            <section class="panel contracts-map-panel">
-              <div class="panel-head">
-                <div>
-                  <h3>Route Map</h3>
-                  <span class="muted">${escapeHtml(selectedLabel)}</span>
-                </div>
-                <button type="button" class="button-secondary" data-map-reset>Refocus</button>
-              </div>
-              <div class="panel-body contracts-map-body">
-                <svg class="contracts-map" data-contracts-map viewBox="0 0 1000 560" role="img" aria-label="Selected contract route map"></svg>
-                <div class="map-attribution">Base map data from OpenStreetMap contributors. Aviation chart overlays can come later.</div>
-              </div>
-            </section>
-            <section class="panel contracts-planner-panel">
-              <div class="panel-head">
-                <div>
-                  <h3>Route Planner</h3>
-                  <span class="muted">${escapeHtml(renderPlannerHeadline(state.payload))}</span>
-                </div>
-                <div class="planner-panel-actions">
-                  ${state.payload.routePlan?.items.length
-                    ? `${state.plannerReview.isOpen ? "" : `<button type="button" class="button-secondary" data-plan-review-open>Review & accept planned offers</button>`}<button type="button" class="button-secondary" data-plan-clear>Clear plan</button>`
-                    : ""}
-                </div>
-              </div>
-              <div class="panel-body contracts-planner-body">
-                ${renderPlannerPanel(state.payload.routePlan, state.plannerReview)}
-              </div>
-            </section>
-          </div>
+        <div class="contracts-workspace-tabs" role="tablist" aria-label="Contracts workspace">
+          ${renderWorkspaceTab("board", resolveContractsWorkspaceTabLabel("board"), state.workspaceTab)}
+          ${renderWorkspaceTab("planning", `${resolveContractsWorkspaceTabLabel("planning")} ${routePlanCount > 0 ? `(${routePlanCount})` : ""}`.trim(), state.workspaceTab)}
         </div>
+        ${state.workspaceTab === "board" ? boardWorkspaceHtml : planningWorkspaceHtml}
       </div>
     `;
 
-    renderMap(root, state, selectedRoute);
+    if (state.workspaceTab === "board") {
+      renderMap(root, state, selectedRoute);
+    }
     restoreFocusState(root, focusState);
   }
 }
@@ -953,6 +985,10 @@ function renderBoardTab(tabId: ContractsBoardTab, label: string, count: number, 
   return `<button type="button" class="contracts-board-tab ${activeTab === tabId ? "current" : ""}" data-board-tab="${tabId}" role="tab" aria-selected="${activeTab === tabId ? "true" : "false"}"><span>${escapeHtml(label)}</span><span class="contracts-board-tab-count">${escapeHtml(String(count))}</span></button>`;
 }
 
+function renderWorkspaceTab(tabId: ContractsWorkspaceTab, label: string, activeTab: ContractsWorkspaceTab): string {
+  return `<button type="button" class="contracts-workspace-tab ${activeTab === tabId ? "current" : ""}" data-workspace-tab="${tabId}" role="tab" aria-selected="${activeTab === tabId ? "true" : "false"}"><span>${escapeHtml(label)}</span></button>`;
+}
+
 function renderOffersTable(offers: ContractsViewOffer[], selectedOfferId: string | null, state: ContractsUiState): string {
   if (offers.length === 0) {
     return `<div class="empty-state">No available contracts match the current filters.</div>`;
@@ -969,7 +1005,6 @@ function renderOffersTable(offers: ContractsViewOffer[], selectedOfferId: string
           <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
           <th>Due</th>
           <th>Payout</th>
-          <th></th>
           <th></th>
         </tr>
       </thead>
@@ -1019,15 +1054,15 @@ function renderCompanyContractRow(
   boardTab: ContractsBoardTab,
 ): string {
   const remainingHours = routeHoursRemaining(contract, currentTimeUtc);
-  const addPlanHtml = boardTab !== "closed"
+  const sendPlanHtml = boardTab === "active"
     ? contract.routePlanItemId
       ? `<button type="button" class="button-secondary" disabled>Planned</button>`
-      : `<button type="button" class="button-secondary" data-plan-add-contract="${escapeHtml(contract.companyContractId)}">Add to plan</button>`
+      : `<button type="button" class="button-secondary" data-plan-add-contract="${escapeHtml(contract.companyContractId)}">Send to route plan</button>`
     : "";
   const cancelHtml = boardTab === "active" && contract.contractState === "accepted"
     ? `<button type="button" class="button-secondary" data-cancel-contract="${escapeHtml(contract.companyContractId)}">Cancel (${escapeHtml(formatMoney(contract.cancellationPenaltyAmount))})</button>`
     : "";
-  const actionsHtml = [addPlanHtml, cancelHtml].filter(Boolean).join("");
+  const actionsHtml = [sendPlanHtml, cancelHtml].filter(Boolean).join("");
 
   return `
     <tr class="contract-row ${isSelected ? "selected" : ""}" data-select-company-contract-row="${escapeHtml(contract.companyContractId)}" data-contract-board-tab="${escapeHtml(boardTab)}">
@@ -1051,10 +1086,6 @@ function renderCompanyContractRow(
 }
 
 function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string {
-  const addPlanHtml = offer.routePlanItemId
-    ? `<button type="button" class="button-secondary" disabled>Planned</button>`
-    : `<button type="button" class="button-secondary" data-plan-add-offer="${escapeHtml(offer.contractOfferId)}">Add to plan</button>`;
-
   return `
     <tr class="contract-row ${isSelected ? "selected" : ""} ${offer.matchesPlannerEndpoint ? "matches-endpoint" : ""}" data-select-offer-row="${escapeHtml(offer.contractOfferId)}">
       <td>
@@ -1062,7 +1093,7 @@ function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string 
       </td>
       <td>
         <div class="meta-stack">
-          ${renderBadge(offer.routePlanItemStatus ?? offer.fitBucket ?? offer.offerStatus)}
+          ${renderBadge(offer.fitBucket ?? offer.offerStatus)}
           <span class="muted">${escapeHtml(offer.likelyRole.replaceAll("_", " "))} | ${escapeHtml(offer.difficultyBand)}</span>
         </div>
       </td>
@@ -1072,9 +1103,8 @@ function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string 
       <td>${escapeHtml(formatDate(offer.latestCompletionUtc))}</td>
       <td>${escapeHtml(formatMoney(offer.payoutAmount))}</td>
       <td>
-        <button type="button" data-accept-offer="${escapeHtml(offer.contractOfferId)}">Accept</button>
+        <button type="button" data-accept-offer="${escapeHtml(offer.contractOfferId)}">Accept now</button>
       </td>
-      <td>${addPlanHtml}</td>
     </tr>
   `;
 }
@@ -1090,7 +1120,7 @@ function renderPlannerHeadline(payload: ContractsViewPayload): string {
 
 function renderPlannerPanel(routePlan: ContractsViewPayload["routePlan"], plannerReview: PlannerReviewState): string {
   if (!routePlan || routePlan.items.length === 0) {
-    return `<div class="empty-state compact">Add contracts from the board to start a saved route chain.</div>`;
+    return `<div class="empty-state compact">Saved route plans and accepted work will appear here.</div>`;
   }
 
   if (plannerReview.isOpen) {
@@ -1431,10 +1461,6 @@ function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
       return false;
     }
 
-    if (state.filters.matchPlannerEndpoint && !offer.matchesPlannerEndpoint) {
-      return false;
-    }
-
     if (!Number.isNaN(minPayout) && offer.payoutAmount < minPayout) {
       return false;
     }
@@ -1631,13 +1657,9 @@ function focusSelectedRoute(state: ContractsUiState): void {
     return;
   }
 
-  const activeOverlayContracts = getActiveContracts(state.payload);
-  const plannerOverlayItems = (state.payload.routePlan?.items ?? []).filter((item) => item.plannerItemStatus !== "candidate_stale" && item.plannerItemStatus !== "closed");
   const points = [
     selectedRoute.route.origin,
     selectedRoute.route.destination,
-    ...activeOverlayContracts.flatMap((contract) => [contract.origin, contract.destination]),
-    ...plannerOverlayItems.flatMap((item) => [item.origin, item.destination]),
   ].map(toMercatorPoint);
 
   const minLongitudeNorm = Math.min(...points.map((point) => point.longitudeNorm));
@@ -1685,10 +1707,6 @@ function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: Se
     }
   }
 
-  const acceptedOverlay = getActiveContracts(state.payload)
-    .map((contract) => renderAcceptedOverlay(contract, viewportLeftPx, viewportTopPx, worldSizePx))
-    .join("");
-  const plannerOverlay = renderPlannerOverlay(state.payload.routePlan?.items ?? [], viewportLeftPx, viewportTopPx, worldSizePx);
   const selectedOverlay = selectedRoute
     ? renderSelectedOverlay(selectedRoute, viewportLeftPx, viewportTopPx, worldSizePx)
     : `<text x="500" y="280" text-anchor="middle" class="map-label muted">Select a contract row to draw the route.</text>`;
@@ -1708,46 +1726,8 @@ function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: Se
       }).join("")}
     </g>
     <g class="map-overlay">
-      ${plannerOverlay}
-      ${acceptedOverlay}
       ${selectedOverlay}
     </g>
-  `;
-}
-
-function renderPlannerOverlay(
-  routePlanItems: ContractsRoutePlanItem[],
-  viewportLeftPx: number,
-  viewportTopPx: number,
-  worldSizePx: number,
-): string {
-  return routePlanItems
-    .filter((item) => item.plannerItemStatus !== "candidate_stale" && item.plannerItemStatus !== "closed")
-    .map((item) => {
-      const origin = projectAirportToViewport(item.origin, viewportLeftPx, viewportTopPx, worldSizePx);
-      const destination = projectAirportToViewport(item.destination, viewportLeftPx, viewportTopPx, worldSizePx);
-      return `
-        <line x1="${origin.x}" y1="${origin.y}" x2="${destination.x}" y2="${destination.y}" class="map-route planned" />
-        <circle cx="${origin.x}" cy="${origin.y}" r="3" class="map-point planned" />
-        <circle cx="${destination.x}" cy="${destination.y}" r="3" class="map-point planned" />
-      `;
-    })
-    .join("");
-}
-
-function renderAcceptedOverlay(
-  contract: ContractsViewAcceptedContract,
-  viewportLeftPx: number,
-  viewportTopPx: number,
-  worldSizePx: number,
-): string {
-  const origin = projectAirportToViewport(contract.origin, viewportLeftPx, viewportTopPx, worldSizePx);
-  const destination = projectAirportToViewport(contract.destination, viewportLeftPx, viewportTopPx, worldSizePx);
-
-  return `
-    <line x1="${origin.x}" y1="${origin.y}" x2="${destination.x}" y2="${destination.y}" class="map-route accepted" />
-    <circle cx="${origin.x}" cy="${origin.y}" r="4" class="map-point accepted" />
-    <circle cx="${destination.x}" cy="${destination.y}" r="4" class="map-point accepted" />
   `;
 }
 

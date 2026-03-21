@@ -1,11 +1,14 @@
 /*
- * Focused regression coverage for contracts-tab-client badge truth.
+ * Focused regression coverage for contracts-tab-client badge truth and workspace labeling.
  * Closed contracts must show their actual contract outcome instead of a generic closed route-plan state.
  */
 
 import assert from "node:assert/strict";
 
-import { resolveCompanyContractBadgeState } from "../dist/ui/public/contracts-tab-client.js";
+import {
+  resolveCompanyContractBadgeState,
+  resolveContractsWorkspaceTabLabel,
+} from "../dist/ui/public/contracts-tab-client.js";
 
 const completedContract = {
   companyContractId: "company_contract_test",
@@ -53,3 +56,6 @@ assert.equal(
   }, "active"),
   "scheduled",
 );
+
+assert.equal(resolveContractsWorkspaceTabLabel("board"), "Contract Board");
+assert.equal(resolveContractsWorkspaceTabLabel("planning"), "Route Planning");

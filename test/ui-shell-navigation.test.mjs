@@ -5,10 +5,12 @@
 
 import assert from "node:assert/strict";
 
+import { addAcceptedContractToRoutePlan } from "../dist/ui/route-plan-state.js";
 import {
   acquireAircraft,
   activateStaffingPackage,
   createCompanySave,
+  pickFlyableOffer,
   uniqueSaveId,
 } from "./helpers/flightline-testkit.mjs";
 import {
@@ -111,6 +113,36 @@ try {
       },
     });
     assert.equal(refreshBoardResult.success, true);
+
+    const fleetState = await backend.loadFleetState(seededSaveId);
+    const board = await backend.loadActiveContractBoard(seededSaveId);
+    assert.ok(fleetState?.aircraft[0]);
+    assert.ok(board);
+
+    const seededOffer = pickFlyableOffer(board, fleetState.aircraft[0], backend.getAirportReference());
+    assert.ok(seededOffer);
+
+    const seededAcceptResult = await backend.dispatch({
+      commandId: `cmd_${seededSaveId}_seed_accept`,
+      saveId: seededSaveId,
+      commandName: "AcceptContractOffer",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        contractOfferId: seededOffer.contractOfferId,
+      },
+    });
+    assert.equal(seededAcceptResult.success, true);
+
+    await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
+      const mutation = addAcceptedContractToRoutePlan(
+        context.saveDatabase,
+        seededSaveId,
+        String(seededAcceptResult.metadata?.companyContractId ?? ""),
+      );
+      assert.equal(mutation.success, true);
+      await context.saveDatabase.persist();
+    });
 
     const createDeleteSaveResult = await backend.dispatch({
       commandId: `cmd_${deleteSaveId}_create`,
@@ -247,6 +279,9 @@ try {
   await clickUi(page.locator("[data-shell-tab='contracts']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
   assert.equal(await page.locator("[data-contracts-map]").count(), 1);
+  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
+  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
+  assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
 
   const initialOfferCount = await page.locator("[data-select-offer-row]").count();
   const firstOfferRow = page.locator("[data-select-offer-row]").first();
@@ -299,28 +334,19 @@ try {
   await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
 
   await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
-  await clickUi(page.locator("[data-plan-add-offer]").first());
-  await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("1 item | endpoint"));
-  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
+  await clickUi(page.locator("[data-accept-offer]").first());
+  await page.waitForFunction(() => document.body.innerText.includes("Open Route Planning"));
+  await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Use Accepted / Active"));
 
-  const endpointMatchCount = await page.locator("[data-select-offer-row].matches-endpoint").count();
-  await page.locator("input[name='matchPlannerEndpoint']").check();
-  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-select-offer-row]").length === expectedCount, endpointMatchCount);
-  assert.equal(await page.locator("[data-select-offer-row]").count(), endpointMatchCount);
-  assert.equal(await page.locator("[data-select-offer-row]:not(.matches-endpoint)").count(), 0);
-  await page.locator("input[name='matchPlannerEndpoint']").uncheck();
-  await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
-
-  await clickUi(page.locator("[data-plan-review-open]"));
-  await page.waitForFunction(() => document.querySelectorAll("[data-plan-review-select]").length > 0);
-  await page.locator("[data-plan-review-select]").first().check();
-  await clickUi(page.locator("[data-plan-accept-selected]"));
-  await page.waitForFunction(() => document.body.innerText.includes("Accepted 1 planned offer"));
-  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").includes("Accepted 1 planned offer"));
-
+  await clickUi(page.locator(".contracts-next-step [data-workspace-tab='planning']"));
+  await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("item | endpoint"));
+  assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
+  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='board']"));
+  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
   await clickUi(page.locator("[data-board-tab='active']"));
   await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
   assert.ok((await page.locator("[data-select-company-contract-row]").count()) >= 1);
+  assert.ok((await page.locator("[data-plan-add-contract]").count()) >= 1);
 
   await clickUi(page.locator("[data-settings-menu] summary"));
   await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
