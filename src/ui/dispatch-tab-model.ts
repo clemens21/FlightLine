@@ -17,7 +17,7 @@ import type { StaffingStateView } from "../application/queries/staffing-state.js
 import { resolveDispatchPilotAssignment } from "../domain/dispatch/named-pilot-assignment.js";
 import type { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import type { ScheduleValidationSnapshot } from "../application/dispatch/schedule-validation.js";
-import type { RoutePlanItemState, RoutePlanState } from "./route-plan-state.js";
+import { buildVisibleRoutePlanState, type RoutePlanItemState, type RoutePlanState } from "./route-plan-state.js";
 
 export interface DispatchAirportView {
   airportId: string;
@@ -242,6 +242,7 @@ export function buildDispatchTabPayload({
   routePlan,
   airportReference,
 }: BuildDispatchTabPayloadArgs): DispatchTabPayload {
+  const visibleRoutePlan = buildVisibleRoutePlanState(routePlan);
   const contracts = companyContracts?.contracts ?? [];
   const fleet = fleetState?.aircraft ?? [];
   const activeSchedules = schedules.filter((schedule) => schedule.scheduleState !== "completed" && schedule.scheduleState !== "cancelled");
@@ -274,7 +275,7 @@ export function buildDispatchTabPayload({
     ),
   );
 
-  const routePlanItems = (routePlan?.items ?? []).map((item) => buildRoutePlanItemView(item, airportReference));
+  const routePlanItems = (visibleRoutePlan?.items ?? []).map((item) => buildRoutePlanItemView(item, airportReference));
   const acceptedContracts = contracts
     .filter((contract) => contract.contractState === "accepted")
     .map((contract) => buildAcceptedContractView(contract, airportReference));
@@ -289,7 +290,7 @@ export function buildDispatchTabPayload({
       acceptedReadyCount: routePlanItems.filter((item) => item.plannerItemStatus === "accepted_ready").length,
       blockerCount: routePlanItems.filter((item) => item.plannerItemStatus === "candidate_available" || item.plannerItemStatus === "candidate_stale").length,
       scheduledCount: routePlanItems.filter((item) => item.plannerItemStatus === "scheduled").length,
-      ...(routePlan?.endpointAirportId ? { endpointAirport: describeAirport(routePlan.endpointAirportId, airportReference) } : {}),
+      ...(visibleRoutePlan?.endpointAirportId ? { endpointAirport: describeAirport(visibleRoutePlan.endpointAirportId, airportReference) } : {}),
     },
     timeUtility: {
       currentTimeUtc: companyContext.currentTimeUtc,

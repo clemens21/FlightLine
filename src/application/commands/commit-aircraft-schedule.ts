@@ -638,6 +638,41 @@ export async function handleCommitAircraftSchedule(
           continue;
         }
 
+        const existingDeadlineEvent = dependencies.saveDatabase.getOne<{ scheduledEventId: string }>(
+          `SELECT scheduled_event_id AS scheduledEventId
+           FROM scheduled_event
+           WHERE save_id = $save_id
+             AND company_contract_id = $company_contract_id
+             AND event_type = 'contract_deadline_check'
+             AND status = 'pending'
+           LIMIT 1`,
+          {
+            $save_id: command.saveId,
+            $company_contract_id: contractId,
+          },
+        );
+
+        if (existingDeadlineEvent?.scheduledEventId) {
+          scheduledEventIds.push(existingDeadlineEvent.scheduledEventId);
+          dependencies.saveDatabase.run(
+            `UPDATE scheduled_event
+             SET scheduled_time_utc = $scheduled_time_utc,
+                 aircraft_id = $aircraft_id,
+                 payload_json = $payload_json
+             WHERE scheduled_event_id = $scheduled_event_id`,
+            {
+              $scheduled_event_id: existingDeadlineEvent.scheduledEventId,
+              $scheduled_time_utc: deadlineUtc,
+              $aircraft_id: scheduleRow.aircraftId,
+              $payload_json: JSON.stringify({
+                scheduleId: scheduleRow.scheduleId,
+                companyContractId: contractId,
+              }),
+            },
+          );
+          continue;
+        }
+
         const deadlineEventId = createPrefixedId("eventq");
         scheduledEventIds.push(deadlineEventId);
         dependencies.saveDatabase.run(

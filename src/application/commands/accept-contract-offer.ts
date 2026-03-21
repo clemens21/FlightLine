@@ -135,6 +135,7 @@ export async function handleAcceptContractOffer(
   }
 
   const companyContractId = createPrefixedId("contract");
+  const deadlineEventId = createPrefixedId("eventq");
   const eventLogEntryId = createPrefixedId("event");
   const acceptedContractSummary = describeAcceptedContract(
     offerRow!.originAirportId,
@@ -234,6 +235,39 @@ export async function handleAcceptContractOffer(
         $deadline_utc: offerRow!.latestCompletionUtc,
         $updated_at_utc: companyContext!.currentTimeUtc,
         $contract_offer_id: offerRow!.contractOfferId,
+      },
+    );
+
+    dependencies.saveDatabase.run(
+      `INSERT INTO scheduled_event (
+        scheduled_event_id,
+        save_id,
+        event_type,
+        scheduled_time_utc,
+        status,
+        aircraft_id,
+        company_contract_id,
+        maintenance_task_id,
+        payload_json
+      ) VALUES (
+        $scheduled_event_id,
+        $save_id,
+        'contract_deadline_check',
+        $scheduled_time_utc,
+        'pending',
+        NULL,
+        $company_contract_id,
+        NULL,
+        $payload_json
+      )`,
+      {
+        $scheduled_event_id: deadlineEventId,
+        $save_id: command.saveId,
+        $scheduled_time_utc: offerRow!.latestCompletionUtc,
+        $company_contract_id: companyContractId,
+        $payload_json: JSON.stringify({
+          companyContractId,
+        }),
       },
     );
 

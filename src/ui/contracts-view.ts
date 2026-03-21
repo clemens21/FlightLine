@@ -17,6 +17,7 @@ import type { AirportReferenceRepository, AirportRecord } from "../infrastructur
 import { ensureActiveContractBoard } from "./contracts-board-lifecycle.js";
 import {
   loadRoutePlanState,
+  buildVisibleRoutePlanState,
   type RoutePlanItemState,
   type RoutePlanState,
 } from "./route-plan-state.js";
@@ -370,14 +371,16 @@ function buildRoutePlanView(
   routePlan: RoutePlanState | null,
   airportMap: Map<string, AirportRecord>,
 ): ContractsViewPayload["routePlan"] {
-  if (!routePlan) {
+  const visibleRoutePlan = buildVisibleRoutePlanState(routePlan);
+
+  if (!visibleRoutePlan) {
     return null;
   }
 
   return {
-    routePlanId: routePlan.routePlanId,
-    endpointAirportId: routePlan.endpointAirportId,
-    items: routePlan.items.map((item) => ({
+    routePlanId: visibleRoutePlan.routePlanId,
+    endpointAirportId: visibleRoutePlan.endpointAirportId,
+    items: visibleRoutePlan.items.map((item) => ({
       routePlanItemId: item.routePlanItemId,
       sequenceNumber: item.sequenceNumber,
       sourceType: item.sourceType,
@@ -408,9 +411,10 @@ export function buildContractsViewPayload(
   staffingState: StaffingStateView | null,
   airportReference: AirportReferenceRepository,
 ): ContractsViewPayload {
-  const airportMap = resolveAirportMap(airportReference, board, companyContracts, routePlan);
-  const offers = buildOfferView(companyContext.currentTimeUtc, board, airportMap, routePlan, fleetState, staffingState);
-  const companyContractsView = buildCompanyContractsView(companyContracts, airportMap, routePlan);
+  const visibleRoutePlan = buildVisibleRoutePlanState(routePlan);
+  const airportMap = resolveAirportMap(airportReference, board, companyContracts, visibleRoutePlan);
+  const offers = buildOfferView(companyContext.currentTimeUtc, board, airportMap, visibleRoutePlan, fleetState, staffingState);
+  const companyContractsView = buildCompanyContractsView(companyContracts, airportMap, visibleRoutePlan);
   const acceptedContracts = companyContractsView.filter((contract) => activeCompanyContractStates.has(contract.contractState));
 
   return {
@@ -428,8 +432,8 @@ export function buildContractsViewPayload(
     offers,
     acceptedContracts,
     companyContracts: companyContractsView,
-    routePlan: buildRoutePlanView(routePlan, airportMap),
-    plannerEndpointAirportId: routePlan?.endpointAirportId,
+    routePlan: buildRoutePlanView(visibleRoutePlan, airportMap),
+    plannerEndpointAirportId: visibleRoutePlan?.endpointAirportId,
   };
 }
 

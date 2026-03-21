@@ -51,6 +51,8 @@ Default expectation:
 12. If unfinished work accumulates on `dev`, preserve it on a `codex/<workstream>` branch before trying to align `dev` or promote it.
 13. Local-only branches are for short-lived scratch or rescue use only.
 14. If a local-only rescue branch holds work worth keeping, push it to GitHub or reframe it into a named `codex/<workstream>` branch quickly.
+15. Before promoting to local `main` or GitHub `main`, Owen must classify the integrated delta against `VERSIONING.md` and decide whether the landing is `MINOR`, `PATCH`, or same-line prerelease continuation.
+16. If the version classification requires a cut, that version update is part of the landing set, not an optional follow-up.
 
 ## Default Branch Workflow
 
@@ -78,6 +80,8 @@ Promote from `dev` to local `main` only when all of the following are true:
 - Nadia's blocking findings, if any, are resolved or waived by the human
 - Owen agrees the change is coherent enough to integrate locally
 - docs are updated if current docs would otherwise become misleading
+- Owen has classified the integrated delta against `VERSIONING.md`
+- any required version-file updates for that cut are included in the landing set
 - local `main` is checked before promotion so you know exactly what delta is being introduced
 
 Preferred promotion methods:
@@ -98,6 +102,7 @@ Push from local `main` to GitHub `main` only when all of the following are true:
 - no unresolved QA or Integration blocker remains
 - any required smoke validation on the integrated result has been completed
 - the landing notes, risks, or follow-up items are clear enough to communicate
+- the version cut decision has already been made and applied if required by `VERSIONING.md`
 - the human has not asked for the push to be held back
 
 The normal path should be:
@@ -126,6 +131,8 @@ Do not bypass local `main` unless the human explicitly changes the workflow.
 - Owen Hart, Integration and Release Manager:
   - owns promotion readiness from `dev` to local `main`
   - owns landing readiness from local `main` to GitHub `main`
+  - owns the required version-classification check for the integrated landing set
+  - owns updating release-version files when the landing requires a cut under `VERSIONING.md`
   - checks overlap, sequence, and shared-state risk
   - recommends hold, promote, or reframe
 

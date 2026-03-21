@@ -21,6 +21,7 @@ Use these supporting files as references when deeper role or workflow detail is 
 - `team-ops/supporting/flightline_starter_operating_bundle.md`: recommended everyday prompt set
 - `team-ops/supporting/flightline_role_prompt_pack.md`: paste-ready prompts and coordination overlays
 - `team-ops/supporting/flightline_codex_automation_setup_sheet.md`: recurring review automation suggestions
+- `VERSIONING.md`: app-version cut rules, SemVer policy, and release-line classification
 
 Product capabilities, requests, workstreams, and completed product artifacts now live under `product-work/`.
 
@@ -166,6 +167,7 @@ Important nuance:
 - Scoped execution: `Implementation Engineer` or the `Single-Agent` owner
 - Correctness and failure challenge: `QA and Failure Analyst`
 - Merge readiness, branch promotion, and cross-stream coherence: `Integration and Release Manager`
+- Version classification and release-version cut before promotion: `Integration and Release Manager`
 - Vertical-slice fit, timing, and backlog shape: `Product Strategy Manager`
 - Capability definition and player-facing intent: you plus `Product Strategy Manager`
 
@@ -288,6 +290,7 @@ A task is only done when all of the following are true:
 - the expected level of testing or validation is complete or explicitly called out as missing
 - major assumptions and risks are surfaced
 - documentation is updated if current docs would otherwise mislead
+- if the landed delta changes the player-facing release level, the app version is cut according to `VERSIONING.md`
 - deferred work is separated clearly from completed work
 
 ## Final Instruction

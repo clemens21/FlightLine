@@ -247,6 +247,7 @@ Owen should decide:
 - ready to land or not
 - ready for `dev` to local `main` promotion or not
 - ready for local `main` to GitHub `main` promotion or not
+- required release classification under `VERSIONING.md`
 - blockers
 - merge order
 - missing cross-system follow-through
@@ -398,7 +399,7 @@ The short version is:
 2. keep real active work on GitHub-backed `codex/<workstream>` branches
 3. let Mara define the intended landing scope
 4. let Nadia block risky weakly-validated work
-5. let Owen decide promotion readiness
+5. let Owen decide promotion readiness and cut the required release version when the landed delta calls for it
 6. push GitHub `main` only from a reviewed local `main`
 
 ## Final Guidance

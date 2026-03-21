@@ -1064,9 +1064,9 @@ export async function handleAdvanceTime(
       changedAggregateIds.add(legRow.aircraftId);
     };
 
-    const processArrivalEvent = (scheduledEvent: ScheduledEventRow, batchOutcome: MutableBatchOutcome): void => {
-      const eventTimeUtc = scheduledEvent.scheduledTimeUtc;
-      const payload = parseFlightEventPayload(scheduledEvent.payloadJson);
+      const processArrivalEvent = (scheduledEvent: ScheduledEventRow, batchOutcome: MutableBatchOutcome): void => {
+        const eventTimeUtc = scheduledEvent.scheduledTimeUtc;
+        const payload = parseFlightEventPayload(scheduledEvent.payloadJson);
 
       if (!payload) {
         markScheduledEventProcessed(scheduledEvent.scheduledEventId);
@@ -1424,14 +1424,93 @@ export async function handleAdvanceTime(
 
       batchOutcome.completedLegIds.add(legRow.flightLegId);
       completedLegIds.add(legRow.flightLegId);
-      changedAggregateIds.add(legRow.flightLegId);
-      changedAggregateIds.add(legRow.scheduleId);
-      changedAggregateIds.add(legRow.aircraftId);
-    };
+        changedAggregateIds.add(legRow.flightLegId);
+        changedAggregateIds.add(legRow.scheduleId);
+        changedAggregateIds.add(legRow.aircraftId);
+      };
 
-    const processContractDeadlineEvent = (scheduledEvent: ScheduledEventRow, batchOutcome: MutableBatchOutcome): void => {
-      const eventTimeUtc = scheduledEvent.scheduledTimeUtc;
-      const companyContractId = scheduledEvent.companyContractId;
+      const settleContractDeadline = (
+        contractRow: ContractDeadlineRow,
+        eventTimeUtc: string,
+        batchOutcome: MutableBatchOutcome,
+        scheduledEventId?: string,
+      ): boolean => {
+        if (["completed", "late_completed", "failed", "cancelled"].includes(contractRow.contractState)) {
+          if (scheduledEventId) {
+            markScheduledEventProcessed(scheduledEventId);
+          }
+          return false;
+        }
+
+        const penaltyModel = parseJsonObject(contractRow.penaltyModelJson) as ContractPenaltyModel | undefined;
+        const failurePenaltyAmount = typeof penaltyModel?.failurePenaltyAmount === "number"
+          ? penaltyModel.failurePenaltyAmount
+          : Math.round(contractRow.acceptedPayoutAmount * 0.22);
+        const dispatchedLegRow = dependencies.saveDatabase.getOne<CountRow>(
+          `SELECT COUNT(*) AS countValue
+          FROM flight_leg AS fl
+          JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
+          WHERE fl.linked_company_contract_id = $company_contract_id
+            AND s.schedule_state = 'committed'
+            AND fl.leg_state IN ('in_progress', 'completed')`,
+          { $company_contract_id: contractRow.companyContractId },
+        );
+
+        if ((dispatchedLegRow?.countValue ?? 0) > 0) {
+          if (scheduledEventId) {
+            markScheduledEventProcessed(scheduledEventId);
+          }
+          return false;
+        }
+
+        dependencies.saveDatabase.run(
+          `UPDATE company_contract
+          SET contract_state = 'failed'
+              ,assigned_aircraft_id = NULL
+          WHERE company_contract_id = $company_contract_id`,
+          { $company_contract_id: contractRow.companyContractId },
+        );
+
+        insertLedgerEntry(
+          eventTimeUtc,
+          "contract_failure_penalty",
+          failurePenaltyAmount * -1,
+          "company_contract",
+          contractRow.companyContractId,
+          `Failed contract ${contractRow.companyContractId} at deadline.`,
+          {
+            assignedAircraftId: contractRow.assignedAircraftId ?? undefined,
+            deadlineUtc: contractRow.deadlineUtc,
+          },
+        );
+
+        if (scheduledEventId) {
+          markScheduledEventProcessed(scheduledEventId);
+        }
+
+        insertEventLog(
+          eventTimeUtc,
+          "contract_failed",
+          "company_contract",
+          contractRow.companyContractId,
+          "critical",
+          `Contract ${contractRow.companyContractId} failed at deadline.`,
+          {
+            assignedAircraftId: contractRow.assignedAircraftId ?? undefined,
+            failurePenaltyAmount,
+          },
+        );
+
+        batchOutcome.criticalAlertTriggered = true;
+        batchOutcome.resolvedContractIds.add(contractRow.companyContractId);
+        resolvedContractIds.add(contractRow.companyContractId);
+        changedAggregateIds.add(contractRow.companyContractId);
+        return true;
+      };
+
+      const processContractDeadlineEvent = (scheduledEvent: ScheduledEventRow, batchOutcome: MutableBatchOutcome): void => {
+        const eventTimeUtc = scheduledEvent.scheduledTimeUtc;
+        const companyContractId = scheduledEvent.companyContractId;
 
       if (!companyContractId) {
         markScheduledEventProcessed(scheduledEvent.scheduledEventId);
@@ -1464,86 +1543,49 @@ export async function handleAdvanceTime(
         },
       );
 
-      if (!contractRow) {
-        markScheduledEventProcessed(scheduledEvent.scheduledEventId);
-        insertEventLog(
-          eventTimeUtc,
-          "scheduled_event_invalid",
+        if (!contractRow) {
+          markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+          insertEventLog(
+            eventTimeUtc,
+            "scheduled_event_invalid",
           "scheduled_event",
           scheduledEvent.scheduledEventId,
           "critical",
           `Scheduled deadline event ${scheduledEvent.scheduledEventId} could not resolve contract ${companyContractId}.`,
         );
-        batchOutcome.criticalAlertTriggered = true;
-        return;
-      }
+          batchOutcome.criticalAlertTriggered = true;
+          return;
+        }
 
-      if (["completed", "late_completed", "failed", "cancelled"].includes(contractRow.contractState)) {
-        markScheduledEventProcessed(scheduledEvent.scheduledEventId);
-        return;
-      }
+        settleContractDeadline(contractRow, eventTimeUtc, batchOutcome, scheduledEvent.scheduledEventId);
+      };
 
-      const penaltyModel = parseJsonObject(contractRow.penaltyModelJson) as ContractPenaltyModel | undefined;
-      const failurePenaltyAmount = typeof penaltyModel?.failurePenaltyAmount === "number"
-        ? penaltyModel.failurePenaltyAmount
-        : Math.round(contractRow.acceptedPayoutAmount * 0.22);
-      const dispatchedLegRow = dependencies.saveDatabase.getOne<CountRow>(
-        `SELECT COUNT(*) AS countValue
-        FROM flight_leg AS fl
-        JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
-        WHERE fl.linked_company_contract_id = $company_contract_id
-          AND s.schedule_state = 'committed'
-          AND fl.leg_state IN ('in_progress', 'completed')`,
-        { $company_contract_id: contractRow.companyContractId },
-      );
+      const settleOverdueContracts = (effectiveTimeUtc: string, batchOutcome: MutableBatchOutcome): void => {
+        const overdueContractRows = dependencies.saveDatabase.all<ContractDeadlineRow>(
+          `SELECT
+            company_contract_id AS companyContractId,
+            contract_state AS contractState,
+            accepted_payout_amount AS acceptedPayoutAmount,
+            penalty_model_json AS penaltyModelJson,
+            assigned_aircraft_id AS assignedAircraftId,
+            deadline_utc AS deadlineUtc
+          FROM company_contract
+          WHERE company_id = $company_id
+            AND contract_state IN ('accepted', 'assigned', 'active')
+            AND deadline_utc <= $effective_time_utc
+          ORDER BY deadline_utc ASC, company_contract_id ASC`,
+          {
+            $company_id: companyContext!.companyId,
+            $effective_time_utc: effectiveTimeUtc,
+          },
+        );
 
-      if ((dispatchedLegRow?.countValue ?? 0) > 0) {
-        markScheduledEventProcessed(scheduledEvent.scheduledEventId);
-        return;
-      }
+        for (const contractRow of overdueContractRows) {
+          settleContractDeadline(contractRow, contractRow.deadlineUtc, batchOutcome);
+        }
+      };
 
-      dependencies.saveDatabase.run(
-        `UPDATE company_contract
-        SET contract_state = 'failed'
-            ,assigned_aircraft_id = NULL
-        WHERE company_contract_id = $company_contract_id`,
-        { $company_contract_id: contractRow.companyContractId },
-      );
-
-      insertLedgerEntry(
-        eventTimeUtc,
-        "contract_failure_penalty",
-        failurePenaltyAmount * -1,
-        "company_contract",
-        contractRow.companyContractId,
-        `Failed contract ${contractRow.companyContractId} at deadline.`,
-        {
-          assignedAircraftId: contractRow.assignedAircraftId ?? undefined,
-          deadlineUtc: contractRow.deadlineUtc,
-        },
-      );
-
-      markScheduledEventProcessed(scheduledEvent.scheduledEventId);
-      insertEventLog(
-        eventTimeUtc,
-        "contract_failed",
-        "company_contract",
-        contractRow.companyContractId,
-        "critical",
-        `Contract ${contractRow.companyContractId} failed at deadline.`,
-        {
-          assignedAircraftId: contractRow.assignedAircraftId ?? undefined,
-          failurePenaltyAmount,
-        },
-      );
-
-      batchOutcome.criticalAlertTriggered = true;
-      batchOutcome.resolvedContractIds.add(contractRow.companyContractId);
-      resolvedContractIds.add(contractRow.companyContractId);
-      changedAggregateIds.add(contractRow.companyContractId);
-    };
-
-    let pilotTransitionCursorUtc = companyContext!.currentTimeUtc;
+      let pilotTransitionCursorUtc = companyContext!.currentTimeUtc;
 
     const completeDuePilotTraining = (fromUtc: string, toUtc: string): void => {
       const completedTrainingRows = dependencies.saveDatabase.all<CompletedTrainingRow>(
@@ -1989,6 +2031,67 @@ export async function handleAdvanceTime(
       pilotTransitionCursorUtc = toUtc;
     };
 
+    const ensurePendingContractDeadlineEvents = (): void => {
+      const missingDeadlineRows = dependencies.saveDatabase.all<{
+        companyContractId: string;
+        deadlineUtc: string;
+        assignedAircraftId: string | null;
+      }>(
+        `SELECT
+           cc.company_contract_id AS companyContractId,
+           cc.deadline_utc AS deadlineUtc,
+           cc.assigned_aircraft_id AS assignedAircraftId
+         FROM company_contract AS cc
+         LEFT JOIN scheduled_event AS se
+           ON se.company_contract_id = cc.company_contract_id
+          AND se.event_type = 'contract_deadline_check'
+          AND se.status = 'pending'
+         WHERE cc.company_id = $company_id
+           AND cc.contract_state IN ('accepted', 'assigned', 'active')
+           AND se.scheduled_event_id IS NULL`,
+        { $company_id: companyContext!.companyId },
+      );
+
+      for (const row of missingDeadlineRows) {
+        dependencies.saveDatabase.run(
+          `INSERT INTO scheduled_event (
+             scheduled_event_id,
+             save_id,
+             event_type,
+             scheduled_time_utc,
+             status,
+             aircraft_id,
+             company_contract_id,
+             maintenance_task_id,
+             payload_json
+           ) VALUES (
+             $scheduled_event_id,
+             $save_id,
+             'contract_deadline_check',
+             $scheduled_time_utc,
+             'pending',
+             $aircraft_id,
+             $company_contract_id,
+             NULL,
+             $payload_json
+           )`,
+          {
+            $scheduled_event_id: createPrefixedId("eventq"),
+            $save_id: command.saveId,
+            $scheduled_time_utc: row.deadlineUtc,
+            $aircraft_id: row.assignedAircraftId,
+            $company_contract_id: row.companyContractId,
+            $payload_json: JSON.stringify({
+              companyContractId: row.companyContractId,
+              backfilledByAdvanceTime: true,
+            }),
+          },
+        );
+      }
+    };
+
+    ensurePendingContractDeadlineEvents();
+
     while (true) {
       const nextScheduledEvent = dependencies.saveDatabase.getOne<ScheduledEventRow>(
         `SELECT
@@ -2106,13 +2209,30 @@ export async function handleAdvanceTime(
       }
     }
 
-    resolveDuePilotTransitions(advancedToUtc);
-    activateDueStaffingPackages(advancedToUtc);
-    settleDueRecurringObligations(advancedToUtc);
-    expireDueStaffingPackages(advancedToUtc);
+      resolveDuePilotTransitions(advancedToUtc);
+      activateDueStaffingPackages(advancedToUtc);
+      settleDueRecurringObligations(advancedToUtc);
+      expireDueStaffingPackages(advancedToUtc);
 
-    const summary: JsonObject = {
-      processedEventTypes,
+      const deadlineResolutionOutcome: MutableBatchOutcome = {
+        criticalAlertTriggered: false,
+        completedLegIds: new Set<string>(),
+        resolvedContractIds: new Set<string>(),
+        availableAircraftIds: new Set<string>(),
+      };
+      settleOverdueContracts(advancedToUtc, deadlineResolutionOutcome);
+      const deadlineStopReason = determineStopReason(
+        stopConditions,
+        deadlineResolutionOutcome,
+        command.payload.selectedAircraftId,
+        command.payload.selectedContractId,
+      );
+      if (deadlineStopReason) {
+        stoppedBecause = deadlineStopReason;
+      }
+
+      const summary: JsonObject = {
+        processedEventTypes,
       completedLegIds: [...completedLegIds],
       resolvedContractIds: [...resolvedContractIds],
       availableAircraftIds: [...availableAircraftIds],

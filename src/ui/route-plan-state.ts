@@ -100,6 +100,23 @@ export interface RoutePlanMutationResult {
 const closedCompanyContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);
 const visibleOfferStatuses = new Set(["available", "shortlisted"]);
 
+// Closed planner rows are preserved in storage for history, but the active UI should not treat them as current context.
+export function buildVisibleRoutePlanState(routePlan: RoutePlanState | null): RoutePlanState | null {
+  if (!routePlan) {
+    return null;
+  }
+
+  const visibleItems = routePlan.items.filter((item) => item.plannerItemStatus !== "closed");
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return {
+    ...routePlan,
+    items: visibleItems,
+  };
+}
+
 // Public planner entry points keep the saved route plan in sqlite so contracts, dispatch, and tests share one source of truth.
 export function loadRoutePlanState(saveDatabase: SqliteFileDatabase, saveId: string): RoutePlanState | null {
   const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
