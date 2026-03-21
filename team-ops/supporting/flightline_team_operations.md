@@ -56,6 +56,8 @@ Use this branch model by default:
   - the normal home for active implementation work
   - one bounded workstream branch per active implementation stream
   - should normally be pushed to GitHub early so active work is not trapped on one machine
+- capability implementation should normally happen on a dedicated `codex/<capability-name>` or `codex/<workstream>` branch, not directly on `codex/dev`
+- non-trivial capability work should usually get its own clean worktree as well, especially if `codex/dev` is dirty or carrying unrelated integration work
 - local-only scratch or rescue branches:
   - allowed only as short-lived exceptions
   - not the durable home for meaningful active work
@@ -64,6 +66,7 @@ Important rule:
 
 - do not leave mixed unfinished work parked on `codex/dev`
 - do not leave meaningful active work local-only longer than necessary
+- do not use `codex/dev` as the default execution branch for a capability just because it already exists
 - if work on `codex/dev` stops being one coherent landing candidate, preserve it on a `codex/<workstream>` branch and return `codex/dev` to a clean integration state
 - if a temporary `codex/wip-*` or `codex/unframed-*` branch is created to rescue mixed work, convert that work into a real workstream branch or delete the rescue branch after resolution
 

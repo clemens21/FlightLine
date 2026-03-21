@@ -153,6 +153,8 @@ Important nuance:
 - if a capability is too broad, internally inconsistent, mistimed, or technically unsafe, Mara should push back and reframe it before implementation begins
 - Mara should not push ordinary smaller changes up into a capability brief unless the work genuinely needs player-facing product shaping, minimum useful scope design, or Zoe-level now-versus-later judgment
 - by default, one capability should have one canonical product-work document that remains the source of truth as Mara decomposes it into slices
+- by default, implementation for an active capability should live on its own bounded `codex/<capability-name>` or `codex/<workstream>` branch rather than directly on `codex/dev`
+- non-trivial capability work should usually also get its own clean worktree so dirty integration branches do not become the execution surface
 - standalone workstream documents should be exceptional, not the default
 - capability briefs are not implementation-ready by default
 - implementation should start only after Mara has turned the capability into one or more bounded feature streams with validation expectations
@@ -201,6 +203,8 @@ Use this default branch model unless the human explicitly changes it:
   - the normal home for active implementation work
   - one bounded workstream branch per active implementation stream
   - should normally be pushed to GitHub early if the work is non-trivial or should not be lost
+- capability work should normally use a dedicated `codex/<capability-name>` or `codex/<workstream>` branch instead of sharing `codex/dev`
+- if the capability is large, risky, or likely to stay active across several slices, it should usually also get its own clean worktree
 - local-only scratch or rescue branches:
   - allowed only as short-lived exceptions
   - not the durable source of truth for active workstreams

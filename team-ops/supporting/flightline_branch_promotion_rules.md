@@ -31,6 +31,8 @@ Default expectation:
 - local `main` and GitHub `main` should normally stay aligned
 - `dev` should normally match `main` when no bounded landing is actively being assembled
 - new coding work should normally start on `codex/<workstream>` from the current shared tip
+- capability work should normally start on its own `codex/<capability-name>` or `codex/<workstream>` branch, not on `dev`
+- non-trivial capability work should usually use its own clean worktree as well so promotion decisions are not blocked by unrelated local dirt
 - non-trivial active work on `codex/<workstream>` should normally be pushed to GitHub early
 
 ## Core Promotion Rules
@@ -56,6 +58,7 @@ Use this flow by default:
 
 1. start from the current shared promoted tip
 2. open a bounded `codex/<workstream>` branch for active coding
+3. for capability work, keep that branch as the execution surface for the capability or active slice instead of developing directly on `dev`
 3. push that workstream branch to GitHub early if the work is meaningful or should not be lost
 4. keep `dev` clean until a bounded landing set is ready to integrate
 5. integrate only that bounded set into `dev`
