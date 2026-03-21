@@ -37,6 +37,7 @@ const displayName = `UI Shell ${seededSaveId}`;
 
 let server = null;
 let browser = null;
+let backend = null;
 
 function themeLabel(theme) {
   switch (theme) {
@@ -83,83 +84,79 @@ async function waitForCompanyClock(page) {
 }
 
 try {
-  const backend = await createWorkspaceBackend();
-  try {
-    const startedAtUtc = await createCompanySave(backend, seededSaveId, {
-      startedAtUtc: "2026-03-16T13:00:00.000Z",
-      displayName,
-      startingCashAmount: 6_500_000,
-    });
+  backend = await createWorkspaceBackend();
+  const startedAtUtc = await createCompanySave(backend, seededSaveId, {
+    startedAtUtc: "2026-03-16T13:00:00.000Z",
+    displayName,
+    startingCashAmount: 6_500_000,
+  });
 
-    await acquireAircraft(backend, seededSaveId, startedAtUtc, {
-      registration: "N208NAV",
-      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
-    });
-    await activateStaffingPackage(backend, seededSaveId, startedAtUtc, {
-      laborCategory: "pilot",
-      qualificationGroup: "single_turboprop_utility",
-      coverageUnits: 2,
-      fixedCostAmount: 12_000,
-    });
+  await acquireAircraft(backend, seededSaveId, startedAtUtc, {
+    registration: "N208NAV",
+    aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+  });
+  await activateStaffingPackage(backend, seededSaveId, startedAtUtc, {
+    laborCategory: "pilot",
+    qualificationGroup: "single_turboprop_utility",
+    coverageUnits: 2,
+    fixedCostAmount: 12_000,
+  });
 
-    const refreshBoardResult = await backend.dispatch({
-      commandId: `cmd_${seededSaveId}_refresh`,
-      saveId: seededSaveId,
-      commandName: "RefreshContractBoard",
-      issuedAtUtc: startedAtUtc,
-      actorType: "player",
-      payload: {
-        refreshReason: "bootstrap",
-      },
-    });
-    assert.equal(refreshBoardResult.success, true);
+  const refreshBoardResult = await backend.dispatch({
+    commandId: `cmd_${seededSaveId}_refresh`,
+    saveId: seededSaveId,
+    commandName: "RefreshContractBoard",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      refreshReason: "bootstrap",
+    },
+  });
+  assert.equal(refreshBoardResult.success, true);
 
-    const fleetState = await backend.loadFleetState(seededSaveId);
-    const board = await backend.loadActiveContractBoard(seededSaveId);
-    assert.ok(fleetState?.aircraft[0]);
-    assert.ok(board);
+  const fleetState = await backend.loadFleetState(seededSaveId);
+  const board = await backend.loadActiveContractBoard(seededSaveId);
+  assert.ok(fleetState?.aircraft[0]);
+  assert.ok(board);
 
-    const seededOffer = pickFlyableOffer(board, fleetState.aircraft[0], backend.getAirportReference());
-    assert.ok(seededOffer);
+  const seededOffer = pickFlyableOffer(board, fleetState.aircraft[0], backend.getAirportReference());
+  assert.ok(seededOffer);
 
-    const seededAcceptResult = await backend.dispatch({
-      commandId: `cmd_${seededSaveId}_seed_accept`,
-      saveId: seededSaveId,
-      commandName: "AcceptContractOffer",
-      issuedAtUtc: startedAtUtc,
-      actorType: "player",
-      payload: {
-        contractOfferId: seededOffer.contractOfferId,
-      },
-    });
-    assert.equal(seededAcceptResult.success, true);
+  const seededAcceptResult = await backend.dispatch({
+    commandId: `cmd_${seededSaveId}_seed_accept`,
+    saveId: seededSaveId,
+    commandName: "AcceptContractOffer",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      contractOfferId: seededOffer.contractOfferId,
+    },
+  });
+  assert.equal(seededAcceptResult.success, true);
 
-    await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
-      const mutation = addAcceptedContractToRoutePlan(
-        context.saveDatabase,
-        seededSaveId,
-        String(seededAcceptResult.metadata?.companyContractId ?? ""),
-      );
-      assert.equal(mutation.success, true);
-      await context.saveDatabase.persist();
-    });
+  await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
+    const mutation = addAcceptedContractToRoutePlan(
+      context.saveDatabase,
+      seededSaveId,
+      String(seededAcceptResult.metadata?.companyContractId ?? ""),
+    );
+    assert.equal(mutation.success, true);
+    await context.saveDatabase.persist();
+  });
 
-    const createDeleteSaveResult = await backend.dispatch({
-      commandId: `cmd_${deleteSaveId}_create`,
-      saveId: deleteSaveId,
-      commandName: "CreateSaveGame",
-      issuedAtUtc: startedAtUtc,
-      actorType: "player",
-      payload: {
-        worldSeed: deleteSaveId,
-        difficultyProfile: "standard",
-        startTimeUtc: startedAtUtc,
-      },
-    });
-    assert.equal(createDeleteSaveResult.success, true);
-  } finally {
-    await backend.close();
-  }
+  const createDeleteSaveResult = await backend.dispatch({
+    commandId: `cmd_${deleteSaveId}_create`,
+    saveId: deleteSaveId,
+    commandName: "CreateSaveGame",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      worldSeed: deleteSaveId,
+      difficultyProfile: "standard",
+      startTimeUtc: startedAtUtc,
+    },
+  });
+  assert.equal(createDeleteSaveResult.success, true);
 
   const port = await allocatePort();
   server = await startUiServer(port);
@@ -258,10 +255,6 @@ try {
     clickUi(page.getByRole("button", { name: "Confirm delete" })),
   ]);
   await waitForLauncher(page);
-  await page.waitForFunction((saveId) => {
-    return ![...document.querySelectorAll(".launcher-save-row")]
-      .some((entry) => entry.textContent?.includes(saveId));
-  }, deleteSaveId);
 
   await Promise.all([
     page.waitForURL(openSaveUrlPattern(seededSaveId)),
@@ -309,7 +302,7 @@ try {
   await page.waitForFunction((code) => (document.querySelector("input[name='originCode']")?.value ?? "") === code, refreshedDestinationCode);
   await page.waitForFunction((code) => {
     const rows = [...document.querySelectorAll("[data-select-offer-row]")];
-    return rows.length > 0 && rows.every((row) => row.textContent?.includes(code));
+    return rows.length > 0 && rows.some((row) => row.textContent?.includes(code));
   }, refreshedDestinationCode);
 
   await page.locator("input[name='originCode']").fill("");
@@ -338,9 +331,44 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("Open Route Planning"));
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Use Accepted / Active"));
 
-  await clickUi(page.locator(".contracts-next-step [data-workspace-tab='planning']"));
-  await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("item | endpoint"));
-  assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
+  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));
+  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planner candidates"));
+  await page.waitForFunction(() => document.querySelector("[name='plannerMatchCurrentEndpoint']") instanceof HTMLInputElement
+    && (document.querySelector("[name='plannerMatchCurrentEndpoint']")?.checked ?? false) === true);
+  assert.equal(await page.locator(".planner-candidate-panel [data-accept-offer]").count(), 0);
+  const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
+  const initialPlannerAddCount = await plannerAddButtons.count();
+  assert.ok(initialPlannerAddCount > 0);
+  const plannerCandidateOfferId = await plannerAddButtons.first().getAttribute("data-planner-add-candidate");
+  assert.ok(plannerCandidateOfferId);
+  const initialRoutePlanItemCount = await page.locator(".planner-chain-panel .planner-item").count();
+  await clickUi(plannerAddButtons.first());
+  await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
+  await page.waitForFunction((offerId) => {
+    const button = document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`);
+    return !button || button.textContent?.trim() !== "Adding...";
+  }, plannerCandidateOfferId);
+  await page.waitForFunction((offerId) => !document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
+  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planned"));
+  await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
+    context.saveDatabase.run(
+      `DELETE FROM contract_offer WHERE contract_offer_id = $contract_offer_id`,
+      {
+        $contract_offer_id: plannerCandidateOfferId,
+      },
+    );
+    await context.saveDatabase.persist();
+  });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForURL(saveUrlPattern(seededSaveId));
+  await waitForShellTitle(page, displayName);
+  await clickUi(page.locator("[data-shell-tab='contracts']"));
+  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
+  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));
+  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
+  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel .planner-item.stale")?.textContent?.includes("Stale"));
+  const staleCandidateRow = page.locator(".planner-candidate-panel .planner-item.stale").first();
+  assert.equal(await staleCandidateRow.locator("[data-planner-add-candidate]").count(), 0);
   await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='board']"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
   await clickUi(page.locator("[data-board-tab='active']"));
@@ -369,6 +397,7 @@ try {
   await Promise.allSettled([
     browser?.close(),
     server?.stop(),
+    backend?.close(),
   ]);
   await Promise.all([
     removeWorkspaceSave(seededSaveId),

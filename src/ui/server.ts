@@ -1512,6 +1512,24 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       min-height: 0;
       overflow: auto;
     }
+    .planner-shell {
+      display: grid;
+      gap: 18px;
+    }
+    .planner-candidate-panel .panel-body {
+      display: grid;
+      gap: 14px;
+    }
+    .planner-chain-panel .panel-body {
+      min-height: 0;
+      overflow: auto;
+    }
+    .planner-endpoint-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
     .planner-list {
       display: grid;
       gap: 10px;

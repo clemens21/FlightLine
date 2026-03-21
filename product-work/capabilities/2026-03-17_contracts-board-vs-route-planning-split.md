@@ -3,7 +3,7 @@
 Status: active
 Workflow state: ready_for_owen
 Current owner: Owen Hart
-Current active slice: Slice 1 - Contracts workspace split and board cleanup
+Current active slice: Slice 2 - Planner-native candidate sourcing
 Next routing target: Owen Hart
 Last updated: 2026-03-20
 
@@ -82,29 +82,36 @@ This capability will land in three slices:
 
 ## 3. Current Active Slice
 
-Slice 1 is intentionally smaller than the original brief wording.
+Slice 1 is landed on the capability branch in commit `aba8f31`.
 
-The first implementation pass should include only:
+Slice 2 should add planner-native candidate sourcing without rebuilding a second market board.
 
-- a Contracts sub-tab split between `Contract Board` and `Route Planning`
-- `Contract Board` focused on market search, single-contract review, and direct accept
-- `Route Planning` focused on existing saved route-plan review and acceptance only
-- removal of planner controls from the main board surface
-- removal of planner controls from available-offer rows on the board
-- selected-contract map context only on the board
-- existing cancel behavior retained on `Accepted / Active`
-- `Send to route plan` for accepted work
-- a quick in-place next-step CTA after board acceptance
+The current implementation pass should include only:
 
-Slice 1 does not include planner-native candidate sourcing.
-That work is reserved for slice 2.
+- a lightweight candidate list inside `Route Planning`
+- candidate sourcing from the existing `available` offers already present in `ContractsViewPayload`
+- planner-local filters lighter than the board:
+  - search
+  - destination
+  - payload type
+  - fit bucket
+  - `match current endpoint`
+- default `match current endpoint = on` when the route plan already has an endpoint
+- candidate rows that allow `Add to chain` only
+- clear non-actionable states for already planned or stale candidates
+- accepted work continuing to enter the planner from board-side `Send to route plan`
 
-Preferred first-pass behavior:
+Slice 2 does not redesign planner review, planner acceptance, Dispatch inputs, or the board workspace.
 
-- available offers can be `Accept now` from the board
-- accepted contracts can be sent into route planning
-- route planning can review the saved chain and accept selected planned contracts already in that chain
-- route planning can sequence already accepted work already present in the saved chain
+Preferred slice-2 behavior:
+
+- Route Planning can grow a chain from inside its own tab
+- candidate sourcing stays lighter than the board instead of cloning the board UI
+- direct acceptance still belongs to the board
+- planner candidates should clearly distinguish:
+  - actionable candidate
+  - already planned
+  - stale or unavailable
 
 ## 4. Explicit Non-Goals
 

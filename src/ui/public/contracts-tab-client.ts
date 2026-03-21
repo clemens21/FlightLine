@@ -41,15 +41,39 @@ interface AppliedTextFilters {
   destinationCode: string;
 }
 
+interface PlannerFilterState {
+  plannerSearchText: string;
+  plannerDestinationCode: string;
+  plannerVolumeType: string;
+  plannerFitBucket: string;
+  plannerMatchCurrentEndpoint: boolean;
+  plannerMatchCurrentEndpointTouched: boolean;
+}
+
+interface AppliedPlannerTextFilters {
+  plannerSearchText: string;
+  plannerDestinationCode: string;
+}
+
 interface PlannerReviewState {
   isOpen: boolean;
   selectedRoutePlanItemIds: string[];
+}
+
+type PlannerCandidateState = "actionable" | "planned" | "stale" | "unavailable";
+
+interface PlannerCandidateView {
+  offer: ContractsViewOffer;
+  state: PlannerCandidateState;
+  detail: string;
 }
 
 interface ContractsUiState {
   payload: ContractsViewPayload;
   filters: FilterState;
   appliedTextFilters: AppliedTextFilters;
+  plannerFilters: PlannerFilterState;
+  appliedPlannerTextFilters: AppliedPlannerTextFilters;
   plannerReview: PlannerReviewState;
   workspaceTab: ContractsWorkspaceTab;
   boardTab: ContractsBoardTab;
@@ -104,7 +128,7 @@ const minMapZoom = 1;
 const maxMapZoom = 6;
 const mapPaddingPx = 96;
 const openStreetMapTileUrl = "https://tile.openstreetmap.org";
-const debouncedTextFilterNames = new Set(["searchText", "originCode", "destinationCode"]);
+const debouncedTextFilterNames = new Set(["searchText", "originCode", "destinationCode", "plannerSearchText", "plannerDestinationCode"]);
 const textFilterDebounceMs = 300;
 const defaultMapState: MapState = {
   zoom: 2,
@@ -166,6 +190,18 @@ export function mountContractsTab(
       searchText: "",
       originCode: "",
       destinationCode: "",
+    },
+    plannerFilters: {
+      plannerSearchText: "",
+      plannerDestinationCode: "",
+      plannerVolumeType: "all",
+      plannerFitBucket: "all",
+      plannerMatchCurrentEndpoint: Boolean(initialPayload.routePlan?.endpointAirportId),
+      plannerMatchCurrentEndpointTouched: false,
+    },
+    appliedPlannerTextFilters: {
+      plannerSearchText: "",
+      plannerDestinationCode: "",
     },
     plannerReview: {
       isOpen: false,
@@ -294,6 +330,19 @@ export function mountContractsTab(
       );
       return;
     }
+    const addCandidateButton = target.closest<HTMLButtonElement>("[data-planner-add-candidate]");
+    if (addCandidateButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const sourceId = addCandidateButton.dataset.plannerAddCandidate ?? "";
+      void plannerAction(
+        options.plannerAddUrl,
+        new URLSearchParams({ sourceType: "candidate_offer", sourceId }),
+        addCandidateButton,
+        "Adding...",
+      );
+      return;
+    }
     const removePlanButton = target.closest<HTMLButtonElement>("[data-plan-remove-item]");
     if (removePlanButton) {
       event.preventDefault();
@@ -411,15 +460,28 @@ export function mountContractsTab(
       return;
     }
 
-    if (!Object.hasOwn(state.filters, target.name)) {
+    const isBoardFilter = Object.hasOwn(state.filters, target.name);
+    const isPlannerFilter = Object.hasOwn(state.plannerFilters, target.name);
+
+    if (!isBoardFilter && !isPlannerFilter) {
       return;
     }
 
     const nextValue = target instanceof HTMLInputElement && target.type === "checkbox" ? target.checked : target.value;
-    state.filters = {
-      ...state.filters,
-      [target.name]: nextValue,
-    };
+    if (isBoardFilter) {
+      state.filters = {
+        ...state.filters,
+        [target.name]: nextValue,
+      };
+    } else {
+      state.plannerFilters = {
+        ...state.plannerFilters,
+        [target.name]: nextValue,
+        ...(target.name === "plannerMatchCurrentEndpoint"
+          ? { plannerMatchCurrentEndpointTouched: true }
+          : {}),
+      };
+    }
 
     if (debouncedTextFilterNames.has(target.name)) {
       const focusState = captureFocusState(root);
@@ -435,6 +497,10 @@ export function mountContractsTab(
           searchText: state.filters.searchText,
           originCode: state.filters.originCode,
           destinationCode: state.filters.destinationCode,
+        };
+        state.appliedPlannerTextFilters = {
+          plannerSearchText: state.plannerFilters.plannerSearchText,
+          plannerDestinationCode: state.plannerFilters.plannerDestinationCode,
         };
         ensureActiveTabSelection(state);
         render(captureFocusState(root));
@@ -767,8 +833,10 @@ export function mountContractsTab(
   }
 
   function render(focusState: FocusState | null = null): void {
+    ensurePlannerFilterDefaults(state);
     const filteredOffers = getFilteredOffers(state);
     const filteredCompanyContracts = getFilteredCompanyContracts(state);
+    const plannerCandidates = getFilteredPlannerCandidates(state);
     const sortedOffers = sortOffers(filteredOffers, state);
     const sortedCompanyContracts = sortCompanyContracts(filteredCompanyContracts, state.payload.currentTimeUtc, state);
     ensureActiveTabSelection(state, sortedOffers, sortedCompanyContracts);
@@ -781,10 +849,10 @@ export function mountContractsTab(
       ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
       : "Select a row to focus the route map.";
     const toolbarHeadline = state.workspaceTab === "planning"
-      ? `${formatNumber(routePlanCount)} route plan item${routePlanCount === 1 ? "" : "s"}`
+      ? renderPlannerHeadline(state.payload, plannerCandidates.length)
       : renderHeadline(state.boardTab, availableCount, activeCount, closedCount);
     const toolbarSubtitle = state.workspaceTab === "planning"
-      ? `Route plan endpoint ${escapeHtml(state.payload.plannerEndpointAirportId ?? "-")} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
+      ? `Route plan endpoint ${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "-")} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
       : `Board expires ${escapeHtml(formatDate(state.payload.board.expiresAtUtc))} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`;
 
     const boardWorkspaceHtml = `
@@ -890,7 +958,7 @@ export function mountContractsTab(
         <div class="panel-head">
           <div>
             <h3>Route Planning</h3>
-            <span class="muted">${escapeHtml(renderPlannerHeadline(state.payload))}</span>
+            <span class="muted">${escapeHtml(renderPlannerHeadline(state.payload, plannerCandidates.length))}</span>
           </div>
           <div class="planner-panel-actions">
             ${state.payload.routePlan?.items.length
@@ -899,7 +967,7 @@ export function mountContractsTab(
           </div>
         </div>
         <div class="panel-body contracts-planner-body">
-          ${renderPlannerPanel(state.payload.routePlan, state.plannerReview)}
+          ${renderPlannerPanel(state.payload.routePlan, state.plannerReview, plannerCandidates, state)}
         </div>
       </section>
     `;
@@ -1109,17 +1177,59 @@ function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string 
   `;
 }
 
-function renderPlannerHeadline(payload: ContractsViewPayload): string {
+function renderPlannerHeadline(payload: ContractsViewPayload, candidateCount: number = 0): string {
   const itemCount = payload.routePlan?.items.length ?? 0;
+  const endpointAirportId = payload.routePlan?.endpointAirportId ?? "-";
   if (itemCount === 0) {
-    return "Save a chain of offers and accepted work.";
+    return candidateCount > 0
+      ? `Save a chain of offers and accepted work. ${candidateCount} planner candidate${candidateCount === 1 ? "" : "s"} available.`
+      : "Save a chain of offers and accepted work.";
   }
 
-  return `${itemCount} item${itemCount === 1 ? "" : "s"} | endpoint ${payload.plannerEndpointAirportId ?? "-"}`;
+  return `${itemCount} item${itemCount === 1 ? "" : "s"} | endpoint ${endpointAirportId} | ${candidateCount} candidate${candidateCount === 1 ? "" : "s"}`;
 }
 
-function renderPlannerPanel(routePlan: ContractsViewPayload["routePlan"], plannerReview: PlannerReviewState): string {
-  if (!routePlan || routePlan.items.length === 0) {
+function renderPlannerPanel(
+  routePlan: ContractsViewPayload["routePlan"],
+  plannerReview: PlannerReviewState,
+  plannerCandidates: PlannerCandidateView[],
+  state: ContractsUiState,
+): string {
+  const routePlanHtml = routePlan && routePlan.items.length > 0
+    ? renderPlannerRoutePlan(routePlan, plannerReview)
+    : `<div class="empty-state compact">Saved route plans and accepted work will appear here.</div>`;
+
+  return `
+    <div class="planner-shell">
+      <section class="panel planner-candidate-panel">
+        <div class="panel-head">
+          <div>
+            <h4>Planner candidates</h4>
+            <span class="muted">${escapeHtml(renderPlannerCandidateSubtitle(state, plannerCandidates.length))}</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          ${renderPlannerCandidateFilters(state)}
+          ${renderPlannerCandidateList(plannerCandidates)}
+        </div>
+      </section>
+      <section class="panel planner-chain-panel">
+        <div class="panel-head">
+          <div>
+            <h4>Route chain</h4>
+            <span class="muted">${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "No endpoint set yet")}</span>
+          </div>
+        </div>
+        <div class="panel-body">
+          ${routePlanHtml}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderPlannerRoutePlan(routePlan: ContractsViewPayload["routePlan"], plannerReview: PlannerReviewState): string {
+  if (!routePlan) {
     return `<div class="empty-state compact">Saved route plans and accepted work will appear here.</div>`;
   }
 
@@ -1140,7 +1250,134 @@ function renderPlannerPanel(routePlan: ContractsViewPayload["routePlan"], planne
   }
 
   const displayItems = [...routePlan.items].sort((left, right) => right.sequenceNumber - left.sequenceNumber);
-  return `<div class="planner-list">${displayItems.map((item) => `<article class="planner-item ${item.plannerItemStatus}"><div class="planner-item-head"><span class="planner-sequence">${item.sequenceNumber}</span><div class="pill-row">${renderBadge(item.plannerItemStatus)}</div></div><div class="meta-stack"><strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong><span class="muted">${escapeHtml(formatPayload(item))} | due ${escapeHtml(formatDate(item.deadlineUtc))}</span></div><div class="planner-item-actions"><button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up">Up</button><button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down">Down</button><button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Remove</button></div></article>`).join("")}</div>`;
+  return `
+    <div class="planner-list">
+      ${displayItems.map((item) => renderPlannerRoutePlanItem(item)).join("")}
+    </div>
+  `;
+}
+
+function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
+  const statusLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
+    ? "Planned"
+    : item.plannerItemStatus;
+  const actionsHtml = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
+    ? `<div class="muted">Planned candidate</div>`
+    : `<div class="muted">${escapeHtml(item.plannerItemStatus.replaceAll("_", " "))}</div>`;
+
+  return `
+    <article class="planner-item ${item.plannerItemStatus}">
+      <div class="planner-item-head">
+        <span class="planner-sequence">${item.sequenceNumber}</span>
+        <div class="pill-row">${renderBadge(statusLabel)}</div>
+      </div>
+      <div class="meta-stack">
+        <strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
+        <span class="muted">${escapeHtml(formatPayload(item))} | due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+      </div>
+      <div class="planner-item-actions">
+        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up">Up</button>
+        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down">Down</button>
+        <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Remove</button>
+      </div>
+      ${actionsHtml}
+    </article>
+  `;
+}
+
+function renderPlannerCandidateSubtitle(state: ContractsUiState, candidateCount: number): string {
+  const endpointAirportId = state.payload.routePlan?.endpointAirportId;
+  if (!endpointAirportId) {
+    return `${candidateCount} planner candidate${candidateCount === 1 ? "" : "s"} | no endpoint yet, so endpoint filtering is off`;
+  }
+
+  return state.plannerFilters.plannerMatchCurrentEndpoint
+    ? `${candidateCount} candidate${candidateCount === 1 ? "" : "s"} | matching current endpoint ${endpointAirportId}`
+    : `${candidateCount} candidate${candidateCount === 1 ? "" : "s"} | endpoint filter off`;
+}
+
+function renderPlannerCandidateFilters(state: ContractsUiState): string {
+  const hasEndpoint = Boolean(state.payload.routePlan?.endpointAirportId);
+  const effectiveMatchCurrentEndpoint = hasEndpoint ? state.plannerFilters.plannerMatchCurrentEndpoint : false;
+  return `
+    <section class="contracts-filters">
+      <label>Search
+        <input name="plannerSearchText" value="${escapeHtml(state.plannerFilters.plannerSearchText)}" placeholder="Airport, city, or route code" />
+      </label>
+      <label>Destination airport
+        <input name="plannerDestinationCode" value="${escapeHtml(state.plannerFilters.plannerDestinationCode)}" placeholder="Type code or airport" />
+      </label>
+      <label>Payload Type
+        <select name="plannerVolumeType">
+          <option value="all">All</option>
+          <option value="passenger" ${state.plannerFilters.plannerVolumeType === "passenger" ? "selected" : ""}>Passenger</option>
+          <option value="cargo" ${state.plannerFilters.plannerVolumeType === "cargo" ? "selected" : ""}>Cargo</option>
+        </select>
+      </label>
+      <label>Fit
+        <select name="plannerFitBucket">
+          <option value="all">All</option>
+          <option value="flyable_now" ${state.plannerFilters.plannerFitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option>
+          <option value="flyable_with_reposition" ${state.plannerFilters.plannerFitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option>
+          <option value="stretch_growth" ${state.plannerFilters.plannerFitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option>
+          <option value="blocked_now" ${state.plannerFilters.plannerFitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option>
+        </select>
+      </label>
+      <label class="planner-endpoint-toggle">
+        <span>Match current endpoint</span>
+        <input name="plannerMatchCurrentEndpoint" type="checkbox" ${effectiveMatchCurrentEndpoint ? "checked" : ""} ${hasEndpoint ? "" : "disabled"} />
+      </label>
+      ${hasEndpoint
+        ? `<div class="filter-shortcut"><span class="muted">Current endpoint: ${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "-")}</span></div>`
+        : `<div class="filter-shortcut"><span class="muted">No endpoint yet. Endpoint filtering is off.</span></div>`}
+    </section>
+  `;
+}
+
+function renderPlannerCandidateList(plannerCandidates: PlannerCandidateView[]): string {
+  if (plannerCandidates.length === 0) {
+    return `<div class="empty-state compact">No planner candidates match the current filters.</div>`;
+  }
+
+  return `
+    <div class="planner-list">
+      ${plannerCandidates.map((candidate) => renderPlannerCandidateRow(candidate)).join("")}
+    </div>
+  `;
+}
+
+function renderPlannerCandidateRow(candidate: PlannerCandidateView): string {
+  const statusLabel = candidate.state === "actionable"
+    ? "Ready to add"
+    : candidate.state === "planned"
+    ? "Planned"
+    : candidate.state === "stale"
+    ? "Stale"
+    : "Unavailable";
+  const actionHtml = candidate.state === "actionable"
+    ? `<button type="button" class="button-secondary" data-planner-add-candidate="${escapeHtml(candidate.offer.contractOfferId)}">Add to chain</button>`
+    : `<span class="muted">${escapeHtml(statusLabel)}</span>`;
+  const badgeValue = candidate.state === "actionable"
+    ? candidate.offer.fitBucket ?? candidate.offer.offerStatus
+    : candidate.state;
+  return `
+    <article class="planner-item ${candidate.state}">
+      <div class="planner-item-head">
+        <div class="meta-stack">
+          <strong>${escapeHtml(candidate.offer.origin.code)} -> ${escapeHtml(candidate.offer.destination.code)}</strong>
+          <span class="muted">${escapeHtml(formatPayload(candidate.offer))} | due ${escapeHtml(formatDate(candidate.offer.latestCompletionUtc))}</span>
+        </div>
+        <div class="pill-row">${renderBadge(badgeValue)}</div>
+      </div>
+      <div class="meta-stack">
+        <span class="muted">${escapeHtml(candidate.offer.likelyRole.replaceAll("_", " "))} | ${escapeHtml(candidate.offer.difficultyBand)}</span>
+        <span class="muted">${escapeHtml(candidate.detail)}</span>
+      </div>
+      <div class="planner-item-actions">
+        ${actionHtml}
+      </div>
+    </article>
+  `;
 }
 
 function renderRouteColumn(origin: ContractsViewAirport, destination: ContractsViewAirport): string {
@@ -1525,6 +1762,113 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
 
     return true;
   });
+}
+
+function ensurePlannerFilterDefaults(state: ContractsUiState): void {
+  const hasEndpoint = Boolean(state.payload.routePlan?.endpointAirportId);
+  if (hasEndpoint && !state.plannerFilters.plannerMatchCurrentEndpointTouched) {
+    state.plannerFilters = {
+      ...state.plannerFilters,
+      plannerMatchCurrentEndpoint: true,
+    };
+  }
+
+  if (!hasEndpoint && state.plannerFilters.plannerMatchCurrentEndpoint) {
+    state.plannerFilters = {
+      ...state.plannerFilters,
+      plannerMatchCurrentEndpoint: false,
+    };
+  }
+}
+
+function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidateView[] {
+  const searchText = state.appliedPlannerTextFilters.plannerSearchText.trim().toLowerCase();
+  const destinationCode = state.appliedPlannerTextFilters.plannerDestinationCode.trim().toLowerCase();
+  const hasEndpoint = Boolean(state.payload.routePlan?.endpointAirportId);
+  const matchCurrentEndpoint = hasEndpoint ? state.plannerFilters.plannerMatchCurrentEndpoint : false;
+  const routePlanByOfferId = new Map<string, ContractsRoutePlanItem>(
+    (state.payload.routePlan?.items ?? [])
+      .filter((item) => item.sourceType === "candidate_offer")
+      .map((item) => [item.sourceId, item]),
+  );
+
+  const availableOfferCandidates = state.payload.offers
+    .filter((offer) => offer.offerStatus === "available")
+    .map((offer) => {
+      const plannedItem = routePlanByOfferId.get(offer.contractOfferId);
+      const candidateState: PlannerCandidateState = plannedItem
+        ? plannedItem.plannerItemStatus === "candidate_available"
+          ? "planned"
+          : plannedItem.plannerItemStatus === "candidate_stale"
+          ? "stale"
+          : "unavailable"
+        : "actionable";
+
+      return {
+        offer,
+        state: candidateState,
+        detail: candidateState === "planned"
+          ? "Already in the current route plan."
+          : candidateState === "stale"
+          ? "The planned snapshot is stale."
+          : candidateState === "unavailable"
+          ? "The planned snapshot is no longer actionable."
+          : "Add this offer to the current chain.",
+      } satisfies PlannerCandidateView;
+    });
+
+  const stalePlannedCandidates = (state.payload.routePlan?.items ?? [])
+    .filter((item) => item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_stale")
+    .filter((item) => !state.payload.offers.some((offer) => offer.contractOfferId === item.sourceId))
+    .map((item) => ({
+      offer: {
+        contractOfferId: item.sourceId,
+        archetype: "stale_candidate",
+        volumeType: item.volumeType,
+        passengerCount: item.passengerCount,
+        cargoWeightLb: item.cargoWeightLb,
+        payoutAmount: item.payoutAmount,
+        earliestStartUtc: item.earliestStartUtc ?? item.deadlineUtc,
+        latestCompletionUtc: item.deadlineUtc,
+        offerStatus: "expired",
+        likelyRole: "route_plan_snapshot",
+        difficultyBand: "stale",
+        fitBucket: undefined,
+        timeRemainingHours: 0,
+        origin: item.origin,
+        destination: item.destination,
+        routePlanItemId: item.routePlanItemId,
+        routePlanItemStatus: item.plannerItemStatus,
+        matchesPlannerEndpoint: hasEndpoint && item.origin.airportId === state.payload.routePlan?.endpointAirportId,
+      },
+      state: "stale",
+      detail: "This planned offer is no longer present on the live board.",
+    } satisfies PlannerCandidateView));
+
+  return [...availableOfferCandidates, ...stalePlannedCandidates]
+    .filter((candidate) => {
+      if (searchText && !buildAirportSearchHaystack(candidate.offer).includes(searchText)) {
+        return false;
+      }
+
+      if (destinationCode && !matchesAirportFilter(candidate.offer.destination, destinationCode)) {
+        return false;
+      }
+
+      if (state.plannerFilters.plannerVolumeType !== "all" && candidate.offer.volumeType !== state.plannerFilters.plannerVolumeType) {
+        return false;
+      }
+
+      if (state.plannerFilters.plannerFitBucket !== "all" && candidate.offer.fitBucket !== state.plannerFilters.plannerFitBucket) {
+        return false;
+      }
+
+      if (matchCurrentEndpoint && candidate.state === "actionable" && !candidate.offer.matchesPlannerEndpoint) {
+        return false;
+      }
+
+      return true;
+    });
 }
 
 function matchesVolumeRangeFilters(
