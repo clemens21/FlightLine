@@ -1867,6 +1867,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 14px;
     }
+    .dispatch-readiness-stack {
+      display: grid;
+      gap: 12px;
+    }
+    .dispatch-readiness-list {
+      display: grid;
+      gap: 10px;
+    }
     .dispatch-input-section {
       display: grid;
       gap: 12px;
@@ -1899,7 +1907,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .dispatch-input-card,
     .dispatch-detail-card,
-    .dispatch-message-item {
+    .dispatch-message-item,
+    .dispatch-readiness-item {
       padding: 12px 14px;
       border-radius: 16px;
       border: 1px solid var(--line);
@@ -1912,6 +1921,18 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: color-mix(in srgb, var(--warn-soft) 72%, var(--panel-strong));
     }
     .dispatch-message-item.blocker {
+      border-color: rgba(176,58,46,.24);
+      background: color-mix(in srgb, var(--danger-soft) 72%, var(--panel-strong));
+    }
+    .dispatch-readiness-item.pass {
+      border-color: rgba(13,106,119,.22);
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+    }
+    .dispatch-readiness-item.watch {
+      border-color: rgba(239,177,95,.3);
+      background: color-mix(in srgb, var(--warn-soft) 72%, var(--panel-strong));
+    }
+    .dispatch-readiness-item.blocked {
       border-color: rgba(176,58,46,.24);
       background: color-mix(in srgb, var(--danger-soft) 72%, var(--panel-strong));
     }

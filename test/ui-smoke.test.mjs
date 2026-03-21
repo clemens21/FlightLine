@@ -294,6 +294,9 @@ try {
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-assigned-pilot]").length === 1);
   assert.equal((await page.locator("[data-dispatch-assigned-pilots]").textContent())?.includes("Reserved until"), true);
   assert.equal((await page.locator("[data-dispatch-pilot-assignment-summary]").textContent())?.includes("named pilots"), true);
+  const committedRecoveryText = (await page.locator("[data-dispatch-readiness-recovery]").textContent()) ?? "";
+  assert.equal(committedRecoveryText.length > 0, true);
+  assert.equal(committedRecoveryText.includes("Stage a draft to evaluate dispatch readiness."), false);
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
@@ -332,6 +335,16 @@ try {
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20CUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20CUI"));
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("No draft to commit"), true);
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-validation-rail]")?.textContent?.includes("Readiness Checklist"));
+  const readinessRailText = (await page.locator("[data-dispatch-validation-rail]").textContent()) ?? "";
+  assert.equal(readinessRailText.includes("Pass"), true);
+  assert.equal(readinessRailText.includes("Watch"), true);
+  assert.equal(readinessRailText.includes("Blocked"), true);
+  assert.equal(readinessRailText.includes("Likely recovery"), true);
+  assert.equal(readinessRailText.includes("Stage selected work on this aircraft first."), true);
+  const commitBarText = (await page.locator("[data-dispatch-commit-bar]").textContent()) ?? "";
+  assert.equal(commitBarText.includes("Commit impact"), true);
+  assert.equal(commitBarText.includes("preview commit impact"), true);
 
   await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']"));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Planned Routes"));
@@ -736,5 +749,3 @@ try {
   ]);
   await removeWorkspaceSave(saveId);
 }
-
-

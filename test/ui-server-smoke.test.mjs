@@ -445,9 +445,123 @@ try {
   assert.equal(committedDispatchAircraft.assignedPilots.length, 1);
   assert.equal(typeof committedDispatchAircraft.assignedPilots[0]?.displayName, "string");
   assert.equal(committedDispatchAircraft.pilotReadiness.assignedPilotCount, 1);
+  assert.ok(committedDispatchAircraft.schedule);
   assert.equal(committedDispatchAircraft.pilotReadiness.readyNowCount, 1);
   assert.equal(committedDispatchAircraft.pilotReadiness.trainingNowCount, 1);
   const acceptedDispatchContractId = dispatchTab.dispatchPayload.workInputs.acceptedContracts[0]?.companyContractId;
+  const {
+    deriveDispatchCommitImpactSummary,
+    deriveDispatchReadinessSummary,
+  } = await import("../dist/ui/public/dispatch-tab-client.js");
+  const readinessSummary = deriveDispatchReadinessSummary({
+    ...committedDispatchAircraft,
+    schedule: {
+      ...committedDispatchAircraft.schedule,
+      validation: {
+        ...(committedDispatchAircraft.schedule.validation ?? {}),
+        isCommittable: false,
+        hardBlockerCount: 1,
+        warningCount: 2,
+        validationMessages: [
+          {
+            severity: "blocker",
+            code: "contract.assigned_elsewhere",
+            summary: "Contract already assigned elsewhere.",
+            suggestedRecoveryAction: "Clear the overlapping assignment or choose a different aircraft.",
+          },
+          {
+            severity: "warning",
+            code: "contract.deadline",
+            summary: "This route would miss the contract deadline.",
+            suggestedRecoveryAction: "Shift the window or rearrange the route chain.",
+          },
+          {
+            severity: "warning",
+            code: "contract.earliest_start",
+            summary: "This route starts before the contract window opens.",
+            suggestedRecoveryAction: "Shift the window or rearrange the route chain.",
+          },
+        ],
+      },
+    },
+  });
+  const routeOperationalItem = readinessSummary.checklist.find((item) => item.id === "route-operational-fit");
+  const timingContinuityItem = readinessSummary.checklist.find((item) => item.id === "timing-continuity");
+  const commitmentConflictItem = readinessSummary.checklist.find((item) => item.id === "commitment-conflicts");
+  assert.equal(routeOperationalItem?.detail, "Route and aircraft fit are clear.");
+  assert.equal(routeOperationalItem?.state, "pass");
+  assert.equal(timingContinuityItem?.detail, "This route would miss the contract deadline.");
+  assert.equal(timingContinuityItem?.state, "watch");
+  assert.equal(commitmentConflictItem?.detail, "Contract already assigned elsewhere.");
+  assert.equal(commitmentConflictItem?.state, "blocked");
+  const committedWithoutValidationSummary = deriveDispatchReadinessSummary({
+    ...committedDispatchAircraft,
+    schedule: {
+      ...committedDispatchAircraft.schedule,
+      validation: undefined,
+    },
+  });
+  assert.equal(
+    committedWithoutValidationSummary.recoveryAction,
+    "This aircraft already has a committed schedule. Review the current timeline instead of staging a draft here.",
+  );
+  const draftDispatchAircraft = dispatchTab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === draftAircraftId);
+  assert.ok(draftDispatchAircraft?.schedule);
+  const thinMarginDraft = {
+    ...draftDispatchAircraft,
+    schedule: {
+      ...draftDispatchAircraft.schedule,
+      isDraft: true,
+      validation: {
+        ...(draftDispatchAircraft.schedule.validation ?? {}),
+        isCommittable: true,
+        hardBlockerCount: 0,
+        warningCount: 1,
+        validationMessages: [
+          {
+            severity: "warning",
+            code: "finance.thin_margin",
+            summary: "Projected schedule profit is thin.",
+          },
+        ],
+      },
+    },
+  };
+  const thinMarginImpact = deriveDispatchCommitImpactSummary(thinMarginDraft);
+  const thinMarginReadiness = deriveDispatchReadinessSummary(thinMarginDraft);
+  assert.equal(thinMarginImpact.note.includes("Projected schedule profit is thin."), true);
+  assert.equal(
+    thinMarginReadiness.checklist.some((item) => item.detail.includes("Projected schedule profit is thin.")),
+    false,
+  );
+  const negativeMarginDraft = {
+    ...draftDispatchAircraft,
+    schedule: {
+      ...draftDispatchAircraft.schedule,
+      isDraft: true,
+      validation: {
+        ...(draftDispatchAircraft.schedule.validation ?? {}),
+        isCommittable: true,
+        hardBlockerCount: 0,
+        warningCount: 1,
+        validationMessages: [
+          {
+            severity: "warning",
+            code: "finance.negative_margin",
+            summary: "Projected schedule profit is negative.",
+          },
+        ],
+      },
+    },
+  };
+  const negativeMarginImpact = deriveDispatchCommitImpactSummary(negativeMarginDraft);
+  const negativeMarginReadiness = deriveDispatchReadinessSummary(negativeMarginDraft);
+  assert.equal(negativeMarginImpact.note.includes("Projected schedule profit is negative."), true);
+  assert.equal(
+    negativeMarginReadiness.checklist.some((item) => item.detail.includes("Projected schedule profit is negative.")),
+    false,
+  );
+
   assert.ok(acceptedDispatchContractId);
 
   const bindRoutePlanFailureResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/bind-route-plan`, {

@@ -3,9 +3,9 @@
 - `Status:` active
 - `Workflow state:` landed_slice
 - `Current owner:` Mara Sterling
-- `Current active slice:` Slice 1 - dispatch source selection and selected work summary
+- `Current active slice:` Slice 2 - readiness checklist and commit impact summary
 - `Next routing target:` Mara Sterling
-- `Last updated:` 2026-03-19
+- `Last updated:` 2026-03-20
 
 ## Relationship To Prior Brief
 
@@ -496,69 +496,70 @@ After source and readiness are trustworthy:
 
 ## Approved Next Slice
 
-`Slice 1 - Dispatch source selection and selected work summary`
+`Slice 2 - Readiness checklist and commit impact summary`
 
 Main conclusion:
 
-Dispatch should stop starting with backend-flavored handoff panels and start with one clear source-selection step plus one selected-work summary.
+Dispatch should stop making the player infer readiness from a mix of validation messages and commit-bar metrics.
+It should present one checklist-first readiness surface and one concise commit-impact summary.
 
 Reason for doing it now:
 
-- this is the biggest remaining comprehension gap in the current Dispatch surface
-- the existing validation and named-pilot work already provides usable downstream truth, but the player still has to infer what assignment they are even making
-- this slice can improve clarity without reopening the schedule engine first
+- slice 1 made source selection and selected work readable enough to trust
+- the next remaining gap is understanding whether the assignment is `Ready`, `Watch`, or `Blocked`
+- the existing backend validation already exposes enough truth to improve readiness reading without reopening the schedule engine first
 
 In scope:
 
-- replace the generic `Work Inputs` framing with explicit source selection between:
-  - `Accepted Contracts`
-  - `Planned Routes`
-- make source rows selectable
-- add one selected-work summary panel as the primary home for:
-  - package identity
-  - origin and destination context
-  - payload and payout summary
-  - timing window summary
-  - package-versus-leg explanation for route chains
-- move the stage-draft action to the selected-work surface instead of making per-row buttons the primary control
-- keep the current aircraft strip, selected-aircraft summary, and current backend validation flow in place
+- replace the generic validation-rail reading path with a checklist-first readiness surface
+- present a small stable set of checklist items derived from the current draft and validation snapshot, such as:
+  - work selected
+  - aircraft selected
+  - route or operational fit
+  - pilot coverage or named-pilot readiness
+  - timing and continuity
+  - commitment conflict status
+- show each checklist item as `Pass`, `Watch`, or `Blocked`
+- surface one plain-English likely recovery action for the highest-severity blocker or warning
+- make commit impact read as one concise consequence summary instead of duplicated status fragments
+- reduce duplication between the readiness surface and the bottom commit bar
+- keep the current backend validation engine and commit command flow in place
 - preserve the current named-pilot readiness and committed-assignment truth already present in Dispatch
 
 Explicit non-goals:
 
-- no readiness-checklist redesign yet
 - no calendar embedding yet
 - no map panel yet
 - no new dispatch legality engine
-- no chain-detail redesign beyond a package-first summary
+- no draft recovery or abandon-flow redesign yet
 - no live operations monitoring
 
 Affected systems or files:
 
 - `src/ui/public/dispatch-tab-client.ts`
 - `src/ui/dispatch-tab-model.ts`
-- any focused Dispatch UI test coverage that proves the new selection model
+- any focused Dispatch UI test coverage that proves readiness and commit-impact clarity
 
 Validation bar:
 
 - `npm run build`
 - focused UI or UI-server coverage proving:
-  - source-mode separation
-  - selectable source rows
-  - selected-work summary rendering
-  - stage-draft action moves to the selected-work surface
+  - checklist-first readiness rendering
+  - visible `Pass`, `Watch`, and `Blocked` states
+  - one plain-English recovery path on blocked or watch states
+  - reduced duplication between readiness and commit impact
 - preserve current Dispatch draft and commit flow coverage
 - preserve current named-pilot readiness and committed-assignment coverage
 
 Stop conditions or escalation triggers:
 
-- if the new selected-work surface cannot be added without reopening the schedule-generation command shape
-- if accepted-contract selection and route-plan selection require incompatible payload models that should be normalized first
-- if the UI change starts forcing slice-2 readiness redesign in the same pass
+- if the existing validation snapshot is too weak to drive a truthful checklist without backend shape changes
+- if commit-impact summary requires reopening event-model or schedule-command behavior
+- if the UI change starts forcing calendar or draft-recovery work into the same pass
 
 ## Validation And Tracking
 
-- Slice 1 is now the active approved slice for this capability.
-- Slice 1 is now landed on `codex/dev`.
-- Slice 2 and later remain deferred until slice 1 lands and the comprehension improvement is real.
+- Slice 1 landed on `codex/dev` in commits `2781d90` and `bb7ecef`.
+- Slice 2 is now landed on `codex/dev`.
+- Slice 3 and later remain deferred until Mara activates the next slice.
 - This capability should stay in one dossier unless execution complexity later justifies an exceptional standalone workstream.

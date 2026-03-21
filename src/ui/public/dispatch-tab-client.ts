@@ -28,6 +28,61 @@ interface DispatchStoredSelection {
   sourceId?: string;
 }
 
+type DispatchReadinessState = "pass" | "watch" | "blocked";
+
+export interface DispatchReadinessChecklistItem {
+  id: string;
+  label: string;
+  state: DispatchReadinessState;
+  detail: string;
+  recoveryAction: string;
+}
+
+export interface DispatchReadinessSummary {
+  checklist: DispatchReadinessChecklistItem[];
+  overallState: DispatchReadinessState;
+  recoveryAction: string;
+}
+
+export interface DispatchCommitImpactSummary {
+  headline: string;
+  note: string;
+}
+
+const routeOperationalMessagePrefixes = [
+  "aircraft.",
+  "airport.",
+  "payload.",
+] as const;
+const routeOperationalMessageCodes = new Set([
+  "contract.duplicate_attachment",
+  "contract.missing_link",
+  "contract.missing",
+  "contract.state",
+  "contract.route_mismatch",
+  "leg.unsupported_type",
+  "leg.range",
+  "leg.block_time",
+  "leg.tight_block_time",
+  "maintenance.aog",
+  "maintenance.overdue",
+]);
+const timingContinuityMessageCodes = new Set([
+  "schedule.empty",
+  "leg.invalid_time_window",
+  "leg.continuity",
+  "leg.overlap",
+  "contract.earliest_start",
+  "contract.deadline",
+  "contract.tight_deadline",
+  "maintenance.window",
+  "maintenance.tight_window",
+]);
+const commitmentConflictMessageCodes = new Set([
+  "aircraft.overlap",
+  "contract.assigned_elsewhere",
+]);
+
 export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload): DispatchTabController {
   const storedSelection = loadStoredSelection(payload.saveId);
   let selectedAircraftId = storedSelection?.aircraftId ?? payload.defaultSelectedAircraftId;
@@ -193,7 +248,7 @@ function renderDispatchWorkspace(
         </div>
         <section class="panel dispatch-validation-panel" data-dispatch-validation-rail>
           <div class="panel-head">
-            <h3>Validation Rail</h3>
+            <h3>Readiness Checklist</h3>
             ${selectedAircraft?.schedule?.validation ? `<span class="pill">${escapeHtml(selectedAircraft.schedule.validation.projectedRiskBand)} risk</span>` : ""}
           </div>
           <div class="panel-body dispatch-validation-body">
@@ -471,60 +526,25 @@ function renderValidationRail(selectedAircraft: DispatchAircraftView | undefined
     return `<div class="empty-state">Select an aircraft to inspect its current planning state.</div>`;
   }
 
-  const schedule = selectedAircraft.schedule;
-  const validation = schedule?.validation;
-  if (!schedule || !validation) {
-    return `
-      <div class="summary-list">
-        <article class="summary-item compact">
-          <div class="eyebrow">Planning status</div>
-          <strong>No draft validation yet</strong>
-          <span class="muted">Use selected work to run backend schedule validation for this aircraft.</span>
-        </article>
-        <article class="summary-item compact">
-          <div class="eyebrow">Dispatch state</div>
-          <strong>${escapeHtml(humanize(selectedAircraft.operationalState))}</strong>
-          <span class="muted">${selectedAircraft.dispatchAvailable ? "Aircraft is dispatch ready." : "Aircraft is not currently dispatch ready."}</span>
-        </article>
-        <article class="summary-item compact">
-          <div class="eyebrow">Maintenance</div>
-          <strong>${escapeHtml(humanize(selectedAircraft.maintenanceState))}</strong>
-          <span class="muted">${formatHours(selectedAircraft.hoursToService)} to service remaining.</span>
-        </article>
-      </div>
-    `;
-  }
-
-  const messages = validation.validationMessages;
-  const blockerCount = messages.filter((message) => message.severity === "blocker").length;
-  const warningCount = messages.filter((message) => message.severity === "warning").length;
+  const readiness = deriveDispatchReadinessSummary(selectedAircraft);
+  const validation = selectedAircraft.schedule?.validation;
 
   return `
-    <div class="dispatch-validation-summary">
+    <div class="dispatch-readiness-stack">
       <article class="summary-item compact">
-        <div class="eyebrow">Commit readiness</div>
-        <strong>${validation.isCommittable ? "Ready" : "Blocked"}</strong>
-        <span class="muted">${blockerCount} blockers | ${warningCount} warnings</span>
+        <div class="eyebrow">Overall readiness</div>
+        <strong>${escapeHtml(formatReadinessStateLabel(readiness.overallState))}</strong>
+        <span class="muted">${escapeHtml(describeReadinessStateCount(readiness.checklist, readiness.overallState))}</span>
       </article>
-      <article class="summary-item compact">
-        <div class="eyebrow">Forecast</div>
-        <strong>${escapeHtml(formatMoney(validation.projectedScheduleProfit))}</strong>
-        <span class="muted">${escapeHtml(formatMoney(validation.projectedScheduleRevenue))} revenue | ${escapeHtml(formatMoney(validation.projectedScheduleCost))} cost</span>
+      <article class="summary-item compact" data-dispatch-readiness-recovery="1">
+        <div class="eyebrow">Likely recovery</div>
+        <strong>${escapeHtml(readiness.recoveryAction)}</strong>
+        <span class="muted">${escapeHtml(describeReadinessContext(selectedAircraft))}</span>
       </article>
-      <article class="summary-item compact">
-        <div class="eyebrow">Risk band</div>
-        <strong>${escapeHtml(humanize(validation.projectedRiskBand))}</strong>
-        <span class="muted">${escapeHtml(formatNumber(validation.totalDistanceNm))} nm | ${escapeHtml(formatHours(validation.totalBlockHours))} block</span>
-      </article>
+      <div class="dispatch-readiness-list">
+        ${readiness.checklist.map((item) => renderReadinessChecklistItem(item)).join("")}
+      </div>
     </div>
-    ${messages.length === 0
-      ? `<div class="empty-state compact">No blockers or warnings are attached to the current validation snapshot.</div>`
-      : `<div class="dispatch-message-list">${messages.map((message) => `
-          <article class="dispatch-message-item ${message.severity}">
-            <div class="dispatch-message-head">${renderBadge(message.severity)}<strong>${escapeHtml(message.summary)}</strong></div>
-            <span class="muted">${message.affectedLegSequenceNumber ? `Leg ${escapeHtml(String(message.affectedLegSequenceNumber))}` : "Schedule-level check"}${message.suggestedRecoveryAction ? ` | ${escapeHtml(message.suggestedRecoveryAction)}` : ""}</span>
-          </article>
-        `).join("")}</div>`}
   `;
 }
 
@@ -869,17 +889,7 @@ function renderCommitBar(payload: DispatchTabPayload, selectedAircraft: Dispatch
   const schedule = selectedAircraft?.schedule;
   const validation = schedule?.validation;
   const canCommit = Boolean(schedule?.isDraft && validation?.isCommittable);
-  const staffingImpact = describeValidationArea(validation, "staffing");
-  const maintenancePressure = describeValidationArea(validation, "maintenance");
-  const readinessLabel = !selectedAircraft
-    ? "Select an aircraft"
-    : !schedule
-      ? "No draft staged"
-      : !schedule.isDraft
-        ? "Schedule already committed"
-        : validation?.isCommittable
-          ? "Ready to commit"
-          : `${validation?.hardBlockerCount ?? 0} blockers to resolve`;
+  const commitImpact = deriveDispatchCommitImpactSummary(selectedAircraft);
   const commitButtonLabel = !schedule
     ? "No draft to commit"
     : !schedule.isDraft
@@ -891,15 +901,9 @@ function renderCommitBar(payload: DispatchTabPayload, selectedAircraft: Dispatch
   return `
     <div class="dispatch-commit-copy">
       <div class="meta-stack">
-        <div class="eyebrow">Commitment Bar</div>
-        <strong>${escapeHtml(readinessLabel)}</strong>
-        <span class="muted">${selectedAircraft ? `${escapeHtml(selectedAircraft.registration)} | ${escapeHtml(selectedAircraft.modelDisplayName)}` : "Dispatch needs a selected aircraft before it can commit a plan."}</span>
-      </div>
-      <div class="dispatch-commit-metrics">
-        <div class="dispatch-commit-metric"><span class="eyebrow">Projected profit</span><strong>${validation ? escapeHtml(formatMoney(validation.projectedScheduleProfit)) : "-"}</strong></div>
-        <div class="dispatch-commit-metric"><span class="eyebrow">Staffing impact</span><strong>${escapeHtml(staffingImpact)}</strong></div>
-        <div class="dispatch-commit-metric"><span class="eyebrow">Maintenance pressure</span><strong>${escapeHtml(maintenancePressure)}</strong></div>
-        <div class="dispatch-commit-metric"><span class="eyebrow">Risk state</span><strong>${validation ? escapeHtml(humanize(validation.projectedRiskBand)) : "-"}</strong></div>
+        <div class="eyebrow">Commit impact</div>
+        <strong>${escapeHtml(commitImpact.headline)}</strong>
+        <span class="muted">${escapeHtml(commitImpact.note)}</span>
       </div>
     </div>
     <div class="dispatch-commit-actions">
@@ -1006,22 +1010,331 @@ function formatPilotCertifications(certifications: string[]): string {
   return certifications.length > 0 ? certifications.join(", ") : "Uncertified";
 }
 
-function describeValidationArea(
-  validation: DispatchValidationSnapshotView | undefined,
-  prefix: string,
-): string {
-  if (!validation) {
-    return "Evaluate after drafting";
+function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView): DispatchReadinessChecklistItem[] {
+  const schedule = selectedAircraft.schedule;
+  const validation = schedule?.validation;
+
+  const routeMessages = getDispatchValidationMessages(validation, ownsRouteOperationalMessage);
+  const staffingMessages = getDispatchValidationMessages(validation, ["staffing."]);
+  const timingMessages = getDispatchValidationMessages(validation, ownsTimingContinuityMessage);
+  const conflictMessages = getDispatchValidationMessages(validation, ownsCommitmentConflictMessage);
+
+  const workSelectedState: DispatchReadinessState = schedule ? "pass" : "blocked";
+  const aircraftSelectedState: DispatchReadinessState = selectedAircraft ? "pass" : "blocked";
+  const routeState = determineDispatchReadinessState(routeMessages, schedule ? "pass" : "watch");
+  const staffingState = determineDispatchReadinessState(staffingMessages, determineStaffingFallbackState(selectedAircraft));
+  const timingState = determineDispatchReadinessState(timingMessages, schedule ? "pass" : "watch");
+  const conflictState = determineDispatchReadinessState(conflictMessages, schedule ? "pass" : "watch");
+
+  return [
+    {
+      id: "work-selected",
+      label: "Work selected",
+      state: workSelectedState,
+      detail: schedule
+        ? schedule.isDraft
+          ? "A draft is staged on this aircraft."
+          : "A committed schedule is already attached to this aircraft."
+        : "No draft is staged on this aircraft yet.",
+      recoveryAction: schedule
+        ? "No action needed here."
+        : "Stage selected work on this aircraft first.",
+    },
+    {
+      id: "aircraft-selected",
+      label: "Aircraft selected",
+      state: aircraftSelectedState,
+      detail: `${selectedAircraft.registration} is the active dispatch target.`,
+      recoveryAction: "Choose an aircraft before staging a draft.",
+    },
+    {
+      id: "route-operational-fit",
+      label: "Route / operational fit",
+      state: routeState,
+      detail: describeChecklistDetail(routeMessages, schedule
+        ? "Route and aircraft fit are clear."
+        : "Select work to evaluate route and operational fit."),
+      recoveryAction: chooseChecklistRecoveryAction(routeMessages, "Adjust the route, payload, or aircraft fit."),
+    },
+    {
+      id: "pilot-coverage",
+      label: "Pilot coverage / named-pilot readiness",
+      state: staffingState,
+      detail: describePilotCoverageChecklistDetail(selectedAircraft, staffingMessages, validation),
+      recoveryAction: chooseChecklistRecoveryAction(staffingMessages, "Free a ready pilot or stage with enough pilot coverage."),
+    },
+    {
+      id: "timing-continuity",
+      label: "Timing and continuity",
+      state: timingState,
+      detail: describeChecklistDetail(timingMessages, schedule
+        ? `Draft timing spans ${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}.`
+        : "Stage work to inspect timing and continuity."),
+      recoveryAction: chooseChecklistRecoveryAction(timingMessages, "Shift the window or rearrange the route chain."),
+    },
+    {
+      id: "commitment-conflicts",
+      label: "Commitment conflict status",
+      state: conflictState,
+      detail: describeChecklistDetail(conflictMessages, schedule
+        ? "No aircraft or contract overlap is attached to this draft."
+        : "Stage work to inspect overlapping commitments."),
+      recoveryAction: chooseChecklistRecoveryAction(conflictMessages, "Clear the overlapping assignment or choose a different aircraft."),
+    },
+  ];
+}
+
+export function deriveDispatchReadinessSummary(selectedAircraft: DispatchAircraftView): DispatchReadinessSummary {
+  const checklist = buildDispatchReadinessChecklist(selectedAircraft);
+  return {
+    checklist,
+    overallState: summarizeDispatchReadinessState(checklist),
+    recoveryAction: chooseDispatchRecoveryAction(selectedAircraft, checklist),
+  };
+}
+
+function renderReadinessChecklistItem(item: DispatchReadinessChecklistItem): string {
+  return `
+    <article class="dispatch-readiness-item ${item.state}" data-dispatch-readiness-item="${escapeHtml(item.id)}">
+      <div class="dispatch-message-head">
+        <div class="meta-stack">
+          <strong>${escapeHtml(item.label)}</strong>
+          <span class="muted">${escapeHtml(item.detail)}</span>
+        </div>
+        ${renderReadinessStateBadge(item.state)}
+      </div>
+    </article>
+  `;
+}
+
+function renderReadinessStateBadge(state: DispatchReadinessState): string {
+  return `<span class="badge ${dispatchReadinessBadgeClass(state)}">${escapeHtml(formatReadinessStateLabel(state))}</span>`;
+}
+
+function dispatchReadinessBadgeClass(state: DispatchReadinessState): string {
+  if (state === "blocked") {
+    return "danger";
   }
 
-  const matchingMessages = validation.validationMessages.filter((message) => message.code.startsWith(`${prefix}.`));
-  if (matchingMessages.some((message) => message.severity === "blocker")) {
+  if (state === "watch") {
+    return "warn";
+  }
+
+  return "accent";
+}
+
+function formatReadinessStateLabel(state: DispatchReadinessState): string {
+  if (state === "blocked") {
     return "Blocked";
   }
-  if (matchingMessages.some((message) => message.severity === "warning")) {
+
+  if (state === "watch") {
     return "Watch";
   }
-  return prefix === "staffing" ? "Covered" : "Stable";
+
+  return "Pass";
+}
+
+function determineDispatchReadinessState(
+  messages: DispatchValidationMessageView[],
+  fallbackState: DispatchReadinessState,
+): DispatchReadinessState {
+  if (messages.some((message) => message.severity === "blocker")) {
+    return "blocked";
+  }
+
+  if (messages.some((message) => message.severity === "warning")) {
+    return "watch";
+  }
+
+  return fallbackState;
+}
+
+function determineStaffingFallbackState(selectedAircraft: DispatchAircraftView): DispatchReadinessState {
+  if (!selectedAircraft.schedule) {
+    return "watch";
+  }
+
+  return selectedAircraft.pilotReadiness.readyNowCount >= selectedAircraft.pilotReadiness.pilotsRequired ? "pass" : "watch";
+}
+
+function getDispatchValidationMessages(
+  validation: DispatchValidationSnapshotView | undefined,
+  ownershipRule: readonly string[] | ((code: string) => boolean),
+): DispatchValidationMessageView[] {
+  if (!validation) {
+    return [];
+  }
+
+  if (typeof ownershipRule === "function") {
+    return validation.validationMessages.filter((message) => ownershipRule(message.code));
+  }
+
+  return validation.validationMessages.filter((message) => ownershipRule.some((prefix) => message.code.startsWith(prefix)));
+}
+
+function ownsRouteOperationalMessage(code: string): boolean {
+  if (ownsTimingContinuityMessage(code) || ownsCommitmentConflictMessage(code)) {
+    return false;
+  }
+
+  return routeOperationalMessageCodes.has(code)
+    || routeOperationalMessagePrefixes.some((prefix) => code.startsWith(prefix));
+}
+
+function ownsTimingContinuityMessage(code: string): boolean {
+  return timingContinuityMessageCodes.has(code);
+}
+
+function ownsCommitmentConflictMessage(code: string): boolean {
+  return commitmentConflictMessageCodes.has(code);
+}
+
+function ownsCommitImpactFinanceMessage(code: string): boolean {
+  return code === "finance.negative_margin" || code === "finance.thin_margin";
+}
+
+function describeChecklistDetail(
+  messages: DispatchValidationMessageView[],
+  fallback: string,
+): string {
+  return messages[0]?.summary ?? fallback;
+}
+
+function chooseChecklistRecoveryAction(
+  messages: DispatchValidationMessageView[],
+  fallback: string,
+): string {
+  return messages[0]?.suggestedRecoveryAction ?? fallback;
+}
+
+function describePilotCoverageChecklistDetail(
+  selectedAircraft: DispatchAircraftView,
+  staffingMessages: DispatchValidationMessageView[],
+  validation: DispatchValidationSnapshotView | undefined,
+): string {
+  if (staffingMessages.length > 0) {
+    return staffingMessages[0]?.summary ?? "Pilot coverage needs attention.";
+  }
+
+  if (!selectedAircraft.schedule) {
+    return `${selectedAircraft.pilotReadiness.readyNowCount} ready | ${selectedAircraft.pilotReadiness.reservedNowCount} reserved | ${selectedAircraft.pilotReadiness.restingNowCount} resting`;
+  }
+
+  if (validation) {
+    return `${selectedAircraft.pilotReadiness.readyNowCount} ready | ${selectedAircraft.pilotReadiness.reservedNowCount} reserved | ${selectedAircraft.pilotReadiness.flyingNowCount} flying`;
+  }
+
+  return selectedAircraft.pilotReadiness.readyNowCount >= selectedAircraft.pilotReadiness.pilotsRequired
+    ? `${selectedAircraft.pilotReadiness.readyNowCount} ready pilots cover this aircraft.`
+    : `${selectedAircraft.pilotReadiness.readyNowCount} ready | ${selectedAircraft.pilotReadiness.pilotsRequired} required`;
+}
+
+function summarizeDispatchReadinessState(items: DispatchReadinessChecklistItem[]): DispatchReadinessState {
+  if (items.some((item) => item.state === "blocked")) {
+    return "blocked";
+  }
+
+  if (items.some((item) => item.state === "watch")) {
+    return "watch";
+  }
+
+  return "pass";
+}
+
+function chooseDispatchRecoveryAction(
+  selectedAircraft: DispatchAircraftView,
+  items: DispatchReadinessChecklistItem[],
+): string {
+  const blockedItem = items.find((item) => item.state === "blocked");
+  if (blockedItem) {
+    return blockedItem.recoveryAction;
+  }
+
+  const watchItem = items.find((item) => item.state === "watch");
+  if (watchItem) {
+    return watchItem.recoveryAction;
+  }
+
+  if (!selectedAircraft.schedule) {
+    return "Stage selected work on this aircraft first.";
+  }
+
+  if (!selectedAircraft.schedule.validation) {
+    return selectedAircraft.schedule.isDraft
+      ? "Restage or refresh the draft if readiness details are missing."
+      : "This aircraft already has a committed schedule. Review the current timeline instead of staging a draft here.";
+  }
+
+  return selectedAircraft.schedule.validation.isCommittable
+    ? "No recovery action needed right now."
+    : "Resolve the checklist items above before committing.";
+}
+
+function describeReadinessContext(selectedAircraft: DispatchAircraftView): string {
+  return `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName} | The checklist below reflects the current draft and validation snapshot.`;
+}
+
+function describeReadinessStateCount(
+  checklist: DispatchReadinessChecklistItem[],
+  overallState: DispatchReadinessState,
+): string {
+  const blockedCount = checklist.filter((item) => item.state === "blocked").length;
+  const watchCount = checklist.filter((item) => item.state === "watch").length;
+  if (overallState === "pass") {
+    return "All checklist items are passing.";
+  }
+
+  return `${blockedCount} blocked | ${watchCount} watch`;
+}
+
+function describeCommitImpactHeadline(selectedAircraft: DispatchAircraftView | undefined): string {
+  if (!selectedAircraft) {
+    return "Select an aircraft to see commit consequences.";
+  }
+
+  const schedule = selectedAircraft.schedule;
+  if (!schedule) {
+    return `Stage selected work on ${selectedAircraft.registration} to preview commit impact.`;
+  }
+
+  if (!schedule.isDraft) {
+    return `${selectedAircraft.registration} is already committed.`;
+  }
+
+  return `Commit will reserve ${selectedAircraft.registration} and lock the staged plan into the calendar.`;
+}
+
+export function deriveDispatchCommitImpactSummary(
+  selectedAircraft: DispatchAircraftView | undefined,
+): DispatchCommitImpactSummary {
+  return {
+    headline: describeCommitImpactHeadline(selectedAircraft),
+    note: describeCommitImpactNote(selectedAircraft),
+  };
+}
+
+function describeCommitImpactNote(selectedAircraft: DispatchAircraftView | undefined): string {
+  if (!selectedAircraft) {
+    return "Pick an aircraft first, then stage work to see what the commit will change.";
+  }
+
+  const schedule = selectedAircraft.schedule;
+  if (!schedule) {
+    return "Once work is staged, this bar will summarize the operational consequence before you commit.";
+  }
+
+  if (!schedule.isDraft) {
+    return "No draft remains to commit on this aircraft.";
+  }
+
+  const draftScope = `${schedule.legs.length} leg${schedule.legs.length === 1 ? "" : "s"} and ${schedule.laborAllocationCount} labor allocation${schedule.laborAllocationCount === 1 ? "" : "s"} are already in the draft.`;
+  const financeMessage = schedule.validation?.validationMessages.find((message) => ownsCommitImpactFinanceMessage(message.code));
+  if (financeMessage) {
+    return `${financeMessage.summary} ${draftScope}`;
+  }
+
+  return draftScope;
 }
 
 function renderValidationCountBadge(messages: DispatchValidationMessageView[]): string {
