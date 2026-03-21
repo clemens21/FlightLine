@@ -3,7 +3,7 @@
 - `Status:` active
 - `Workflow state:` landed_slice
 - `Current owner:` Mara Sterling
-- `Current active slice:` Slice 3 - draft control and calendar reflection clarity
+- `Current active slice:` Slice 4 - named-pilot assignment and manual override
 - `Next routing target:` Mara Sterling
 - `Last updated:` 2026-03-20
 
@@ -488,77 +488,91 @@ After source and readiness are trustworthy:
 - make replace behavior and intentional discard behavior explicit
 - reflect committed dispatch truth in Dispatch by pointing clearly at the existing calendar truth instead of embedding a second calendar surface
 
-### Later slices under this capability
+### Slice 4 - Named-pilot assignment and manual override
 
-- supporting map context if the selected-work summary still lacks orientation
-- assisted named-pilot assignment versus manual assignment policy
-- chain-detail refinement after the one-contract and package-first flows are stable
+Once source, readiness, and draft control are trustworthy:
+
+- let the player see who can actually cover the selected draft
+- keep assisted pilot selection as the default recommendation path
+- allow manual override before commit instead of hiding named-pilot choice inside commit-time auto-selection
+
+### Slice 5 - Supporting map context and chain-detail refinement
+
+After named-pilot assignment is stable:
+
+- add supporting geographic context if the selected-work summary still lacks orientation
+- tighten chain-detail reading so package-first flow stays clear without hiding leg-level consequence
 
 ## Approved Next Slice
 
-`Slice 3 - Draft control and calendar reflection clarity`
+`Slice 4 - Named-pilot assignment and manual override`
 
 Main conclusion:
 
-Dispatch should stop making draft state feel implicit.
-It should show the player what draft is currently staged, what replacing it will do, how to discard it intentionally, and how committed dispatch windows already reflect into the shell calendar.
+Dispatch should stop choosing named pilots behind the curtain at commit time.
+It should show the player who can cover the selected draft, prefill a recommended assignment, and allow manual override before commit.
 
 Reason for doing it now:
 
-- slice 2 made readiness and commit impact trustworthy enough to act on
-- the next remaining gap is draft control clarity, not another validation pass
-- committed dispatches already project into the clock and calendar model, so the missing work is Dispatch-side explanation and control rather than a new calendar system
+- slice 3 made draft control and calendar reflection trustworthy enough to move forward
+- the capability still promises specific named-pilot assignment when the named-pilot layer exists
+- current commit flow still hides pilot selection inside `selectNamedPilotsForRequirements`, which means Dispatch is not yet the source of truth for that decision
 
 In scope:
 
-- show one explicit current-draft summary for the selected aircraft, including whether the aircraft already has a draft and what work window it covers
-- make replace-draft consequences more explicit on the selected-work staging surface
-- add an intentional `Discard draft` path for eligible staged drafts instead of making replacement the only escape hatch
-- keep discard behavior safe and truthful by clearing the staged draft without pretending committed schedules were undone
-- add one concise calendar-reflection summary for committed schedules so Dispatch and Clock/Calendar tell the same story
-- keep the existing calendar implementation as the source of truth rather than embedding a new calendar inside Dispatch
-- preserve the current readiness checklist, commit impact summary, named-pilot readiness, and commit command flow
+- keep this pilots-only
+- show the eligible named-pilot pool for the selected aircraft and draft
+- present an assisted recommended assignment using the current backend selection truth
+- allow manual override of the recommended pilot selection before commit
+- show why an unavailable pilot cannot cover the draft when that reason is already knowable from current state
+- pass explicit pilot selection through the commit path when the player overrides the recommendation
+- preserve the existing auto-selection path as the fallback when no manual override is supplied
+- keep the current readiness checklist and commit-impact structure intact while making pilot identity an explicit pre-commit decision
 
 Explicit non-goals:
 
-- no calendar embedding or calendar editor
-- no map panel yet
+- no non-pilot named assignment
+- no crew-pairing optimizer beyond the current assisted recommendation
+- no map panel in this slice
 - no new dispatch legality engine
-- no committed-schedule cancellation flow
-- no broader schedule-management system outside the staged-draft case
+- no broader labor-market redesign
 - no live operations monitoring
 
 Affected systems or files:
 
 - `src\application\commands\types.ts`
-- `src\application\backend-service.ts`
-- `src\application\commands\save-schedule-draft.ts`
+- `src\application\commands\commit-aircraft-schedule.ts`
+- `src\application\dispatch\schedule-validation.ts`
+- `src\application\staffing\named-pilot-roster.ts`
+- `src\application\queries\staffing-state.ts`
+- `src\ui\dispatch-tab-model.ts`
 - `src\ui\server.ts`
 - `src/ui/public/dispatch-tab-client.ts`
-- `src/ui/dispatch-tab-model.ts`
-- any focused Dispatch UI and backend tests that prove draft replacement, discard, and calendar-reflection clarity
+- any focused Dispatch backend and browser coverage that proves manual override truth
 
 Validation bar:
 
 - `npm run build`
-- focused backend coverage proving an eligible draft can be discarded cleanly without affecting committed schedules
-- focused UI or UI-server coverage proving:
-  - explicit current-draft summary rendering
-  - clear replace-draft messaging on the selected-work surface
-  - visible discard-draft control only when a discardable draft exists
-  - committed schedule calendar-reflection summary
+- focused backend coverage proving explicit selected pilots are honored on commit
+- focused backend coverage proving fallback auto-selection still works when no override is supplied
+- focused UI or browser coverage proving:
+  - recommended pilots render for the selected draft
+  - manual override is visible and changes the selected commit set
+  - blocked or unavailable pilots surface truthful reasons
 - preserve current Dispatch draft and commit flow coverage
 - preserve current named-pilot readiness and committed-assignment coverage
 
 Stop conditions or escalation triggers:
 
-- if safe draft discard cannot be implemented without reopening committed-schedule lifecycle behavior
-- if calendar-reflection clarity needs new calendar backend shape rather than simple Dispatch-side projection
-- if the slice starts pulling map context, named-pilot manual assignment, or schedule editing into the same pass
+- if explicit pilot override requires a broader schedule-reservation model than the current commit path can absorb
+- if pilot recommendation truth depends on backend shape not present in current draft or staffing payloads
+- if the slice starts pulling map context or broader chain-detail redesign into the same pass
 
 ## Validation And Tracking
 
 - Slice 1 landed on `codex/dev` in commits `2781d90` and `bb7ecef`.
 - Slice 2 landed on `codex/dev` in commit `d599517`.
-- Slice 3 landed on `codex/dev`.
+- Slice 3 landed on `codex/dispatch-capability` in commit `04ff029`.
+- Slice 4 landed on `codex/dispatch-capability`.
+- Slice 5 remains the next approved follow-on but is not active yet.
 - This capability should stay in one dossier unless execution complexity later justifies an exceptional standalone workstream.

@@ -9,15 +9,18 @@ import type { CommandResult, CommitAircraftScheduleCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
 import { validateProposedSchedule, type ProposedScheduleInput } from "../dispatch/schedule-validation.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
+import { loadStaffingState } from "../queries/staffing-state.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
 import type { FlightLegType } from "../../domain/dispatch/types.js";
 import type { JsonObject } from "../../domain/common/primitives.js";
+import { resolveDispatchPilotAssignment } from "../../domain/dispatch/named-pilot-assignment.js";
 import {
   deriveNamedPilotRequirements,
   reconcileNamedPilots,
-  selectNamedPilotsForRequirements,
+  type NamedPilotRequirement,
+  type SelectedNamedPilotAssignment,
 } from "../staffing/named-pilot-roster.js";
 
 interface CommitAircraftScheduleDependencies {
@@ -56,6 +59,87 @@ function parsePayloadSnapshot(rawValue: string | null): JsonObject | undefined {
   }
 
   return JSON.parse(rawValue) as JsonObject;
+}
+
+function normalizeSelectedNamedPilotIds(selectedNamedPilotIds: readonly string[] | undefined): string[] | undefined {
+  if (!selectedNamedPilotIds || selectedNamedPilotIds.length === 0) {
+    return undefined;
+  }
+
+  const normalizedIds = [...new Set(selectedNamedPilotIds.filter((entry) => typeof entry === "string" && entry.length > 0))];
+  return normalizedIds.length > 0 ? normalizedIds : undefined;
+}
+
+function resolveNamedPilotSelectionForCommit(
+  requirements: ReadonlyArray<NamedPilotRequirement>,
+  command: CommitAircraftScheduleCommand,
+  currentTimeUtc: string,
+  scheduleId: string,
+  requiredOriginAirportId: string | undefined,
+  dependencies: CommitAircraftScheduleDependencies,
+  selectedNamedPilotIds: readonly string[] | undefined,
+): { hardBlockers: string[]; selectedAssignments: SelectedNamedPilotAssignment[] } {
+  if (requirements.length === 0) {
+    return {
+      hardBlockers: [],
+      selectedAssignments: [],
+    };
+  }
+
+  if (selectedNamedPilotIds && requirements.length > 1) {
+    return {
+      hardBlockers: [
+        "Manual pilot override is only supported for one pilot requirement in this dispatch slice.",
+      ],
+      selectedAssignments: [],
+    };
+  }
+
+  const staffingState = loadStaffingState(dependencies.saveDatabase, command.saveId);
+  if (!staffingState) {
+    return {
+      hardBlockers: ["Could not load staffing state for named-pilot assignment."],
+      selectedAssignments: [],
+    };
+  }
+
+  let availablePilots = staffingState.namedPilots.slice();
+  const hardBlockers: string[] = [];
+  const selectedAssignments: SelectedNamedPilotAssignment[] = [];
+
+  requirements.forEach((requirement, requirementIndex) => {
+    const requestedPilotIds = selectedNamedPilotIds && requirementIndex === 0
+      ? selectedNamedPilotIds
+      : undefined;
+    const assignmentResolution = resolveDispatchPilotAssignment(
+      availablePilots,
+      {
+        qualificationGroup: requirement.qualificationGroup,
+        pilotsRequired: requirement.unitsRequired,
+        assignedFromUtc: requirement.assignedFromUtc,
+        assignedToUtc: requirement.assignedToUtc,
+        currentTimeUtc,
+        currentScheduleId: scheduleId,
+        ...(requiredOriginAirportId ? { requiredOriginAirportId } : {}),
+      },
+      dependencies.airportReference,
+      requestedPilotIds,
+    );
+
+    if (assignmentResolution.hardBlockers.length > 0) {
+      hardBlockers.push(...assignmentResolution.hardBlockers);
+      return;
+    }
+
+    selectedAssignments.push(...assignmentResolution.selectedAssignments);
+    const selectedPilotIds = new Set(assignmentResolution.selectedAssignments.map((entry) => entry.namedPilotId));
+    availablePilots = availablePilots.filter((pilot) => !selectedPilotIds.has(pilot.namedPilotId));
+  });
+
+  return {
+    hardBlockers: [...new Set(hardBlockers)],
+    selectedAssignments,
+  };
 }
 
 export async function handleCommitAircraftSchedule(
@@ -209,16 +293,15 @@ export async function handleCommitAircraftSchedule(
   );
 
   const namedPilotRequirements = deriveNamedPilotRequirements(validation.laborReservations);
-  const namedPilotSelection = selectNamedPilotsForRequirements(
-    dependencies.saveDatabase,
-    companyContext.companyId,
-    scheduleRow.scheduleId,
+  const selectedNamedPilotIds = normalizeSelectedNamedPilotIds(command.payload.selectedNamedPilotIds);
+  const namedPilotSelection = resolveNamedPilotSelectionForCommit(
     namedPilotRequirements,
-    {
-      currentTimeUtc: companyContext.currentTimeUtc,
-      airportReference: dependencies.airportReference,
-      ...(validation.resolvedLegs[0]?.originAirportId ? { requiredOriginAirportId: validation.resolvedLegs[0].originAirportId } : {}),
-    },
+    command,
+    companyContext.currentTimeUtc,
+    scheduleRow.scheduleId,
+    validation.resolvedLegs[0]?.originAirportId,
+    dependencies,
+    selectedNamedPilotIds,
   );
 
   if (namedPilotSelection.hardBlockers.length > 0) {

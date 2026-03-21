@@ -266,25 +266,40 @@ export function effectiveCargoCapacityLb(aircraft) {
 }
 
 export function pickFlyableOffer(board, aircraft, airportReference, homeAirportId = "KDEN") {
-  const candidateOffers = board.offers.filter((offer) => {
+  const candidateOffers = board.offers
+    .map((offer) => {
+      const origin = airportReference.findAirport(offer.originAirportId);
+      const destination = airportReference.findAirport(offer.destinationAirportId);
+      const distanceNm = origin && destination ? haversineDistanceNm(origin, destination) : Number.POSITIVE_INFINITY;
+      return { offer, distanceNm };
+    })
+    .filter(({ offer, distanceNm }) => {
     const windowHours = (new Date(offer.latestCompletionUtc).getTime() - new Date(offer.earliestStartUtc).getTime()) / 3_600_000;
     const fitsPassengers = offer.passengerCount === undefined || offer.passengerCount <= effectivePassengerCapacity(aircraft);
     const fitsCargo = offer.cargoWeightLb === undefined || offer.cargoWeightLb <= effectiveCargoCapacityLb(aircraft);
-    const origin = airportReference.findAirport(offer.originAirportId);
-    const destination = airportReference.findAirport(offer.destinationAirportId);
-    const distanceNm = origin && destination ? haversineDistanceNm(origin, destination) : Number.POSITIVE_INFINITY;
-    return windowHours >= 8 && fitsPassengers && fitsCargo && distanceNm <= aircraft.rangeNm * 0.92;
-  });
+    return windowHours >= 8 && fitsPassengers && fitsCargo && distanceNm <= aircraft.rangeNm * 0.9;
+    })
+    .sort((left, right) => {
+      const leftHomeOrigin = left.offer.originAirportId === homeAirportId ? 0 : 1;
+      const rightHomeOrigin = right.offer.originAirportId === homeAirportId ? 0 : 1;
+      if (leftHomeOrigin !== rightHomeOrigin) {
+        return leftHomeOrigin - rightHomeOrigin;
+      }
 
-  const flyableNowOffers = candidateOffers.filter((offer) => {
+      if (left.distanceNm !== right.distanceNm) {
+        return left.distanceNm - right.distanceNm;
+      }
+
+      return left.offer.contractOfferId.localeCompare(right.offer.contractOfferId);
+    });
+
+  const flyableNowOffers = candidateOffers.filter(({ offer }) => {
     const fitBucket = typeof offer.explanationMetadata?.fit_bucket === "string" ? offer.explanationMetadata.fit_bucket : undefined;
     return fitBucket === "flyable_now";
   });
 
-  return flyableNowOffers.find((offer) => offer.originAirportId === homeAirportId)
-    ?? flyableNowOffers[0]
-    ?? candidateOffers.find((offer) => offer.originAirportId === homeAirportId)
-    ?? candidateOffers[0]
+  return flyableNowOffers[0]?.offer
+    ?? candidateOffers[0]?.offer
     ?? null;
 }
 

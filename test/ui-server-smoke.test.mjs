@@ -507,6 +507,24 @@ try {
   );
   const draftDispatchAircraft = dispatchTab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === draftAircraftId);
   assert.ok(draftDispatchAircraft?.schedule);
+  assert.ok(draftDispatchAircraft.schedule.draftPilotAssignment);
+  assert.equal(draftDispatchAircraft.schedule.draftPilotAssignment.recommendedPilotIds.length >= 1, true);
+  assert.equal(
+    draftDispatchAircraft.schedule.draftPilotAssignment.candidateOptions.some((option) =>
+      option.recommended && option.selectable && typeof option.displayName === "string"),
+    true,
+  );
+  assert.equal(
+    draftDispatchAircraft.schedule.draftPilotAssignment.candidateOptions.some((option) => option.selectable === false && typeof option.reason === "string"),
+    true,
+  );
+  assert.equal(
+    draftDispatchAircraft.schedule.draftPilotAssignment.candidateOptions.some((option) =>
+      option.selectable === false
+      && typeof option.reason === "string"
+      && /training|committed elsewhere/i.test(option.reason)),
+    true,
+  );
   const thinMarginDraft = {
     ...draftDispatchAircraft,
     schedule: {

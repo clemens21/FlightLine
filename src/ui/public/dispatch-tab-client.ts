@@ -7,6 +7,7 @@ import {
   applyDispatchWorkspaceViewState,
   type DispatchAircraftView,
   type DispatchAssignedPilotView,
+  type DispatchDraftPilotAssignmentView,
   type DispatchLegView,
   type DispatchPilotReadinessView,
   type DispatchTabPayload,
@@ -89,6 +90,7 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
   let selectedLegId = storedSelection?.legId;
   let selectedSourceMode: DispatchSourceMode | undefined = storedSelection?.sourceMode;
   let selectedSourceId = storedSelection?.sourceId;
+  const selectedPilotOverrideIdsByScheduleId = new Map<string, string[]>();
 
   function render(): void {
     const resolvedSourceSelection = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
@@ -108,6 +110,9 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
       viewState.selectedLeg,
       selectedSourceMode,
       selectedSourceId,
+      viewState.selectedAircraft?.schedule?.isDraft
+        ? selectedPilotOverrideIdsByScheduleId.get(viewState.selectedAircraft.schedule.scheduleId)
+        : undefined,
     );
   }
 
@@ -158,12 +163,40 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
     }
   }
 
+  function handleChange(event: Event): void {
+    const target = event.target instanceof HTMLInputElement ? event.target : null;
+    if (!target) {
+      return;
+    }
+
+    if (target.matches("[data-dispatch-pilot-override]")) {
+      const scheduleId = target.dataset.dispatchScheduleId;
+      if (!scheduleId) {
+        return;
+      }
+
+      const selectedOverrideIds = Array.from(
+        host.querySelectorAll<HTMLInputElement>(`[data-dispatch-pilot-override][data-dispatch-schedule-id="${scheduleId}"]:checked`),
+      )
+        .map((input) => input.value)
+        .filter((value) => value.length > 0);
+
+      if (selectedOverrideIds.length > 0) {
+        selectedPilotOverrideIdsByScheduleId.set(scheduleId, selectedOverrideIds);
+      } else {
+        selectedPilotOverrideIdsByScheduleId.delete(scheduleId);
+      }
+    }
+  }
+
   host.addEventListener("click", handleClick);
+  host.addEventListener("change", handleChange);
   render();
 
   return {
     destroy(): void {
       host.removeEventListener("click", handleClick);
+      host.removeEventListener("change", handleChange);
     },
   };
 }
@@ -174,6 +207,7 @@ function renderDispatchWorkspace(
   selectedLeg: DispatchLegView | undefined,
   selectedSourceMode: DispatchSourceMode | undefined,
   selectedSourceId: string | undefined,
+  selectedPilotOverrideIds: readonly string[] | undefined,
 ): string {
   return `
     <div class="dispatch-workspace">
@@ -213,7 +247,7 @@ function renderDispatchWorkspace(
               ${selectedAircraft ? `<div class="pill-row">${renderBadge(selectedAircraft.dispatchAvailable ? "available" : selectedAircraft.operationalState)}${renderBadge(selectedAircraft.maintenanceState)}</div>` : ""}
             </div>
             <div class="panel-body">
-              ${renderSelectedAircraftSummary(payload, selectedAircraft)}
+              ${renderSelectedAircraftSummary(payload, selectedAircraft, selectedPilotOverrideIds)}
             </div>
           </section>
           <section class="panel dispatch-timeline-panel">
@@ -257,7 +291,7 @@ function renderDispatchWorkspace(
         </section>
       </div>
       <section class="dispatch-commit-bar" data-dispatch-commit-bar>
-        ${renderCommitBar(payload, selectedAircraft)}
+        ${renderCommitBar(payload, selectedAircraft, selectedPilotOverrideIds)}
       </section>
     </div>
   `;
@@ -314,7 +348,11 @@ function renderAircraftCard(aircraft: DispatchAircraftView, selected: boolean): 
   `;
 }
 
-function renderSelectedAircraftSummary(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView | undefined): string {
+function renderSelectedAircraftSummary(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
   if (!selectedAircraft) {
     return `<div class="empty-state">No aircraft is selected yet.</div>`;
   }
@@ -359,7 +397,7 @@ function renderSelectedAircraftSummary(payload: DispatchTabPayload, selectedAirc
         <span class="muted">${escapeHtml(describePilotReadinessNote(selectedAircraft))}</span>
       </article>
     </div>
-    ${renderAssignedPilotsSection(selectedAircraft)}
+    ${renderAssignedPilotsSection(selectedAircraft, selectedPilotOverrideIds)}
     ${renderDraftControlSummary(payload, selectedAircraft)}
   `;
 }
@@ -404,7 +442,10 @@ function renderDraftControlSummary(payload: DispatchTabPayload, selectedAircraft
   `;
 }
 
-function renderAssignedPilotsSection(selectedAircraft: DispatchAircraftView): string {
+function renderAssignedPilotsSection(
+  selectedAircraft: DispatchAircraftView,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
   if (!selectedAircraft.schedule) {
     return `
       <section class="dispatch-message-list" data-dispatch-assigned-pilots>
@@ -417,14 +458,7 @@ function renderAssignedPilotsSection(selectedAircraft: DispatchAircraftView): st
   }
 
   if (selectedAircraft.schedule.isDraft) {
-    return `
-      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
-        <article class="dispatch-message-item info">
-          <div class="dispatch-message-head">${renderBadge("info")}<strong>Named pilots are selected on commit</strong></div>
-          <span class="muted">This draft can show current pool pressure, but Dispatch should not pretend specific pilots are already locked.</span>
-        </article>
-      </section>
-    `;
+    return renderDraftPilotAssignmentSection(selectedAircraft, selectedPilotOverrideIds);
   }
 
   if (selectedAircraft.assignedPilots.length === 0) {
@@ -452,6 +486,125 @@ function renderAssignedPilotCard(pilot: DispatchAssignedPilotView): string {
       <span class="muted">${escapeHtml(`${formatPilotCertifications(pilot.certifications)} | ${describeAssignedPilotContext(pilot)}`)}</span>
     </article>
   `;
+}
+
+function renderDraftPilotAssignmentSection(
+  selectedAircraft: DispatchAircraftView,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
+  const schedule = selectedAircraft.schedule;
+  const assignment = schedule?.draftPilotAssignment;
+  if (!schedule || !schedule.isDraft || !assignment) {
+    return `
+      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+        <article class="dispatch-message-item info">
+          <div class="dispatch-message-head">${renderBadge("info")}<strong>Draft pilot recommendation unavailable</strong></div>
+          <span class="muted">Dispatch could not derive a draft-time named-pilot recommendation for this aircraft yet.</span>
+        </article>
+      </section>
+    `;
+  }
+
+  const recommendedOptions = assignment.candidateOptions.filter((option) => option.recommended);
+  const selectableOptions = assignment.candidateOptions.filter((option) => option.selectable);
+  const recommendedNames = recommendedOptions.map((option) => option.displayName).join(" | ");
+
+  return `
+    <section class="dispatch-message-list" data-dispatch-assigned-pilots data-dispatch-draft-pilot-assignment="${escapeHtml(schedule.scheduleId)}">
+      <article class="dispatch-message-item info" data-dispatch-pilot-recommendation>
+        <div class="dispatch-message-head">
+          ${renderBadge(recommendedOptions.length >= assignment.pilotsRequired ? "ready" : "warning")}
+          <strong>${escapeHtml(recommendedOptions.length > 0 ? `Recommended: ${recommendedNames}` : "No recommended pilot assignment")}</strong>
+        </div>
+        <span class="muted">${escapeHtml(describeDraftPilotAssignmentSummary(selectedAircraft))}</span>
+      </article>
+      ${assignment.hardBlockers.map((blocker) => `
+        <article class="dispatch-message-item blocker">
+          <div class="dispatch-message-head">${renderBadge("blocked")}<strong>Assignment blocker</strong></div>
+          <span class="muted">${escapeHtml(blocker)}</span>
+        </article>
+      `).join("")}
+      <article class="dispatch-message-item info">
+        <div class="dispatch-message-head">
+          ${renderBadge("info")}
+          <strong>Manual override before commit</strong>
+        </div>
+        <span class="muted">${escapeHtml(selectableOptions.length > 0
+          ? "Leave every override control blank to commit with the recommendation. Pick a different pilot only if you want to override it explicitly."
+          : "No selectable pilot override is available from the current named-pilot pool.")}</span>
+      </article>
+      ${assignment.candidateOptions.map((option) =>
+        renderDraftPilotOptionCard(schedule.scheduleId, assignment.pilotsRequired, option, selectedPilotOverrideIds)).join("")}
+    </section>
+  `;
+}
+
+function renderDraftPilotOptionCard(
+  scheduleId: string,
+  pilotsRequired: number,
+  option: DispatchDraftPilotAssignmentView["candidateOptions"][number],
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
+  const controlId = `dispatch-pilot-override-${option.namedPilotId}`;
+  const controlType = pilotsRequired > 1 ? "checkbox" : "radio";
+  const checked = selectedPilotOverrideIds?.includes(option.namedPilotId) ?? false;
+  const overrideControl = option.selectable
+    ? `<label class="dispatch-pilot-override-control" for="${escapeHtml(controlId)}">
+        <input
+          id="${escapeHtml(controlId)}"
+          type="${escapeHtml(controlType)}"
+          name="selectedNamedPilotIds"
+          value="${escapeHtml(option.namedPilotId)}"
+          form="${escapeHtml(dispatchCommitFormId(scheduleId))}"
+          data-dispatch-pilot-override="${escapeHtml(option.namedPilotId)}"
+          data-dispatch-schedule-id="${escapeHtml(scheduleId)}"
+          ${checked ? "checked" : ""}
+        />
+        <span>${escapeHtml(controlType === "radio" ? "Select this pilot instead" : "Include this pilot in the override")}</span>
+      </label>`
+    : `<span class="muted" data-dispatch-pilot-option-reason="${escapeHtml(option.namedPilotId)}">${escapeHtml(option.reason ?? "Unavailable for this draft.")}</span>`;
+
+  return `
+    <article class="dispatch-message-item ${option.selectable ? "info" : "warning"}" data-dispatch-pilot-option="${escapeHtml(option.namedPilotId)}">
+      <div class="dispatch-message-head">
+        <div class="meta-stack">
+          <strong>${escapeHtml(option.displayName)}</strong>
+          <span class="muted">${escapeHtml(formatPilotCertifications(option.certifications))}</span>
+        </div>
+        <div class="pill-row">
+          ${option.recommended ? renderBadge("recommended") : ""}
+          ${renderBadge(option.availabilityState)}
+        </div>
+      </div>
+      <span class="muted">${escapeHtml(describeDraftPilotOptionContext(option))}</span>
+      ${overrideControl}
+    </article>
+  `;
+}
+
+function describeDraftPilotAssignmentSummary(selectedAircraft: DispatchAircraftView): string {
+  const assignment = selectedAircraft.schedule?.draftPilotAssignment;
+  if (!assignment) {
+    return "No draft pilot recommendation is available.";
+  }
+
+  const certificationLabel = assignment.requiredCertificationCode ?? humanize(assignment.qualificationGroup);
+  const selectableCount = assignment.candidateOptions.filter((option) => option.selectable).length;
+  return `${selectedAircraft.registration} needs ${assignment.pilotsRequired} ${certificationLabel} pilot${assignment.pilotsRequired === 1 ? "" : "s"} from ${formatDate(selectedAircraft.schedule!.plannedStartUtc)} to ${formatDate(selectedAircraft.schedule!.plannedEndUtc)}. ${selectableCount} selectable option${selectableCount === 1 ? "" : "s"} are available right now.`;
+}
+
+function describeDraftPilotOptionContext(
+  option: DispatchDraftPilotAssignmentView["candidateOptions"][number],
+): string {
+  const parts = [
+    option.currentAirport ? `Current airport ${option.currentAirport.code}` : undefined,
+    option.travelDestinationAirport && option.travelUntilUtc
+      ? `Can reposition to ${option.travelDestinationAirport.code} by ${formatDate(option.travelUntilUtc)}`
+      : undefined,
+    !option.selectable ? option.reason : undefined,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.join(" | ");
 }
 
 function renderTimeline(legs: DispatchLegView[] | undefined): string {
@@ -931,7 +1084,11 @@ function renderAdvanceTimeUtility(payload: DispatchTabPayload): string {
   `;
 }
 
-function renderCommitBar(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView | undefined): string {
+function renderCommitBar(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
   const schedule = selectedAircraft?.schedule;
   const validation = schedule?.validation;
   const canCommit = Boolean(schedule?.isDraft && validation?.isCommittable);
@@ -954,10 +1111,20 @@ function renderCommitBar(payload: DispatchTabPayload, selectedAircraft: Dispatch
     </div>
     <div class="dispatch-commit-actions">
       ${schedule?.isDraft ? `
-        <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/commit-schedule" class="dispatch-inline-action" data-api-form>
+        <form
+          method="post"
+          action="/api/save/${encodeURIComponent(payload.saveId)}/actions/commit-schedule"
+          class="dispatch-inline-action"
+          data-api-form
+          id="${escapeHtml(dispatchCommitFormId(schedule.scheduleId))}"
+        >
           <input type="hidden" name="tab" value="dispatch" />
           <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
           <input type="hidden" name="scheduleId" value="${escapeHtml(schedule.scheduleId)}" />
+          ${schedule.draftPilotAssignment && selectedPilotOverrideIds && selectedPilotOverrideIds.length > 0
+            ? selectedPilotOverrideIds.map((namedPilotId) =>
+                `<input type="hidden" name="selectedNamedPilotIds" value="${escapeHtml(namedPilotId)}" data-dispatch-selected-pilot-hidden="${escapeHtml(namedPilotId)}" />`).join("")
+            : ""}
           <button type="submit" ${canCommit ? "" : "disabled"} data-dispatch-commit-button="1" data-pending-label="Committing schedule...">${escapeHtml(commitButtonLabel)}</button>
         </form>
       ` : `<button type="button" disabled data-dispatch-commit-button="1">${escapeHtml(commitButtonLabel)}</button>`}
@@ -966,13 +1133,20 @@ function renderCommitBar(payload: DispatchTabPayload, selectedAircraft: Dispatch
   `;
 }
 
+function dispatchCommitFormId(scheduleId: string): string {
+  return `dispatch-commit-${scheduleId}`;
+}
+
 function describePilotAssignmentHeadline(selectedAircraft: DispatchAircraftView): string {
   if (!selectedAircraft.schedule) {
     return "No schedule staged";
   }
 
   if (selectedAircraft.schedule.isDraft) {
-    return "Reserved on commit";
+    const recommendedCount = selectedAircraft.schedule.draftPilotAssignment?.recommendedPilotIds.length ?? 0;
+    return recommendedCount > 0
+      ? `${recommendedCount}/${selectedAircraft.pilotReadiness.pilotsRequired} pilots recommended`
+      : "Recommendation blocked";
   }
 
   if (selectedAircraft.assignedPilots.length === 0) {
@@ -988,7 +1162,17 @@ function describePilotAssignmentNote(selectedAircraft: DispatchAircraftView): st
   }
 
   if (selectedAircraft.schedule.isDraft) {
-    return "Drafts stay truthful by showing pool posture only until commit locks specific pilots.";
+    const assignment = selectedAircraft.schedule.draftPilotAssignment;
+    if (!assignment) {
+      return "Drafts should expose a named-pilot recommendation before commit.";
+    }
+
+    const recommendedNames = assignment.candidateOptions
+      .filter((option) => option.recommended)
+      .map((option) => option.displayName);
+    return recommendedNames.length > 0
+      ? `Recommended now: ${recommendedNames.join(" | ")}. Override remains optional before commit.`
+      : assignment.hardBlockers[0] ?? "No named pilot can cover this draft right now.";
   }
 
   if (selectedAircraft.assignedPilots.length === 0) {
@@ -1404,7 +1588,7 @@ function badgeClass(value: string): string {
   if (["warning", "warn", "assigned", "due_soon", "tight", "watch", "maintenance", "candidate_available", "accepted_ready", "blocked_draft", "reserved", "resting", "training", "traveling"].includes(value)) {
     return "warn";
   }
-  if (["active", "scheduled", "available", "draft_ready", "draft", "committed", "info", "flying", "ready"].includes(value)) {
+  if (["active", "scheduled", "available", "draft_ready", "draft", "committed", "info", "flying", "ready", "recommended"].includes(value)) {
     return "accent";
   }
   return "neutral";

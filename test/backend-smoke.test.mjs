@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../dist/index.js";
+import { resolveDispatchPilotAssignment } from "../dist/domain/dispatch/named-pilot-assignment.js";
 import { AirportReferenceRepository } from "../dist/infrastructure/reference/airport-reference.js";
 import { effectiveCargoCapacityLb, effectivePassengerCapacity } from "./helpers/flightline-testkit.mjs";
 
@@ -113,6 +114,26 @@ function pickReachableRecoveryDestinationAirportId(originAirportId, aircraft, ai
     .sort((left, right) => left.distanceNm - right.distanceNm);
 
   return reachableDestinations[0]?.destination.airportKey ?? null;
+}
+
+function resolveDraftPilotRecommendation(staffingState, aircraft, schedule, currentTimeUtc, airportReference) {
+  const qualificationGroup = schedule.legs.find((leg) => typeof leg.assignedQualificationGroup === "string")
+    ?.assignedQualificationGroup
+    ?? aircraft.pilotQualificationGroup;
+
+  return resolveDispatchPilotAssignment(
+    staffingState.namedPilots,
+    {
+      qualificationGroup,
+      pilotsRequired: aircraft.pilotsRequired,
+      assignedFromUtc: schedule.plannedStartUtc,
+      assignedToUtc: schedule.plannedEndUtc,
+      currentTimeUtc,
+      currentScheduleId: schedule.scheduleId,
+      ...(schedule.legs[0]?.originAirportId ? { requiredOriginAirportId: schedule.legs[0].originAirportId } : {}),
+    },
+    airportReference,
+  );
 }
 
 const saveDirectoryPath = await mkdtemp(join(tmpdir(), "flightline-save-"));
@@ -716,6 +737,196 @@ try {
   assert.equal(duplicateCompanyResult.success, false);
   assert.match(duplicateCompanyResult.hardBlockers[0] ?? "", /already has an active company/i);
 
+  const pilotOverrideSaveId = `${saveId}_pilot_override`;
+  const pilotOverrideStartedAtUtc = addHours(startedAtUtc, 6);
+
+  const createPilotOverrideSaveResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_save`,
+    saveId: pilotOverrideSaveId,
+    commandName: "CreateSaveGame",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      worldSeed: "seed-pilot-override",
+      difficultyProfile: "standard",
+      startTimeUtc: pilotOverrideStartedAtUtc,
+    },
+  });
+  assert.equal(createPilotOverrideSaveResult.success, true);
+
+  const createPilotOverrideCompanyResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_company`,
+    saveId: pilotOverrideSaveId,
+    commandName: "CreateCompany",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      displayName: "Pilot Override Air",
+      starterAirportId: "KDEN",
+      startingCashAmount: 3_500_000,
+    },
+  });
+  assert.equal(createPilotOverrideCompanyResult.success, true);
+
+  const acquirePilotOverrideAircraftAResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_aircraft_a`,
+    saveId: pilotOverrideSaveId,
+    commandName: "AcquireAircraft",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      deliveryAirportId: "KDEN",
+      ownershipType: "owned",
+      registration: "N208PO",
+    },
+  });
+  assert.equal(acquirePilotOverrideAircraftAResult.success, true);
+
+  const activatePilotOverrideStaffingResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_staffing`,
+    saveId: pilotOverrideSaveId,
+    commandName: "ActivateStaffingPackage",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      laborCategory: "pilot",
+      employmentModel: "direct_hire",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 3,
+      fixedCostAmount: 12_000,
+    },
+  });
+  assert.equal(activatePilotOverrideStaffingResult.success, true);
+
+  const pilotOverrideFleetState = await backend.loadFleetState(pilotOverrideSaveId);
+  assert.ok(pilotOverrideFleetState);
+  const pilotOverrideAircraftA = pilotOverrideFleetState.aircraft.find((aircraft) => aircraft.registration === "N208PO");
+  assert.ok(pilotOverrideAircraftA);
+
+  const manualDraftResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_draft_manual`,
+    saveId: pilotOverrideSaveId,
+    commandName: "SaveScheduleDraft",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: pilotOverrideAircraftA.aircraftId,
+      scheduleKind: "operational",
+      legs: [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: addHours(pilotOverrideStartedAtUtc, 1),
+          plannedArrivalUtc: addHours(pilotOverrideStartedAtUtc, 2),
+        },
+      ],
+    },
+  });
+  assert.equal(manualDraftResult.success, true);
+  const manualDraftScheduleId = String(manualDraftResult.metadata?.scheduleId ?? "");
+  assert.ok(manualDraftScheduleId);
+
+  const pilotOverrideStaffingState = await backend.loadStaffingState(pilotOverrideSaveId);
+  assert.ok(pilotOverrideStaffingState);
+  assert.equal(pilotOverrideStaffingState.namedPilots.length >= 3, true);
+  const manualDraftSchedules = await backend.loadAircraftSchedules(pilotOverrideSaveId, pilotOverrideAircraftA.aircraftId);
+  const manualDraftSchedule = manualDraftSchedules.find((schedule) => schedule.scheduleId === manualDraftScheduleId);
+  assert.ok(manualDraftSchedule);
+  const manualRecommendation = resolveDraftPilotRecommendation(
+    pilotOverrideStaffingState,
+    pilotOverrideAircraftA,
+    manualDraftSchedule,
+    pilotOverrideStartedAtUtc,
+    airportReference,
+  );
+  assert.equal(manualRecommendation.recommendedPilotIds.length, 1);
+  const manualSelectedPilotId = manualRecommendation.candidateOptions.find((option) =>
+    option.selectable && !option.recommended,
+  )?.namedPilotId;
+  assert.ok(manualSelectedPilotId);
+
+  const manualCommitResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_commit_manual`,
+    saveId: pilotOverrideSaveId,
+    commandName: "CommitAircraftSchedule",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: manualDraftScheduleId,
+      selectedNamedPilotIds: [manualSelectedPilotId],
+    },
+  });
+  assert.equal(manualCommitResult.success, true);
+
+  const staffingStateAfterManualCommit = await backend.loadStaffingState(pilotOverrideSaveId);
+  assert.ok(staffingStateAfterManualCommit);
+  assert.equal(
+    staffingStateAfterManualCommit.namedPilots.some((pilot) =>
+      pilot.namedPilotId === manualSelectedPilotId
+      && pilot.assignedScheduleId === manualDraftScheduleId
+      && pilot.availabilityState === "reserved"),
+    true,
+  );
+
+  const fallbackDraftResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_draft_fallback`,
+    saveId: pilotOverrideSaveId,
+    commandName: "SaveScheduleDraft",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: pilotOverrideAircraftA.aircraftId,
+      scheduleKind: "operational",
+      legs: [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: addHours(pilotOverrideStartedAtUtc, 3),
+          plannedArrivalUtc: addHours(pilotOverrideStartedAtUtc, 4),
+        },
+      ],
+    },
+  });
+  assert.equal(fallbackDraftResult.success, true);
+  const fallbackDraftScheduleId = String(fallbackDraftResult.metadata?.scheduleId ?? "");
+  assert.ok(fallbackDraftScheduleId);
+  const fallbackDraftSchedules = await backend.loadAircraftSchedules(pilotOverrideSaveId, pilotOverrideAircraftA.aircraftId);
+  const fallbackDraftSchedule = fallbackDraftSchedules.find((schedule) => schedule.scheduleId === fallbackDraftScheduleId);
+  const staffingStateBeforeFallbackCommit = await backend.loadStaffingState(pilotOverrideSaveId);
+  assert.ok(fallbackDraftSchedule);
+  assert.ok(staffingStateBeforeFallbackCommit);
+  const fallbackRecommendation = resolveDraftPilotRecommendation(
+    staffingStateBeforeFallbackCommit,
+    pilotOverrideAircraftA,
+    fallbackDraftSchedule,
+    pilotOverrideStartedAtUtc,
+    airportReference,
+  );
+  assert.equal(fallbackRecommendation.recommendedPilotIds.length, 1);
+
+  const fallbackCommitResult = await backend.dispatch({
+    commandId: `cmd_${pilotOverrideSaveId}_commit_fallback`,
+    saveId: pilotOverrideSaveId,
+    commandName: "CommitAircraftSchedule",
+    issuedAtUtc: pilotOverrideStartedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: fallbackDraftScheduleId,
+    },
+  });
+  assert.equal(fallbackCommitResult.success, true);
+
+  const staffingStateAfterFallbackCommit = await backend.loadStaffingState(pilotOverrideSaveId);
+  assert.ok(staffingStateAfterFallbackCommit);
+  const fallbackAssignedPilot = staffingStateAfterFallbackCommit.namedPilots.find((pilot) =>
+    pilot.assignedScheduleId === fallbackDraftScheduleId
+    && pilot.availabilityState === "reserved");
+  assert.ok(fallbackAssignedPilot);
+  assert.equal(fallbackAssignedPilot.namedPilotId, fallbackRecommendation.recommendedPilotIds[0]);
+
   const discardSaveId = `${saveId}_discard`;
   const discardStartedAtUtc = addHours(startedAtUtc, 4);
 
@@ -872,6 +1083,7 @@ try {
 } finally {
   await Promise.allSettled([
     backend.closeSaveSession(saveId),
+    backend.closeSaveSession(`${saveId}_pilot_override`),
     backend.closeSaveSession(`${saveId}_discard`),
     backend.close(),
     airportReference.close(),

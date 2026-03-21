@@ -443,17 +443,40 @@ try {
 
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-draft-pilot-assignment]"));
+  assert.equal(await page.locator("[data-dispatch-draft-pilot-assignment]").isVisible(), true);
+  assert.equal((await page.locator("[data-dispatch-pilot-recommendation]").textContent())?.includes("Recommended"), true);
+  assert.equal(await page.locator("[data-dispatch-pilot-option-reason]").count() >= 1, true);
+  const { recommendedPilotId, overridePilotId } = await page.evaluate(() => {
+    const optionCards = [...document.querySelectorAll("[data-dispatch-pilot-option]")];
+    const selectableCards = optionCards.filter((card) => card.querySelector("[data-dispatch-pilot-override]"));
+    const recommendedCard = selectableCards.find((card) =>
+      (card.textContent ?? "").toLowerCase().includes("recommended"));
+    const alternateCard = selectableCards.find((card) => card !== recommendedCard);
+    return {
+      recommendedPilotId: recommendedCard?.getAttribute("data-dispatch-pilot-option") ?? null,
+      overridePilotId: alternateCard?.getAttribute("data-dispatch-pilot-option") ?? null,
+    };
+  });
+  assert.ok(recommendedPilotId);
+  assert.ok(overridePilotId);
+  assert.notEqual(overridePilotId, recommendedPilotId);
+  await clickUi(page.locator(`[data-dispatch-pilot-override='${overridePilotId}']`));
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
   assert.equal((await page.locator("[data-dispatch-selected-leg-detail]").textContent())?.includes("KCOS -> KDEN"), true);
+  await clickUi(page.locator(`[data-dispatch-pilot-override='${overridePilotId}']`));
   await clickUi(page.locator("[data-dispatch-commit-button]"));
-  await page.waitForFunction(() => {
+  await page.waitForFunction((selectedPilotId) => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]");
-    return flashText.includes("Committed schedule") && commitButton?.textContent?.includes("Already committed");
-  });
+    return flashText.includes("Committed schedule")
+      && commitButton?.textContent?.includes("Already committed")
+      && typeof selectedPilotId === "string"
+      && Boolean(document.querySelector(`[data-dispatch-assigned-pilot='${selectedPilotId}']`));
+  }, overridePilotId);
 
   await clickUi(page.locator("[data-shell-tab='aircraft']"));
   await page.waitForFunction(() => document.querySelectorAll(".aircraft-row-button").length === 3);

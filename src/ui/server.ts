@@ -37,6 +37,7 @@ const aircraftDatabasePath = resolve(process.cwd(), "data", "aircraft", "flightl
 const openSaveClientAssetUrl = new URL("./public/open-save-client.js", import.meta.url);
 const saveShellClientAssetUrl = new URL("./public/save-shell-client.js", import.meta.url);
 const pilotCertificationsModuleAssetUrl = new URL("../domain/staffing/pilot-certifications.js", import.meta.url);
+const dispatchPilotAssignmentModuleAssetUrl = new URL("../domain/dispatch/named-pilot-assignment.js", import.meta.url);
 const uiBrowserModuleAssetUrls = new Map<string, URL>([
     ["aircraft-image-sources", new URL("./aircraft-image-sources.js", import.meta.url)],
     ["aircraft-tab-model", new URL("./aircraft-tab-model.js", import.meta.url)],
@@ -484,6 +485,13 @@ async function readForm(request) {
         chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
     }
     return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
+}
+function resolveSelectedNamedPilotIdsFromForm(form) {
+    return [...new Set(
+        [...form.getAll("selectedNamedPilotIds"), ...form.getAll("selectedNamedPilotId")]
+            .map((entry) => typeof entry === "string" ? entry.trim() : "")
+            .filter((entry) => entry.length > 0),
+    )];
 }
 function sendHtml(response, html) {
     response.writeHead(200, {
@@ -2721,13 +2729,17 @@ async function handleCommitSchedule(response, form) {
     const saveId = form.get("saveId") ?? "";
     const tab = normalizeTab(form.get("tab"));
     const scheduleId = form.get("scheduleId") ?? "";
+    const selectedNamedPilotIds = resolveSelectedNamedPilotIdsFromForm(form);
     const result = await backend.dispatch({
         commandId: commandId("cmd_commit"),
         saveId,
         commandName: "CommitAircraftSchedule",
         issuedAtUtc: new Date().toISOString(),
         actorType: "player",
-        payload: { scheduleId },
+        payload: {
+            scheduleId,
+            ...(selectedNamedPilotIds.length > 0 ? { selectedNamedPilotIds } : {}),
+        },
     });
     redirect(response, saveRoute(saveId, {
         tab,
@@ -2879,6 +2891,15 @@ async function handleRequest(request, response) {
     }
     if (request.method === "GET" && pathname === "/domain/staffing/pilot-certifications.js") {
         const assetSource = await readFile(pilotCertificationsModuleAssetUrl, "utf8");
+        response.writeHead(200, {
+            "content-type": "text/javascript; charset=utf-8",
+            "cache-control": "no-store",
+        });
+        response.end(assetSource);
+        return;
+    }
+    if (request.method === "GET" && pathname === "/domain/dispatch/named-pilot-assignment.js") {
+        const assetSource = await readFile(dispatchPilotAssignmentModuleAssetUrl, "utf8");
         response.writeHead(200, {
             "content-type": "text/javascript; charset=utf-8",
             "cache-control": "no-store",
@@ -3548,13 +3569,17 @@ async function handleDismissPilotApi(response, saveId, form) {
 async function handleCommitScheduleApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
     const scheduleId = form.get("scheduleId") ?? "";
+    const selectedNamedPilotIds = resolveSelectedNamedPilotIdsFromForm(form);
     const result = await backend.dispatch({
         commandId: commandId("cmd_commit_api"),
         saveId,
         commandName: "CommitAircraftSchedule",
         issuedAtUtc: new Date().toISOString(),
         actorType: "player",
-        payload: { scheduleId },
+        payload: {
+            scheduleId,
+            ...(selectedNamedPilotIds.length > 0 ? { selectedNamedPilotIds } : {}),
+        },
     });
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: `Committed schedule ${scheduleId}.`, notificationLevel: "important" }

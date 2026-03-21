@@ -127,6 +127,7 @@ export interface SaveScheduleDraftPayload {
 
 export interface CommitAircraftSchedulePayload {
   scheduleId: string;
+  selectedNamedPilotIds?: NamedPilotId[];
 }
 
 export interface DiscardAircraftScheduleDraftPayload {

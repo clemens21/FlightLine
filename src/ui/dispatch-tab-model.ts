@@ -14,6 +14,7 @@ import type { CompanyContext } from "../application/queries/company-state.js";
 import type { FleetAircraftView, FleetStateView } from "../application/queries/fleet-state.js";
 import type { AircraftScheduleView, ScheduleLegView } from "../application/queries/schedule-state.js";
 import type { StaffingStateView } from "../application/queries/staffing-state.js";
+import { resolveDispatchPilotAssignment } from "../domain/dispatch/named-pilot-assignment.js";
 import type { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import type { ScheduleValidationSnapshot } from "../application/dispatch/schedule-validation.js";
 import type { RoutePlanItemState, RoutePlanState } from "./route-plan-state.js";
@@ -78,6 +79,31 @@ export interface DispatchScheduleView {
   validation?: DispatchValidationSnapshotView;
   legs: DispatchLegView[];
   laborAllocationCount: number;
+  draftPilotAssignment?: DispatchDraftPilotAssignmentView;
+}
+
+export interface DispatchDraftPilotOptionView {
+  namedPilotId: string;
+  displayName: string;
+  certifications: string[];
+  availabilityState: StaffingStateView["namedPilots"][number]["availabilityState"];
+  selectable: boolean;
+  recommended: boolean;
+  reason?: string;
+  currentAirport?: DispatchAirportView;
+  travelOriginAirport?: DispatchAirportView;
+  travelDestinationAirport?: DispatchAirportView;
+  travelStartedAtUtc?: string;
+  travelUntilUtc?: string;
+}
+
+export interface DispatchDraftPilotAssignmentView {
+  qualificationGroup: string;
+  requiredCertificationCode?: string;
+  pilotsRequired: number;
+  recommendedPilotIds: string[];
+  hardBlockers: string[];
+  candidateOptions: DispatchDraftPilotOptionView[];
 }
 
 export interface DispatchAssignedPilotView {
@@ -237,13 +263,14 @@ export function buildDispatchTabPayload({
   const aircraft = fleet.map((entry) =>
     buildDispatchAircraftView(
       entry,
-        choosePrimarySchedule(schedulesByAircraftId.get(entry.aircraftId) ?? [], companyContext.currentTimeUtc),
-        contractsById,
-        pilotCoverageUnits,
-        pendingPilotCoverageUnits,
-        allNamedPilots,
-        airportReference,
-      ),
+      choosePrimarySchedule(schedulesByAircraftId.get(entry.aircraftId) ?? [], companyContext.currentTimeUtc),
+      contractsById,
+      pilotCoverageUnits,
+      pendingPilotCoverageUnits,
+      allNamedPilots,
+      companyContext.currentTimeUtc,
+      airportReference,
+    ),
   );
 
   const routePlanItems = (routePlan?.items ?? []).map((item) => buildRoutePlanItemView(item, airportReference));
@@ -300,6 +327,7 @@ function buildDispatchAircraftView(
   pilotCoverageUnits: number,
   pendingPilotCoverageUnits: number,
   namedPilots: StaffingStateView["namedPilots"],
+  currentTimeUtc: string,
   airportReference: AirportReferenceRepository,
 ): DispatchAircraftView {
   const validation = parseValidationSnapshot(schedule?.validationSnapshot);
@@ -330,6 +358,9 @@ function buildDispatchAircraftView(
           ...(pilot.travelUntilUtc ? { travelUntilUtc: pilot.travelUntilUtc } : {}),
           ...(pilot.currentAirportId ? { currentAirport: describeAirport(pilot.currentAirportId, airportReference) } : {}),
         }));
+  const draftPilotAssignment = schedule?.isDraft
+    ? buildDraftPilotAssignmentView(schedule, aircraft, namedPilots, currentTimeUtc, airportReference)
+    : undefined;
 
   return {
     aircraftId: aircraft.aircraftId,
@@ -374,8 +405,62 @@ function buildDispatchAircraftView(
         ...(validation ? { validation } : {}),
         legs: schedule.legs.map((leg) => buildDispatchLegView(leg, contractsById.get(leg.linkedCompanyContractId ?? ""), validationMessagesBySequence, airportReference)),
         laborAllocationCount: schedule.laborAllocations.length,
+        ...(draftPilotAssignment ? { draftPilotAssignment } : {}),
       },
     } : {}),
+  };
+}
+
+function buildDraftPilotAssignmentView(
+  schedule: AircraftScheduleView,
+  aircraft: FleetAircraftView,
+  namedPilots: StaffingStateView["namedPilots"],
+  currentTimeUtc: string,
+  airportReference: AirportReferenceRepository,
+): DispatchDraftPilotAssignmentView | undefined {
+  if (!schedule.isDraft || schedule.legs.length === 0) {
+    return undefined;
+  }
+
+  const qualificationGroup = schedule.legs.find((leg) => typeof leg.assignedQualificationGroup === "string")
+    ?.assignedQualificationGroup
+    ?? aircraft.pilotQualificationGroup;
+  const assignmentResolution = resolveDispatchPilotAssignment(
+    namedPilots,
+    {
+      qualificationGroup,
+      pilotsRequired: aircraft.pilotsRequired,
+      assignedFromUtc: schedule.plannedStartUtc,
+      assignedToUtc: schedule.plannedEndUtc,
+      currentTimeUtc,
+      currentScheduleId: schedule.scheduleId,
+      ...(schedule.legs[0]?.originAirportId ? { requiredOriginAirportId: schedule.legs[0].originAirportId } : {}),
+    },
+    airportReference,
+  );
+
+  return {
+    qualificationGroup,
+    ...(assignmentResolution.requiredCertificationCode
+      ? { requiredCertificationCode: assignmentResolution.requiredCertificationCode }
+      : {}),
+    pilotsRequired: aircraft.pilotsRequired,
+    recommendedPilotIds: assignmentResolution.recommendedPilotIds,
+    hardBlockers: assignmentResolution.hardBlockers,
+    candidateOptions: assignmentResolution.candidateOptions.map((candidateOption) => ({
+      namedPilotId: candidateOption.namedPilotId,
+      displayName: candidateOption.displayName,
+      certifications: candidateOption.certifications,
+      availabilityState: candidateOption.availabilityState,
+      selectable: candidateOption.selectable,
+      recommended: candidateOption.recommended,
+      ...(candidateOption.reason ? { reason: candidateOption.reason } : {}),
+      ...(candidateOption.currentAirportId ? { currentAirport: describeAirport(candidateOption.currentAirportId, airportReference) } : {}),
+      ...(candidateOption.travelOriginAirportId ? { travelOriginAirport: describeAirport(candidateOption.travelOriginAirportId, airportReference) } : {}),
+      ...(candidateOption.travelDestinationAirportId ? { travelDestinationAirport: describeAirport(candidateOption.travelDestinationAirportId, airportReference) } : {}),
+      ...(candidateOption.travelStartedAtUtc ? { travelStartedAtUtc: candidateOption.travelStartedAtUtc } : {}),
+      ...(candidateOption.travelUntilUtc ? { travelUntilUtc: candidateOption.travelUntilUtc } : {}),
+    })),
   };
 }
 
