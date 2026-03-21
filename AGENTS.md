@@ -97,6 +97,12 @@ The goal is to improve the outcome.
    `Open Risks`
    `Handoff or Blockers`
 
+8. Frequent checkpoint commit rule.
+   On active workstream branches, make bounded checkpoint commits regularly instead of letting large local-only dirt accumulate across context switches or long sessions.
+
+9. Patch cadence rule.
+   If a promoted landing is genuinely patch-level, cut the next `PATCH` version promptly instead of batching several patch-worthy landings together just to avoid incrementing the third version number.
+
 ## Team Model
 
 FlightLine uses five standing roles and two operating overlays.
@@ -221,6 +227,7 @@ Important rules:
 - if active work on `codex/dev` becomes mixed, move or preserve it on a `codex/<workstream>` branch before the next promotion decision
 - if mixed work must be rescued quickly, a `codex/wip-*` or `codex/unframed-*` branch is acceptable as a temporary quarantine branch, but it should be reframed into a real workstream branch or removed once the rescue purpose is over
 - if several streams are active, use separate workstream branches or separate worktrees rather than stacking unrelated work on `codex/dev`
+- do not carry large uncommitted work on an active branch longer than necessary; checkpoint or intentionally stash before switching context
 - when a new branch or worktree is created, tell the human immediately which branch was created, what it is for, and the expected landing or cleanup path
 - when branch state changes materially, tell the human immediately what changed and why; this includes promotions into `codex/dev`, local `main`, GitHub `main`, and branch retirement or deletion
 

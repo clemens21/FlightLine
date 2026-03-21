@@ -17,11 +17,11 @@ Format:
 
 The current released version is:
 
-- `0.2.2`
+- `0.2.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
-The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first release at `0.1.0`, cut the first patch release at `0.1.1`, cut the first feature-slice minor release at `0.2.0`, then cut patch releases at `0.2.1` and `0.2.2`.
+The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first release at `0.1.0`, cut the first patch release at `0.1.1`, cut the first feature-slice minor release at `0.2.0`, then cut patch releases at `0.2.1`, `0.2.2`, and `0.2.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
@@ -118,6 +118,19 @@ Cut a new `MINOR` line when the landed set includes any of:
 Example:
 
 - `0.1.1` -> `0.2.0-dev.1`
+
+## Cadence Expectations
+
+Use the patch component freely.
+
+- dozens of `PATCH` increments during `0.x` are healthy if the landings are small, coherent, and well validated
+- do not batch unrelated patch-level fixes or polish into larger bundles just to keep the third version number low
+- if a bounded landing reaches local `main` and still classifies as `PATCH`, cut the next patch version as part of that landing
+
+Commit cadence and version cadence are different:
+
+- commit frequently on active workstream branches so local dirt does not sprawl
+- cut versions when bounded landings are promoted, not for every checkpoint commit
 
 ### Cut a `MAJOR` line
 

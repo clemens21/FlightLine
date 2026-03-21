@@ -69,6 +69,7 @@ Important rule:
 - do not use `codex/dev` as the default execution branch for a capability just because it already exists
 - if work on `codex/dev` stops being one coherent landing candidate, preserve it on a `codex/<workstream>` branch and return `codex/dev` to a clean integration state
 - if a temporary `codex/wip-*` or `codex/unframed-*` branch is created to rescue mixed work, convert that work into a real workstream branch or delete the rescue branch after resolution
+- do not let large uncommitted local dirt linger on an active branch; use bounded checkpoint commits as the default hygiene move
 - when a new branch or worktree is created, Mara or Owen should tell the human the branch name, purpose, and expected landing path immediately
 - when a branch is promoted, aligned, or deleted, Mara or Owen should tell the human what changed so branch truth never has to be inferred
 
@@ -219,6 +220,7 @@ Eli should:
 - challenge weak implementation direction before building
 - keep scope bounded
 - surface ambiguity immediately
+- checkpoint bounded progress with coherent commits often enough that local dirt does not sprawl across unrelated context switches
 - push active non-trivial workstream branches to GitHub early enough that the work is durably backed up
 - stop and escalate when the current stream now needs re-framing, broader role support, or further decomposition instead of opening new sub-streams independently
 - use the closeout template when done
@@ -251,6 +253,7 @@ Owen should decide:
 - ready for local `main` to GitHub `main` promotion or not
 - required release classification under `VERSIONING.md`
 - the exact version before and after promotion when a cut is required
+- whether the landing should be released now as the next `PATCH` instead of being held for an unnecessary larger bundle
 - blockers
 - merge order
 - missing cross-system follow-through

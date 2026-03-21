@@ -54,6 +54,8 @@ Default expectation:
 15. Before promoting to local `main` or GitHub `main`, Owen must classify the integrated delta against `VERSIONING.md` and decide whether the landing is `MINOR`, `PATCH`, or same-line prerelease continuation.
 16. If the version classification requires a cut, that version update is part of the landing set, not an optional follow-up.
 17. Branch creation, branch retirement, and every promotion step must be surfaced to the human explicitly; do not make the human ask which branch changed.
+18. Active workstream branches should get regular bounded checkpoint commits; large uncommitted local dirt is a workflow smell, not normal operating state.
+19. If the integrated landing still classifies as `PATCH`, cut the next patch version when it is promoted instead of batching several patch-worthy landings together.
 
 ## Default Branch Workflow
 
@@ -91,6 +93,20 @@ Minimum examples:
 - branch deleted after landing
 
 Do not treat branch state as internal implementation detail.
+
+## Commit And Patch Cadence
+
+Keep active branches easy to reason about:
+
+- commit small coherent checkpoints on active `codex/<workstream>` branches
+- do not let broad uncommitted local dirt span several tasks or several days
+- if you must interrupt a branch mid-stream, leave either a checkpoint commit or an intentionally named stash
+
+Keep promoted releases moving:
+
+- if the landing set is patch-level, promote it and cut the next `PATCH` version promptly
+- do not hold multiple patch-ready landings back just because the third version component would advance several times
+- the goal is clean history and clear release truth, not artificially low patch numbers
 
 ## Dev To Local Main
 
