@@ -53,6 +53,7 @@ Default expectation:
 14. If a local-only rescue branch holds work worth keeping, push it to GitHub or reframe it into a named `codex/<workstream>` branch quickly.
 15. Before promoting to local `main` or GitHub `main`, Owen must classify the integrated delta against `VERSIONING.md` and decide whether the landing is `MINOR`, `PATCH`, or same-line prerelease continuation.
 16. If the version classification requires a cut, that version update is part of the landing set, not an optional follow-up.
+17. Branch creation, branch retirement, and every promotion step must be surfaced to the human explicitly; do not make the human ask which branch changed.
 
 ## Default Branch Workflow
 
@@ -69,6 +70,27 @@ Use this flow by default:
 8. push local `main` to GitHub `main`
 
 This keeps `dev` readable as an integration checkpoint instead of a second scratchpad.
+
+## Required Branch Visibility
+
+Whenever a branch is created, changed, promoted, or retired, tell the human:
+
+- the branch name
+- why it exists or what just changed
+- whether it is now the source of truth for active work, integration, or promotion
+- the expected next step, such as `promote to codex/dev`, `promote to main`, or `delete after landing`
+
+Minimum examples:
+
+- new branch opened for active work
+- worktree created for that branch
+- branch pushed to GitHub
+- branch promoted into `codex/dev`
+- `codex/dev` promoted into local `main`
+- local `main` pushed to GitHub `main`
+- branch deleted after landing
+
+Do not treat branch state as internal implementation detail.
 
 ## Dev To Local Main
 
@@ -104,6 +126,7 @@ Push from local `main` to GitHub `main` only when all of the following are true:
 - the landing notes, risks, or follow-up items are clear enough to communicate
 - the version cut decision has already been made and applied if required by `VERSIONING.md`
 - the human has not asked for the push to be held back
+- Owen is ready to state the exact before/after refs and the resulting version in the promotion closeout
 
 The normal path should be:
 

@@ -17,11 +17,11 @@ Format:
 
 The current released version is:
 
-- `0.2.1`
+- `0.2.2`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
-The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first release at `0.1.0`, cut the first patch release at `0.1.1`, cut the first feature-slice minor release at `0.2.0`, and cut the next patch release at `0.2.1`.
+The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first release at `0.1.0`, cut the first patch release at `0.1.1`, cut the first feature-slice minor release at `0.2.0`, then cut patch releases at `0.2.1` and `0.2.2`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
@@ -71,6 +71,7 @@ Operational rule:
 - Owen should not treat version cutting as optional release polish after promotion
 - if the landed delta requires a new release line or release version, `package.json` and this document should be updated in the same bounded landing set
 - if the human wants to hold the version change back deliberately, that should be stated explicitly instead of silently skipped
+- promotion closeout should state the exact resulting version so the human does not need to infer whether a cut happened
 
 ## Release-Cut Rules
 

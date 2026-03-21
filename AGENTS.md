@@ -216,10 +216,13 @@ Important rules:
 - do not leave mixed unfinished work parked on `codex/dev`
 - do not treat `codex/dev` as the default scratch branch
 - do not rely on a local-only branch as the durable home for meaningful in-progress work
+- do not create a new branch or worktree without a bounded purpose and an expected promotion or retirement path
 - if a workstream matters, push the `codex/<workstream>` branch to GitHub rather than trusting one machine
 - if active work on `codex/dev` becomes mixed, move or preserve it on a `codex/<workstream>` branch before the next promotion decision
 - if mixed work must be rescued quickly, a `codex/wip-*` or `codex/unframed-*` branch is acceptable as a temporary quarantine branch, but it should be reframed into a real workstream branch or removed once the rescue purpose is over
 - if several streams are active, use separate workstream branches or separate worktrees rather than stacking unrelated work on `codex/dev`
+- when a new branch or worktree is created, tell the human immediately which branch was created, what it is for, and the expected landing or cleanup path
+- when branch state changes materially, tell the human immediately what changed and why; this includes promotions into `codex/dev`, local `main`, GitHub `main`, and branch retirement or deletion
 
 ## Required Handoff Contract
 
@@ -291,6 +294,7 @@ A task is only done when all of the following are true:
 - major assumptions and risks are surfaced
 - documentation is updated if current docs would otherwise mislead
 - if the landed delta changes the player-facing release level, the app version is cut according to `VERSIONING.md`
+- branch changes and promotion results are surfaced explicitly so the human is not left guessing which branch now holds the current truth
 - deferred work is separated clearly from completed work
 
 ## Final Instruction

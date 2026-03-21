@@ -69,6 +69,8 @@ Important rule:
 - do not use `codex/dev` as the default execution branch for a capability just because it already exists
 - if work on `codex/dev` stops being one coherent landing candidate, preserve it on a `codex/<workstream>` branch and return `codex/dev` to a clean integration state
 - if a temporary `codex/wip-*` or `codex/unframed-*` branch is created to rescue mixed work, convert that work into a real workstream branch or delete the rescue branch after resolution
+- when a new branch or worktree is created, Mara or Owen should tell the human the branch name, purpose, and expected landing path immediately
+- when a branch is promoted, aligned, or deleted, Mara or Owen should tell the human what changed so branch truth never has to be inferred
 
 ## Default Intake Artifact
 
@@ -248,6 +250,7 @@ Owen should decide:
 - ready for `dev` to local `main` promotion or not
 - ready for local `main` to GitHub `main` promotion or not
 - required release classification under `VERSIONING.md`
+- the exact version before and after promotion when a cut is required
 - blockers
 - merge order
 - missing cross-system follow-through
