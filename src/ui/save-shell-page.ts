@@ -979,10 +979,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staff-portrait-frame {
       display: inline-flex;
-      width: 6px;
-      height: 6px;
-      min-width: 6px;
-      min-height: 6px;
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
       border-radius: 999px;
       overflow: hidden;
       border: 1px solid var(--line);
@@ -993,11 +993,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       vertical-align: middle;
     }
     .staff-portrait-frame.detail {
-      width: 14px;
-      height: 14px;
-      min-width: 14px;
-      min-height: 14px;
+      width: 64px;
+      height: 64px;
+      min-width: 64px;
+      min-height: 64px;
       border-radius: 999px;
+    }
+    .staff-portrait-frame.detail[data-staff-portrait-frame='hire-detail'] {
+      width: 80px;
+      height: 80px;
+      min-width: 80px;
+      min-height: 80px;
     }
     .staff-portrait-image {
       width: 100%;
@@ -1042,13 +1048,99 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: auto;
     }
+    .staffing-hire-market-list table {
+      min-width: 1520px;
+    }
+    .staffing-hire-market-list th,
+    .staffing-hire-market-list td {
+      padding: 8px 7px;
+      font-size: 13px;
+    }
+    .staffing-hire-market-list td {
+      vertical-align: middle;
+    }
+    .staffing-hire-market-list th {
+      font-size: 12px;
+    }
+    .staffing-hire-market-list .staff-identity {
+      gap: 8px;
+    }
+    .staffing-hire-market-list .staff-identity > strong {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .staffing-hire-market-list td:nth-child(2),
+    .staffing-hire-market-list td:nth-child(3),
+    .staffing-hire-market-list td:nth-child(4),
+    .staffing-hire-market-list td:nth-child(5),
+    .staffing-hire-market-list td:nth-child(6) {
+      white-space: nowrap;
+    }
+    .staffing-hire-market-list td:nth-child(7),
+    .staffing-hire-market-list td:nth-child(8),
+    .staffing-hire-market-list td:nth-child(9),
+    .staffing-hire-market-list td:nth-child(10) {
+      white-space: nowrap;
+    }
+    .staffing-certifications-cell {
+      font-size: 12px;
+    }
+    .staffing-fact-value {
+      min-width: 0;
+    }
+    .pilot-stat-rating {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .pilot-stat-rating.compact {
+      gap: 6px;
+      font-size: 12px;
+    }
+    .pilot-stat-stars {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      line-height: 1;
+      font-size: 14px;
+    }
+    .pilot-stat-rating.compact .pilot-stat-stars {
+      font-size: 12px;
+    }
+    .pilot-stat-star {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      flex: 0 0 auto;
+      background: linear-gradient(90deg, #d4a73b 0%, #d4a73b var(--pilot-stat-fill, 0%), rgba(212, 167, 59, 0.24) var(--pilot-stat-fill, 0%), rgba(212, 167, 59, 0.24) 100%);
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2l2.97 6.63 7.03.61-5.3 4.73 1.56 7.03L12 17.27 5.74 21l1.56-7.03L2 9.24l7.03-.61z'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2l2.97 6.63 7.03.61-5.3 4.73 1.56 7.03L12 17.27 5.74 21l1.56-7.03L2 9.24l7.03-.61z'/%3E%3C/svg%3E");
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+      -webkit-mask-position: center;
+      mask-position: center;
+      -webkit-mask-size: contain;
+      mask-size: contain;
+    }
+    .pilot-stat-score {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .pilot-stat-rating.compact .pilot-stat-score {
+      font-size: 11px;
+    }
     .staffing-hire-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
       display: grid;
       place-items: center;
-      padding: 28px;
-      z-index: 4;
+      padding: 8px;
+      z-index: 12;
     }
     .staffing-hire-overlay[hidden] {
       display: none;
@@ -1077,19 +1169,19 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-hire-overlay-card {
       position: relative;
       z-index: 1;
-      width: min(1240px, calc(100% - 40px));
-      max-height: calc(100% - 48px);
+      width: min(1320px, calc(100vw - 16px));
+      max-height: calc(100vh - 16px);
       overflow: hidden;
     }
     .staffing-hire-overlay-card .panel-head {
-      padding: 14px 16px 10px;
+      padding: 10px 12px 6px;
     }
     .staffing-hire-overlay-card .panel-body {
-      padding: 14px 16px 16px;
+      padding: 8px 10px 10px;
     }
     .staffing-hire-detail-grid {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.95fr);
+      gap: 8px;
       align-content: start;
     }
     .staffing-hire-detail-grid > .staffing-detail-section {
@@ -1098,10 +1190,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       padding-top: 0;
       border-top: 0;
       align-content: start;
-      gap: 8px;
-      padding: 12px 14px;
+      gap: 6px;
+      padding: 8px 10px;
     }
-    .staffing-hire-detail-grid > .staffing-detail-section--comparison {
+    .staffing-hire-detail-grid > .staffing-detail-section--snapshot,
+    .staffing-hire-detail-grid > .staffing-detail-section--comparison,
+    .staffing-hire-detail-grid > .staffing-detail-section--coverage {
       grid-column: 1 / -1;
     }
     .staffing-hire-action-row {
@@ -1134,14 +1228,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
     }
-    .staffing-hire-detail-grid .staffing-detail-section--pricing .aircraft-fact-list {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 4px 16px;
-    }
     .staffing-hire-detail-grid .aircraft-fact-row {
-      grid-template-columns: 86px minmax(0, 1fr);
+      grid-template-columns: 124px minmax(0, 1fr);
       gap: 10px;
-      padding: 8px 0;
+      padding: 6px 0;
+      align-items: center;
+    }
+    .staffing-hire-overlay-card .staffing-detail-headline h3 {
+      font-size: clamp(28px, 2.6vw, 34px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
     }
     .staffing-hire-detail-grid .summary-item {
       padding: 10px 12px;
@@ -1158,14 +1254,123 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .summary-item strong { display: block; font-size: 18px; margin-top: 3px; }
     .staffing-comparison-card {
       display: grid;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      height: 100%;
+    }
+    .staffing-comparison-copy {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
       align-content: start;
+    }
+    .staffing-comparison-action {
+      justify-self: end;
+      align-self: center;
     }
     .staffing-hire-choice-form {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 10px;
+    }
+    .staffing-hire-choice-form--embedded {
+      display: grid;
+      gap: 8px;
+    }
+    .staffing-hire-choice-form--embedded button {
+      width: auto;
+      min-width: 180px;
+    }
+    .staffing-snapshot-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.96fr) minmax(0, 1.04fr);
+      gap: 10px;
+      align-items: start;
+    }
+    .staffing-compact-facts {
+      display: grid;
+      gap: 0;
+    }
+    .staffing-cert-hours-card {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .staffing-cert-hours-table {
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: collapse;
+    }
+    .staffing-cert-hours-table th,
+    .staffing-cert-hours-table td {
+      padding: 5px 6px;
+      border-top: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .staffing-cert-hours-table tbody tr:first-child th,
+    .staffing-cert-hours-table tbody tr:first-child td {
+      border-top: 0;
+    }
+    .staffing-cert-hours-table th {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-align: left;
+      text-transform: uppercase;
+    }
+    .staffing-cert-hours-table td {
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      text-align: right;
+    }
+    .staffing-cert-hours-table .is-muted {
+      color: var(--muted);
+      opacity: 0.85;
+    }
+    .staffing-stat-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .staffing-stat-card {
+      display: grid;
+      gap: 8px;
+      align-content: start;
+    }
+    .staffing-stat-card .pilot-stat-rating {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .staffing-stat-card .pilot-stat-rating.compact .pilot-stat-stars {
+      font-size: 14px;
+    }
+    .staffing-stat-card .pilot-stat-rating.compact .pilot-stat-score {
+      font-size: 12px;
+    }
+    .staffing-detail-note-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 6px;
+    }
+    .staffing-detail-note-list li {
+      color: var(--muted);
+      line-height: 1.25;
+    }
+    .staffing-detail-note-list li::marker {
+      color: var(--accent);
+    }
+    .staffing-coverage-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0 14px;
+    }
+    .staffing-coverage-strip .aircraft-fact-row {
+      grid-template-columns: 110px minmax(0, 1fr);
     }
     .event-list { display: grid; gap: 10px; }
     .event-item {
@@ -1727,9 +1932,27 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 18px;
       overflow: hidden;
     }
-    .aircraft-fleet-panel,
-    .aircraft-detail-panel {
+    .aircraft-market-stage {
+      position: relative;
       min-height: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    .aircraft-fleet-panel,
+    .aircraft-detail-panel,
+    .aircraft-market-panel {
+      min-height: 0;
+    }
+    .aircraft-market-panel {
+      height: 100%;
+      transition: filter 140ms ease, opacity 140ms ease, transform 140ms ease;
+    }
+    .aircraft-market-stage.overlay-open > .aircraft-market-panel {
+      filter: blur(7px) saturate(0.94);
+      opacity: 0.72;
+      transform: scale(0.994);
+      pointer-events: none;
+      user-select: none;
     }
     .aircraft-fleet-body {
       min-height: 0;
@@ -1763,6 +1986,29 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-row.selected td:first-child {
       box-shadow: inset 3px 0 0 var(--accent);
     }
+    .aircraft-market-listing {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+    .aircraft-market-listing-thumb {
+      margin: 0;
+      width: 72px;
+      height: 48px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .aircraft-market-listing-thumb img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: color-mix(in srgb, var(--panel-strong) 88%, #0d1822);
+    }
     .aircraft-row-button,
     body[data-theme="dark"] .aircraft-row-button {
       appearance: none;
@@ -1782,6 +2028,55 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-detail-body {
       min-height: 0;
       overflow: auto;
+    }
+    .aircraft-market-overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      z-index: 4;
+    }
+    .aircraft-market-overlay[hidden] {
+      display: none;
+    }
+    .aircraft-market-overlay-backdrop {
+      appearance: none;
+      position: absolute;
+      inset: 0;
+      border: 0;
+      border-radius: inherit;
+      margin: 0;
+      padding: 0;
+      background: rgba(6, 10, 16, 0.02);
+      box-shadow: none;
+      color: transparent;
+      font-size: 0;
+      line-height: 0;
+      backdrop-filter: blur(4px) saturate(0.96);
+      -webkit-backdrop-filter: blur(4px) saturate(0.96);
+      cursor: pointer;
+    }
+    body[data-theme="dark"] .aircraft-market-overlay-backdrop,
+    body[data-theme="forest"] .aircraft-market-overlay-backdrop {
+      background: rgba(6, 10, 16, 0.04);
+    }
+    .aircraft-market-overlay-card {
+      position: relative;
+      z-index: 1;
+      width: min(1380px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .aircraft-market-overlay-close {
+      position: static;
+      justify-self: end;
+      margin: 14px 14px 0 0;
+    }
+    .aircraft-market-overlay-card .aircraft-detail-body {
+      padding: 8px 18px 18px;
     }
     .aircraft-detail-stack {
       display: grid;
@@ -2278,6 +2573,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .aircraft-side-column {
         height: auto;
       }
+      .aircraft-market-listing {
+        grid-template-columns: 60px minmax(0, 1fr);
+        gap: 10px;
+      }
+      .aircraft-market-listing-thumb {
+        width: 60px;
+        height: 40px;
+      }
       .aircraft-fact-row {
         grid-template-columns: 1fr;
         gap: 6px;
@@ -2302,15 +2605,37 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         grid-template-columns: 1fr;
         gap: 6px;
       }
+      .aircraft-market-overlay {
+        padding: 12px;
+      }
+      .aircraft-market-overlay-card {
+        width: calc(100vw - 24px);
+        max-height: calc(100vh - 24px);
+      }
       .staffing-hire-overlay-card {
         width: min(980px, calc(100% - 32px));
       }
       .staffing-hire-detail-grid,
+      .staffing-snapshot-grid,
+      .staffing-stat-grid,
       .staffing-hire-detail-grid .staffing-comparison-grid,
-      .staffing-hire-detail-grid .staffing-detail-section--pricing .aircraft-fact-list {
+      .staffing-coverage-strip {
         grid-template-columns: 1fr;
       }
-      .staffing-hire-detail-grid > .staffing-detail-section--comparison {
+      .staffing-comparison-card {
+        grid-template-columns: 1fr;
+        align-items: start;
+      }
+      .staffing-comparison-action {
+        justify-self: stretch;
+      }
+      .staffing-hire-choice-form--embedded button {
+        width: 100%;
+        min-width: 0;
+      }
+      .staffing-hire-detail-grid > .staffing-detail-section--snapshot,
+      .staffing-hire-detail-grid > .staffing-detail-section--comparison,
+      .staffing-hire-detail-grid > .staffing-detail-section--coverage {
         grid-column: auto;
       }
     }

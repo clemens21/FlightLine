@@ -50,6 +50,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   let marketSort = payload.marketWorkspace.defaultSort;
   let selectedOfferId = payload.marketWorkspace.defaultSelectedOfferId;
   let acquisitionReview: AcquisitionReviewState | null = null;
+  let marketOverlayOpen = false;
   let fleetListScrollTop = 0;
   let marketListScrollTop = 0;
 
@@ -66,6 +67,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
 
   function render(): void {
     captureScrollState();
+    const previousSelectedOfferId = selectedOfferId;
     const fleetViewState = applyAircraftFleetViewState(payload.fleetWorkspace, {
       filters: fleetFilters,
       sort: fleetSort,
@@ -80,7 +82,16 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     selectedAircraftId = fleetViewState.selectedAircraftId;
     selectedOfferId = marketViewState.selectedOfferId;
     acquisitionReview = normalizeAcquisitionReview(acquisitionReview, marketViewState);
+    if (
+      marketOverlayOpen
+      && previousSelectedOfferId
+      && !marketViewState.visibleOffers.some((offer) => offer.aircraftOfferId === previousSelectedOfferId)
+    ) {
+      marketOverlayOpen = false;
+      acquisitionReview = null;
+    }
     host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview);
+    setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
     const fleetList = host.querySelector<HTMLElement>("[data-aircraft-scroll='fleet-list']");
     const marketList = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
     if (fleetList) {
@@ -89,6 +100,23 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     if (marketList) {
       marketList.scrollTop = marketListScrollTop;
     }
+  }
+
+  function setMarketOverlayVisible(isVisible: boolean): void {
+    const overlay = host.querySelector<HTMLElement>("[data-aircraft-market-overlay]");
+    const stage = host.querySelector<HTMLElement>("[data-aircraft-market-stage]");
+    if (!overlay || !stage) {
+      return;
+    }
+
+    overlay.hidden = !isVisible;
+    stage.classList.toggle("overlay-open", isVisible);
+  }
+
+  function closeMarketOverlay(): void {
+    marketOverlayOpen = false;
+    acquisitionReview = null;
+    render();
   }
 
   function handleClick(event: MouseEvent): void {
@@ -106,6 +134,9 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       }
       workspaceTab = nextWorkspace;
       acquisitionReview = null;
+      if (workspaceTab !== "market") {
+        marketOverlayOpen = false;
+      }
       storeWorkspace(payload.saveId, workspaceTab);
       render();
       return;
@@ -123,8 +154,16 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     if (selectOfferRow && !target.closest("form")) {
       event.preventDefault();
       selectedOfferId = selectOfferRow.dataset.marketSelect ?? selectedOfferId;
+      marketOverlayOpen = true;
       acquisitionReview = null;
       render();
+      setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
+      return;
+    }
+
+    if (target.closest("[data-aircraft-market-close]")) {
+      event.preventDefault();
+      closeMarketOverlay();
       return;
     }
 
@@ -147,7 +186,9 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
         ownershipType,
         selectedOptionId: defaultOptionIdForDeal(offer, ownershipType) ?? options[0]!.optionId,
       };
+      marketOverlayOpen = true;
       render();
+      setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
       return;
     }
 
@@ -239,14 +280,23 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     }
   }
 
+  function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && marketOverlayOpen) {
+      event.preventDefault();
+      closeMarketOverlay();
+    }
+  }
+
   host.addEventListener("click", handleClick);
   host.addEventListener("change", handleChange);
+  host.addEventListener("keydown", handleKeydown);
   render();
 
   return {
     destroy(): void {
       host.removeEventListener("click", handleClick);
       host.removeEventListener("change", handleChange);
+      host.removeEventListener("keydown", handleKeydown);
     },
   };
 }
@@ -335,18 +385,14 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
   `;
 }
 
-// Market workspace mirrors the fleet layout so acquisition research feels like the same tool, not a separate screen.
+// Market workspace keeps the market table primary and opens listing detail in an overlay so acquisition research stays focused.
 function renderMarketWorkspace(
   payload: AircraftTabPayload,
   viewState: ReturnType<typeof applyAircraftMarketViewState>,
   reviewState: AcquisitionReviewState | null,
 ): string {
-  const selectedListingTitle = viewState.selectedOffer
-    ? viewState.selectedOffer.modelDisplayName
-    : "Selected Listing";
-
   return `
-    <div class="aircraft-workbench">
+    <div class="aircraft-market-stage" data-aircraft-market-stage>
       <section class="panel aircraft-market-panel">
         <div class="panel-head">
           <h3>Aircraft Market</h3>
@@ -371,10 +417,20 @@ function renderMarketWorkspace(
           ${renderMarketTable(viewState)}
         </div>
       </section>
-      <section class="panel aircraft-detail-panel">
-        <div class="panel-head"><h3>${escapeHtml(selectedListingTitle)}</h3></div>
-        <div class="panel-body aircraft-detail-body">${renderMarketDetail(payload.saveId, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState)}</div>
-      </section>
+      <div class="aircraft-market-overlay" data-aircraft-market-overlay hidden>
+        <button
+          type="button"
+          class="aircraft-market-overlay-backdrop"
+          data-aircraft-market-close
+          aria-label="Close aircraft listing detail"
+        ></button>
+        <section class="panel aircraft-market-overlay-card" role="dialog" aria-modal="true" aria-label="Aircraft listing detail">
+          <button type="button" class="ghost-button aircraft-market-overlay-close" data-aircraft-market-close>Close</button>
+          <div class="panel-body aircraft-detail-body" data-aircraft-market-detail-body>
+            ${renderMarketDetail(payload.saveId, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState)}
+          </div>
+        </section>
+      </div>
     </div>
   `;
 }
@@ -474,7 +530,22 @@ function renderMarketRow(offer: AircraftMarketOfferView, selectedOfferId: string
   const isSelected = offer.aircraftOfferId === selectedOfferId;
   return `
     <tr class="aircraft-row ${isSelected ? "selected" : ""}" data-market-select="${escapeHtml(offer.aircraftOfferId)}">
-      <td><div class="meta-stack"><span class="route">${escapeHtml(offer.modelDisplayName)}</span><span class="muted">${escapeHtml(offer.registration)} | ${escapeHtml(offer.roleLabel)}</span></div></td>
+      <td>
+        <div class="aircraft-market-listing">
+          <figure class="aircraft-market-listing-thumb">
+            <img
+              src="${escapeHtml(offer.imageAssetPath)}"
+              alt="${escapeHtml(offer.modelDisplayName)}"
+              loading="lazy"
+              onerror="this.onerror=null;this.src='/assets/aircraft-images/fallback.svg';"
+            />
+          </figure>
+          <div class="meta-stack">
+            <span class="route">${escapeHtml(offer.modelDisplayName)}</span>
+            <span class="muted">${escapeHtml(offer.registration)} | ${escapeHtml(offer.roleLabel)}</span>
+          </div>
+        </div>
+      </td>
       <td>${renderLocationCell(offer.location)}</td>
       <td><div class="meta-stack"><div class="pill-row">${renderBadge(offer.conditionBand)}${renderBadge(offer.maintenanceState)}</div><span class="muted">${formatPercent(offer.conditionValue)} | ${formatHours(offer.hoursToService)} to service</span></div></td>
       <td><div class="meta-stack"><span>${escapeHtml(envelopeLabel(offer.maxPassengers, offer.maxCargoLb, offer.rangeNm))}</span><span class="muted">${escapeHtml(accessLabel(offer.minimumRunwayFt, offer.minimumAirportSize))}</span></div></td>

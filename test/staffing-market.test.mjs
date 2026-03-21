@@ -100,17 +100,55 @@ try {
       && typeof offer.candidateProfile?.qualificationLane === "string"
       && offer.candidateProfile.totalCareerHours > 0
       && offer.candidateProfile.primaryQualificationFamilyHours > 0
+      && Array.isArray(offer.candidateProfile.certificationHours)
+      && offer.candidateProfile.certificationHours.length >= 1
+      && offer.candidateProfile.certificationHours.every((entry) =>
+        offer.certifications.includes(entry.certificationCode)
+        && entry.hours > 0)
+      && offer.candidateProfile.certificationHours.reduce((total, entry) => total + entry.hours, 0)
+        <= offer.candidateProfile.totalCareerHours
       && offer.candidateProfile.companyHours === 0
       && typeof offer.pricingExplanation?.summary === "string"
       && Array.isArray(offer.pricingExplanation?.drivers)
-      && offer.pricingExplanation.drivers.length >= 4),
+      && offer.pricingExplanation.drivers.length >= 5),
     true,
   );
   assert.equal(
     directMarket.offers.every((offer) =>
       offer.pricingExplanation.drivers.some((driver) => driver.startsWith("Qualification lane:"))
+      && offer.pricingExplanation.drivers.some((driver) => driver.startsWith("Certifications:"))
       && offer.pricingExplanation.drivers.some((driver) => driver.startsWith("Total career time:"))
-      && offer.pricingExplanation.drivers.some((driver) => driver.startsWith("Lane time:"))),
+      && offer.pricingExplanation.drivers.some((driver) => driver.startsWith("Primary lane time:"))
+      && offer.pricingExplanation.drivers.some((driver) => driver.startsWith("Certification time:"))),
+    true,
+  );
+  assert.equal(
+    directMarket.offers.some((offer) => offer.certifications.length > 1),
+    true,
+  );
+  assert.equal(
+    findCandidatePairs(directMarket).some((pair) => pair.directOffer.certifications.length === 1),
+    true,
+  );
+  assert.equal(
+    findCandidatePairs(directMarket).some((pair) => pair.directOffer.certifications.length >= 2),
+    true,
+  );
+  assert.equal(
+    findCandidatePairs(directMarket).every((pair) => {
+      const totalCareerHours = pair.directOffer.candidateProfile.totalCareerHours;
+      const certificationCount = pair.directOffer.certifications.length;
+
+      if (totalCareerHours <= 1_500) {
+        return certificationCount <= 2;
+      }
+
+      if (totalCareerHours <= 2_800) {
+        return certificationCount <= 3;
+      }
+
+      return true;
+    }),
     true,
   );
 
@@ -229,6 +267,75 @@ try {
   assert.ok(reloadedDirectPilot);
   assert.deepEqual(reloadedDirectPilot.candidateProfile, selectedDirectOffer.candidateProfile);
   assert.equal(reloadedDirectPilot.sourceCandidateProfileId, selectedDirectOffer.candidateProfileId);
+
+  const staleOfferSaveId = uniqueSaveId("staffing_market_stale_offer");
+  const staleOfferStartedAtUtc = await createCompanySave(backend, staleOfferSaveId, {
+    startedAtUtc: "2026-03-16T12:00:00.000Z",
+    startingCashAmount: 10_000_000,
+  });
+  const staleOfferRefreshResult = await refreshStaffingMarket(backend, staleOfferSaveId, staleOfferStartedAtUtc, "bootstrap");
+  assert.equal(staleOfferRefreshResult.success, true);
+
+  const staleOfferMarketBeforeAdvance = await backend.loadActiveStaffingMarket(staleOfferSaveId);
+  assert.ok(staleOfferMarketBeforeAdvance);
+  const staleOfferPair = findCandidatePairs(staleOfferMarketBeforeAdvance).find((pair) => pair.directOffer && pair.contractOffer);
+  assert.ok(staleOfferPair?.directOffer);
+  const staleDirectOffer = staleOfferPair.directOffer;
+  const staleOfferAdvanceTargetUtc = "2026-03-16T18:00:00.000Z";
+  const staleOfferAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${staleOfferSaveId}_advance_after_market_generation`,
+    saveId: staleOfferSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: staleOfferStartedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: staleOfferAdvanceTargetUtc,
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(staleOfferAdvanceResult.success, true, staleOfferAdvanceResult.hardBlockers?.[0] ?? "Expected stale-offer save to advance time.");
+
+  const staleOfferCompanyAfterAdvance = await backend.loadCompanyContext(staleOfferSaveId);
+  assert.ok(staleOfferCompanyAfterAdvance);
+  assert.equal(staleOfferCompanyAfterAdvance.currentTimeUtc, staleOfferAdvanceTargetUtc);
+
+  const staleOfferMarketAfterAdvance = await backend.loadActiveStaffingMarket(staleOfferSaveId);
+  assert.ok(staleOfferMarketAfterAdvance);
+  const staleOfferAfterAdvance = staleOfferMarketAfterAdvance.offers.find((offer) => offer.staffingOfferId === staleDirectOffer.staffingOfferId);
+  assert.ok(staleOfferAfterAdvance);
+  assert.equal(staleOfferAfterAdvance.candidateState, "available_now");
+  assert.equal(staleOfferAfterAdvance.startsAtUtc, staleDirectOffer.startsAtUtc);
+
+  const staleOfferHireResult = await backend.dispatch({
+    commandId: `cmd_${staleOfferSaveId}_hire_stale_available_candidate`,
+    saveId: staleOfferSaveId,
+    commandName: "ActivateStaffingPackage",
+    issuedAtUtc: staleOfferAdvanceTargetUtc,
+    actorType: "player",
+    payload: {
+      laborCategory: staleOfferAfterAdvance.laborCategory,
+      employmentModel: staleOfferAfterAdvance.employmentModel,
+      qualificationGroup: staleOfferAfterAdvance.qualificationGroup,
+      coverageUnits: staleOfferAfterAdvance.coverageUnits,
+      fixedCostAmount: staleOfferAfterAdvance.fixedCostAmount,
+      variableCostRate: staleOfferAfterAdvance.variableCostRate,
+      startsAtUtc: staleOfferAfterAdvance.startsAtUtc,
+      endsAtUtc: staleOfferAfterAdvance.endsAtUtc,
+      sourceOfferId: staleOfferAfterAdvance.staffingOfferId,
+    },
+  });
+  assert.equal(
+    staleOfferHireResult.success,
+    true,
+    staleOfferHireResult.hardBlockers?.[0] ?? "Expected stale available-now pilot candidate hire to succeed.",
+  );
+
+  const staleOfferStaffingState = await backend.loadStaffingState(staleOfferSaveId);
+  assert.ok(staleOfferStaffingState);
+  const staleOfferPackage = staleOfferStaffingState.staffingPackages.find((entry) => entry.sourceOfferId === staleOfferAfterAdvance.staffingOfferId);
+  assert.ok(staleOfferPackage);
+  assert.equal(staleOfferPackage.startsAtUtc, staleOfferAdvanceTargetUtc);
+  assert.equal(staleOfferPackage.status, "active");
 
   const saveId = uniqueSaveId("staffing_market_contract");
   const startedAtUtc = await createCompanySave(backend, saveId, {

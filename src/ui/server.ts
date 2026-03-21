@@ -59,6 +59,7 @@ const saveTabs = [
     { id: "dispatch", label: "Dispatch" },
     { id: "activity", label: "Activity" },
 ];
+const pilotCertificationDisplayOrder = ["SEPL", "SEPS", "MEPL", "MEPS", "JET", "JUMBO"];
 const starterAircraftOptions = [
     { modelId: "cessna_208b_grand_caravan_ex_passenger", label: "Cessna Caravan Passenger", registrationPrefix: "N208" },
     { modelId: "cessna_208b_grand_caravan_ex_cargo", label: "Cessna Caravan Cargo", registrationPrefix: "N20C" },
@@ -186,6 +187,10 @@ function renderAirportDisplay(airportId) {
     const airport = describeAirport(airportId);
     return `<div class="meta-stack"><span class="route">${escapeHtml(airport.code)} | ${escapeHtml(airport.primaryLabel)}</span>${airport.secondaryLabel ? `<span class="muted">${escapeHtml(airport.secondaryLabel)}</span>` : ""}</div>`;
 }
+function renderCompactAirportDisplay(airportId) {
+    const airport = describeAirport(airportId);
+    return `<span class="route">${escapeHtml(airport.code)} | ${escapeHtml(airport.primaryLabel)}</span>`;
+}
 function renderRouteDisplay(originAirportId, destinationAirportId) {
     const origin = describeAirport(originAirportId);
     const destination = describeAirport(destinationAirportId);
@@ -256,14 +261,55 @@ function formatContractEndLabel(endsAtUtc) {
 function formatPilotHours(hours) {
     return `${formatNumber(hours ?? 0)}h`;
 }
-function formatPilotStatBand(statBand) {
-    if (typeof statBand !== "string" || statBand.length === 0) {
-        return "Unknown";
+function normalizePilotStatScore(statValue) {
+    if (typeof statValue === "number" && Number.isFinite(statValue)) {
+        return Math.max(0, Math.min(10, Math.round(statValue)));
     }
-    return statBand.charAt(0).toUpperCase() + statBand.slice(1);
+    if (typeof statValue === "string") {
+        switch (statValue) {
+            case "developing":
+                return 2;
+            case "solid":
+                return 5;
+            case "strong":
+                return 7;
+            case "exceptional":
+                return 9;
+            default:
+                return 0;
+        }
+    }
+    return 0;
+}
+function renderPilotStatRating(statValue, options = {}) {
+    const score = normalizePilotStatScore(statValue);
+    const starFills = Array.from({ length: 5 }, (_, index) => {
+        const threshold = index * 2;
+        if (score >= threshold + 2) {
+            return 100;
+        }
+        if (score === threshold + 1) {
+            return 50;
+        }
+        return 0;
+    });
+    const compactClass = options.compact ? " compact" : "";
+    const metricAttribute = options.metric ? ` data-pilot-stat-rating="${escapeHtml(options.metric)}"` : "";
+    const ariaLabel = options.label
+        ? `${options.label} ${score}/10`
+        : `${score}/10`;
+    return `<span class="pilot-stat-rating${compactClass}"${metricAttribute} data-pilot-stat-score="${escapeHtml(String(score))}" aria-label="${escapeHtml(ariaLabel)}"><span class="pilot-stat-stars" aria-hidden="true">${starFills.map((fill) => `<span class="pilot-stat-star" data-pilot-stat-star-fill="${escapeHtml(String(fill))}" style="--pilot-stat-fill:${escapeHtml(String(fill))}%"></span>`).join("")}</span><span class="pilot-stat-score">${escapeHtml(`${score}/10`)}</span></span>`;
 }
 function candidateDetailId(offer) {
     return offer?.candidateProfileId ?? offer?.staffingOfferId ?? "";
+}
+function describePilotHirePrice(offer) {
+    if (!offer) {
+        return "Unavailable";
+    }
+    return offer.employmentModel === "contract_hire"
+        ? `${formatMoney(offer.fixedCostAmount)} + ${formatMoney(offer.variableCostRate ?? 0)}/hr`
+        : `${formatMoney(offer.fixedCostAmount)}/mo`;
 }
 function resolveCandidateGroupPortraitSeed(candidate) {
     return resolveCandidatePortraitSeed(candidate.directOffer ?? candidate.contractOffer ?? {
@@ -533,15 +579,17 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
     const selectedCandidateId = candidateGroups.some((candidate) => candidate.candidateId === options.selectedCandidateId)
         ? options.selectedCandidateId
         : candidateGroups[0]?.candidateId ?? "";
-    return `<div class="aircraft-table-wrap table-wrap staffing-hire-market-list" data-pilot-candidate-market data-staffing-scroll-region="hire:list"><table><thead><tr><th>Pilot</th><th>Lane</th><th>Total hours</th><th>Lane hours</th><th>Base</th><th>Starting price</th></tr></thead><tbody>${candidateGroups.map((candidate) => {
+    return `<div class="aircraft-table-wrap table-wrap staffing-hire-market-list" data-pilot-candidate-market data-staffing-scroll-region="hire:list"><table><thead><tr><th>Pilot</th><th>Base</th><th>Certification(s)</th><th>Total hours</th><th>Reliability</th><th>Stress</th><th>Procedure</th><th>Training</th><th>Direct hire</th><th>Contract hire</th></tr></thead><tbody>${candidateGroups.map((candidate) => {
         const isSelected = candidate.candidateId === selectedCandidateId;
         const portraitSeed = resolveCandidateGroupPortraitSeed(candidate);
-        const laneLabel = candidate.candidateProfile?.qualificationLane ?? humanize(candidate.qualificationGroup);
-        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(candidate.candidateId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(candidate.candidateId)}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<div class="meta-stack"><strong>${escapeHtml(candidate.displayName)}</strong></div></div></td><td><div class="meta-stack"><span>${escapeHtml(laneLabel)}</span><span class="muted">${escapeHtml(formatPilotCertificationList(candidate.certifications ?? []))}</span></div></td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.totalCareerHours ?? 0))}</td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.primaryQualificationFamilyHours ?? 0))}</td><td>${candidate.currentAirportId ? renderAirportDisplay(candidate.currentAirportId) : `<span class="muted">Unassigned base</span>`}</td><td>${escapeHtml(describeCandidateStartingPrice(candidate))}</td></tr>`;
+        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(candidate.candidateId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(candidate.candidateId)}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<strong>${escapeHtml(candidate.displayName)}</strong></div></td><td>${candidate.currentAirportId ? renderCompactAirportDisplay(candidate.currentAirportId) : `<span class="muted">Unassigned</span>`}</td><td class="staffing-certifications-cell">${escapeHtml(formatPilotCertificationList(candidate.certifications ?? []))}</td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.totalCareerHours ?? 0))}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.operationalReliability, { compact: true, label: "Operational reliability", metric: "operationalReliability" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.stressTolerance, { compact: true, label: "Stress tolerance", metric: "stressTolerance" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.procedureDiscipline, { compact: true, label: "Procedure discipline", metric: "procedureDiscipline" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.trainingAptitude, { compact: true, label: "Training aptitude", metric: "trainingAptitude" })}</td><td>${escapeHtml(describePilotHirePrice(candidate.directOffer))}</td><td>${escapeHtml(describePilotHirePrice(candidate.contractOffer))}</td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
 function renderStaffingFactRow(label, value, detail = "") {
     return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><strong>${escapeHtml(value)}</strong>${detail ? `<span class="muted">${escapeHtml(detail)}</span>` : ""}</div></div>`;
+}
+function renderStaffingFactMarkupRow(label, valueMarkup, detail = "") {
+    return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><div class="staffing-fact-value">${valueMarkup}</div>${detail ? `<span class="muted">${escapeHtml(detail)}</span>` : ""}</div></div>`;
 }
 function renderStaffingFactListRow(label, entries) {
     if (entries.length === 0) {
@@ -549,18 +597,29 @@ function renderStaffingFactListRow(label, entries) {
     }
     return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><ul class="aircraft-fact-list">${entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ul></div></div>`;
 }
-function renderHireCoverageRows(coverage, qualificationGroup, namedPilots, staffingState) {
+function summarizePilotAvailabilityMix(activeMatchingPilots) {
+    const statusBuckets = [
+        { key: "available", count: activeMatchingPilots.filter((pilot) => pilot.availabilityState === "ready").length },
+        { key: "planned", count: activeMatchingPilots.filter((pilot) => pilot.availabilityState === "reserved").length },
+        { key: "flying", count: activeMatchingPilots.filter((pilot) => pilot.availabilityState === "flying").length },
+        { key: "training", count: activeMatchingPilots.filter((pilot) => pilot.availabilityState === "training").length },
+        { key: "traveling", count: activeMatchingPilots.filter((pilot) => pilot.availabilityState === "traveling").length },
+        { key: "resting", count: activeMatchingPilots.filter((pilot) => pilot.availabilityState === "resting").length },
+    ];
+    const visibleBuckets = statusBuckets.filter((bucket, index) => bucket.count > 0 || index === 0);
+    return visibleBuckets.map((bucket) => `${formatNumber(bucket.count)} ${bucket.key}`).join(" | ");
+}
+function renderHireCoverageRows(coverage, qualificationGroup, namedPilots, staffingState, options = {}) {
     const laneSummary = findPilotCoverageSummary(coverage, qualificationGroup);
     const matchingPilots = namedPilots.filter((pilot) => pilot.qualificationGroup === qualificationGroup);
     const activeMatchingPilots = matchingPilots.filter((pilot) => pilot.packageStatus === "active");
-    const readyMatchingPilots = activeMatchingPilots.filter((pilot) => pilot.availabilityState === "ready");
-    return `${renderStaffingFactRow("Pilot lane coverage", laneSummary ? `${formatNumber(laneSummary.activeCoverageUnits)} active | ${formatNumber(laneSummary.pendingCoverageUnits)} pending` : "No pilot coverage", `This hire adds one named pilot to the ${humanize(qualificationGroup)} lane.`)}${renderStaffingFactRow("Roster readiness", `${formatNumber(readyMatchingPilots.length)} ready | ${formatNumber(Math.max(activeMatchingPilots.length - readyMatchingPilots.length, 0))} committed`, `${formatNumber(activeMatchingPilots.length)} active named pilots currently sit in this lane.`)}${renderStaffingFactRow("Recurring salary load", formatMoney(staffingState?.totalMonthlyFixedCostAmount ?? 0), "Current monthly staffing load across active recurring labor only.")}`;
+    const availabilityMix = summarizePilotAvailabilityMix(activeMatchingPilots);
+    const compact = options.compact === true;
+    const detail = (value) => compact ? "" : value;
+    return `${renderStaffingFactRow("Qualified pilots", laneSummary ? `${formatNumber(laneSummary.activeCoverageUnits)} active | ${formatNumber(laneSummary.pendingCoverageUnits)} pending` : "No pilot coverage", detail("This hire adds one named pilot who can cover this aircraft type."))}${renderStaffingFactRow("Current pilot status", availabilityMix, detail(`${formatNumber(activeMatchingPilots.length)} active named pilots currently cover this aircraft type.`))}${renderStaffingFactRow("Current monthly payroll", formatMoney(staffingState?.totalMonthlyFixedCostAmount ?? 0), detail("Current monthly staffing load across active recurring labor only."))}`;
 }
 function renderHireComparisonCard(saveId, tabId, candidate, offer, context) {
-    void saveId;
-    void tabId;
     void candidate;
-    void context;
     if (!offer) {
         return `<section class="summary-item staffing-comparison-card"><div class="eyebrow">Unavailable</div><strong>Not listed</strong><span class="muted">This hiring path is not available in the current market window.</span></section>`;
     }
@@ -571,45 +630,141 @@ function renderHireComparisonCard(saveId, tabId, candidate, offer, context) {
         ? formatContractEndLabel(offer.endsAtUtc)
         : "No fixed contract end";
     const trainingLine = offer.employmentModel === "contract_hire"
-        ? "Certification training blocked in this slice"
-        : "Certification training allowed";
+        ? "Training blocked"
+        : "Training allowed";
     const headline = offer.employmentModel === "contract_hire"
         ? formatMoney(offer.fixedCostAmount)
         : `${formatMoney(offer.fixedCostAmount)}/mo`;
-    return `<section class="summary-item staffing-comparison-card" data-staffing-hire-path="${escapeHtml(offer.employmentModel)}"><div class="eyebrow">${escapeHtml(formatEmploymentModelLabel(offer.employmentModel))}</div><strong>${escapeHtml(headline)}</strong><div class="meta-stack"><span>${escapeHtml(recurringLine)}</span><span class="muted">${escapeHtml(contractTermLine)}</span><span class="muted">${escapeHtml(trainingLine)}</span></div></section>`;
+    const actionMarkup = renderHireChoiceAction(saveId, tabId, offer, context, { showPriceLabel: false });
+    return `<section class="summary-item staffing-comparison-card" data-staffing-hire-path="${escapeHtml(offer.employmentModel)}"><div class="staffing-comparison-copy"><div class="eyebrow">${escapeHtml(formatEmploymentModelLabel(offer.employmentModel))}</div><strong>${escapeHtml(headline)}</strong><div class="meta-stack"><span>${escapeHtml(recurringLine)}</span><span class="muted">${escapeHtml(contractTermLine)}</span><span class="muted">${escapeHtml(trainingLine)}</span></div></div>${actionMarkup ? `<div class="staffing-comparison-action">${actionMarkup}</div>` : ""}</section>`;
 }
-function renderHireChoiceAction(saveId, tabId, offer, context) {
+function renderHireChoiceAction(saveId, tabId, offer, context, options = {}) {
     if (!offer) {
         return "";
     }
     const actionPath = context.api
         ? `/api/save/${encodeURIComponent(saveId)}/actions/hire-pilot-candidate`
         : "/actions/hire-pilot-candidate";
+    const showPriceLabel = options.showPriceLabel !== false;
     const priceLabel = offer.employmentModel === "contract_hire"
         ? `${formatMoney(offer.fixedCostAmount)} + ${formatMoney(offer.variableCostRate ?? 0)}/hr`
         : `${formatMoney(offer.fixedCostAmount)}/mo`;
     const buttonLabel = offer.employmentModel === "contract_hire"
-        ? "Choose contract hire"
-        : "Choose direct hire";
-    return `<form method="post" action="${actionPath}" class="market-confirm-form staffing-hire-choice-form" ${context.api ? "data-api-form" : ""}>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="staffingOfferId" value="${escapeHtml(offer.staffingOfferId)}" /><button type="submit" data-pending-label="Hiring..." data-pilot-candidate-hire="${escapeHtml(offer.staffingOfferId)}">${escapeHtml(buttonLabel)}</button><span class="muted">${escapeHtml(priceLabel)}</span></form>`;
+        ? "Hire on contract"
+        : "Hire direct";
+    return `<form method="post" action="${actionPath}" class="market-confirm-form staffing-hire-choice-form${showPriceLabel ? "" : " staffing-hire-choice-form--embedded"}" ${context.api ? "data-api-form" : ""}>${renderHiddenContext(saveId, tabId)}<input type="hidden" name="staffingOfferId" value="${escapeHtml(offer.staffingOfferId)}" /><button type="submit" data-pending-label="Hiring..." data-pilot-candidate-hire="${escapeHtml(offer.staffingOfferId)}">${escapeHtml(buttonLabel)}</button>${showPriceLabel ? `<span class="muted">${escapeHtml(priceLabel)}</span>` : ""}</form>`;
 }
-function resolveCandidatePricingSummary(candidate) {
-    const directPricing = candidate.directOffer?.pricingExplanation;
-    const contractPricing = candidate.contractOffer?.pricingExplanation;
-    if (directPricing && contractPricing) {
-        const sharedDrivers = directPricing.drivers.filter((driver) => !driver.startsWith("Operational profile:"));
-        const usageBillingDriver = contractPricing.drivers.find((driver) => driver.startsWith("Usage billing anchor:"));
-        return {
-            summary: "Both hire paths use visible lane complexity, flight time, and operational profile. Direct hire is recurring salary; contract hire adds an engagement fee plus completed flight-leg billing.",
-            drivers: usageBillingDriver ? [...sharedDrivers, usageBillingDriver] : sharedDrivers,
-        };
+function certificationTierRank(certificationCode) {
+    switch (certificationCode) {
+        case "JUMBO":
+            return 4;
+        case "JET":
+            return 3;
+        case "MEPL":
+        case "MEPS":
+            return 2;
+        case "SEPL":
+        case "SEPS":
+        default:
+            return 1;
     }
-    const pricingExplanation = directPricing ?? contractPricing;
-    return {
-        summary: pricingExplanation?.summary
-            ?? "Pricing is grounded in visible lane complexity, flight time, and operational profile.",
-        drivers: pricingExplanation?.drivers ?? [],
-    };
+}
+function describePilotStatMeaning(statLabel) {
+    switch (statLabel) {
+        case "stress tolerance":
+            return "which means this pilot should hold up better when schedules get tight or operations start slipping.";
+        case "operational reliability":
+            return "which means this pilot should be a steadier choice when you need dependable day-to-day coverage.";
+        case "procedure discipline":
+            return "which means this pilot should be more consistent about following operational process cleanly.";
+        case "training aptitude":
+            return "which means this pilot should pick up recurrent and certification training faster than a weaker profile.";
+        default:
+            return "which gives this pilot a stronger visible operating profile than a flat-average candidate.";
+    }
+}
+function resolveVisibleCertificationHours(profile, certifications = []) {
+    const certificationHoursByCode = new Map((profile?.certificationHours ?? []).map((entry) => [
+        entry.certificationCode,
+        Math.max(0, Math.round(entry.hours ?? 0)),
+    ]));
+    const ownedCertifications = new Set(certifications ?? []);
+    return pilotCertificationDisplayOrder.map((certificationCode) => ({
+        certificationCode,
+        hours: certificationHoursByCode.get(certificationCode) ?? 0,
+        owned: ownedCertifications.has(certificationCode),
+    }));
+}
+function renderCandidateCertificationList(certifications) {
+    const orderedOwnedCertifications = pilotCertificationDisplayOrder.filter((certificationCode) => (certifications ?? []).includes(certificationCode));
+    if (orderedOwnedCertifications.length === 0) {
+        return "No certifications listed";
+    }
+    return orderedOwnedCertifications.join(", ");
+}
+function renderCandidateCertificationHoursTable(profile, certifications) {
+    const certificationHours = resolveVisibleCertificationHours(profile, certifications);
+    const certificationHoursByCode = new Map(certificationHours.map((entry) => [entry.certificationCode, entry]));
+    const certificationRows = [
+        pilotCertificationDisplayOrder.slice(0, 3),
+        pilotCertificationDisplayOrder.slice(3, 6),
+    ];
+    return `<div class="staffing-cert-hours-card" data-staffing-cert-hours><div class="eyebrow">Certification hours</div><table class="staffing-cert-hours-table"><tbody>${certificationRows.map((row) => `<tr>${row.map((certificationCode) => {
+        const entry = certificationHoursByCode.get(certificationCode);
+        const mutedClass = entry && (entry.owned || entry.hours > 0) ? "" : " is-muted";
+        return `<th scope="row" class="${mutedClass.trim()}">${escapeHtml(certificationCode)}</th><td class="${mutedClass.trim()}">${escapeHtml(formatPilotHours(entry?.hours ?? 0))}</td>`;
+    }).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+function renderCandidateOperationalProfileGrid(profile) {
+    if (!profile) {
+        return `<div class="empty-state compact"><strong>Operational profile unavailable.</strong><div class="muted">Visible reliability and training signals are not available for this candidate.</div></div>`;
+    }
+    const statCards = [
+        { label: "Operational reliability", metric: "operationalReliability", value: profile.statProfile.operationalReliability },
+        { label: "Stress tolerance", metric: "stressTolerance", value: profile.statProfile.stressTolerance },
+        { label: "Procedure discipline", metric: "procedureDiscipline", value: profile.statProfile.procedureDiscipline },
+        { label: "Training aptitude", metric: "trainingAptitude", value: profile.statProfile.trainingAptitude },
+    ];
+    return `<div class="staffing-stat-grid">${statCards.map((stat) => `<section class="summary-item compact staffing-stat-card" data-staffing-stat-card="${escapeHtml(stat.metric)}"><div class="eyebrow">${escapeHtml(stat.label)}</div>${renderPilotStatRating(stat.value, { label: stat.label, metric: stat.metric, compact: true })}</section>`).join("")}</div>`;
+}
+function resolveCandidateStrengthsAndWeaknesses(candidate) {
+    const profile = candidate.candidateProfile;
+    if (!profile) {
+        return ["Visible candidate profile data is incomplete for this market entry."];
+    }
+    const certificationCount = (candidate.certifications ?? []).length;
+    const statEntries = [
+        { label: "operational reliability", score: normalizePilotStatScore(profile.statProfile.operationalReliability) },
+        { label: "stress tolerance", score: normalizePilotStatScore(profile.statProfile.stressTolerance) },
+        { label: "procedure discipline", score: normalizePilotStatScore(profile.statProfile.procedureDiscipline) },
+        { label: "training aptitude", score: normalizePilotStatScore(profile.statProfile.trainingAptitude) },
+    ].sort((left, right) => right.score - left.score || left.label.localeCompare(right.label));
+    const highestStatScore = statEntries[0]?.score ?? 0;
+    const strongestStats = statEntries.filter((entry) => entry.score === highestStatScore).slice(0, 2);
+    const primaryStrongestStat = strongestStats[0];
+    const secondaryStrongestStat = strongestStats[1];
+    const weakestStat = [...statEntries].sort((left, right) => left.score - right.score || left.label.localeCompare(right.label))[0];
+    const certificationHours = resolveVisibleCertificationHours(profile, candidate.certifications ?? [])
+        .filter((entry) => entry.hours > 0)
+        .sort((left, right) => right.hours - left.hours || certificationTierRank(right.certificationCode) - certificationTierRank(left.certificationCode));
+    const strongestExperienceLine = certificationHours.length > 0
+        ? `Strength: best logged experience is ${certificationHours.slice(0, 2).map((entry) => `${entry.certificationCode} ${formatPilotHours(entry.hours)}`).join(" and ")} across ${formatPilotHours(profile.totalCareerHours)} total career time.`
+        : `Strength: ${formatPilotHours(profile.totalCareerHours)} total career time is visible even though the certification-hour breakout is still sparse.`;
+    const highTierTime = certificationHours.find((entry) => entry.certificationCode === "JUMBO" || entry.certificationCode === "JET");
+    const weaknessLine = weakestStat && weakestStat.score <= 4
+        ? `Weakness: ${humanize(weakestStat.label)} is only ${weakestStat.score}/10, so this pilot may be less dependable there than their strongest visible profile signal.`
+        : certificationCount <= 1
+            ? `Weakness: this candidate only carries ${certificationCount} active certification${certificationCount === 1 ? "" : "s"}, so retraining may be needed as your fleet broadens.`
+            : highTierTime
+                ? `Weakness: ${highTierTime.certificationCode} time and ${certificationCount} active certifications push this candidate into a more expensive market band.`
+                : `Weakness: there is no standout high-tier certification time yet, so this profile is broader than elite.`;
+    return [
+        primaryStrongestStat
+            ? `Strength: ${humanize(primaryStrongestStat.label)} is ${primaryStrongestStat.score}/10, ${describePilotStatMeaning(primaryStrongestStat.label)}${secondaryStrongestStat ? ` Also strong in ${humanize(secondaryStrongestStat.label)} ${secondaryStrongestStat.score}/10.` : ""}`
+            : "Strength: no standout operational profile signal is visible yet.",
+        strongestExperienceLine,
+        weaknessLine,
+    ];
 }
 function preferredNamedPilotId(namedPilots) {
     return namedPilots.find((pilot) => pilot.packageStatus === "active" && pilot.availabilityState === "ready")?.namedPilotId
@@ -828,25 +983,17 @@ function renderHireCandidateDetail(saveId, tabId, candidate, context) {
     const primaryOffer = directOffer ?? contractOffer;
     const currentAirport = candidate.currentAirportId ? describeAirport(candidate.currentAirportId) : null;
     const availabilityLabel = formatStaffingAvailabilityLabel(primaryOffer?.candidateState ?? "available_now", primaryOffer?.startsAtUtc);
-    const qualificationLane = profile?.qualificationLane ?? humanize(candidate.qualificationGroup);
-    const pricingSummaryView = resolveCandidatePricingSummary(candidate);
-    const pricingSummary = pricingSummaryView.summary;
-    const pricingDrivers = pricingSummaryView.drivers;
-    const operationalProfileRows = profile
-        ? renderStaffingFactRow("Operational reliability", formatPilotStatBand(profile.statProfile.operationalReliability))
-            + renderStaffingFactRow("Stress tolerance", formatPilotStatBand(profile.statProfile.stressTolerance))
-            + renderStaffingFactRow("Procedure discipline", formatPilotStatBand(profile.statProfile.procedureDiscipline))
-            + renderStaffingFactRow("Training aptitude", formatPilotStatBand(profile.statProfile.trainingAptitude))
-        : renderStaffingFactRow("Operational profile", "Not available");
+    const whyHireLines = resolveCandidateStrengthsAndWeaknesses(candidate);
     const comparisonCards = [directOffer, contractOffer]
         .filter((offer) => Boolean(offer))
         .map((offer) => renderHireComparisonCard(saveId, tabId, candidate, offer, context))
         .join("");
-    const hireChoiceActions = [directOffer, contractOffer]
-        .filter((offer) => Boolean(offer))
-        .map((offer) => renderHireChoiceAction(saveId, tabId, offer, context))
-        .join("");
-    return `<div class="aircraft-detail-stack" data-staffing-selected-detail="hire"><section class="aircraft-facts-card"><div class="staffing-detail-section"><div class="eyebrow">Identity brief</div><div class="aircraft-facts-list">${renderStaffingFactRow("Qualification lane", qualificationLane) + renderStaffingFactRow("Base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned base") + renderStaffingFactRow("Availability", availabilityLabel)}</div></div><div class="staffing-detail-section"><div class="eyebrow">Flight profile</div><div class="aircraft-facts-list">${renderStaffingFactRow("Total career hours", formatPilotHours(profile?.totalCareerHours ?? 0)) + renderStaffingFactRow("Primary lane hours", formatPilotHours(profile?.primaryQualificationFamilyHours ?? 0), qualificationLane) + renderStaffingFactRow("Company hours", formatPilotHours(profile?.companyHours ?? 0), "Logged with your airline.")}</div></div><div class="staffing-detail-section"><div class="eyebrow">Certifications</div><div class="aircraft-facts-list">${renderStaffingFactRow("Certifications", formatPilotCertificationList(candidate.certifications ?? []))}</div></div><div class="staffing-detail-section"><div class="eyebrow">Operational profile</div><div class="aircraft-facts-list">${operationalProfileRows}</div></div><div class="staffing-detail-section"><div class="eyebrow">Direct versus contract</div><div class="summary-list staffing-comparison-grid">${comparisonCards}</div></div><div class="staffing-detail-section"><div class="eyebrow">Pricing summary</div><div class="aircraft-facts-list">${renderStaffingFactRow("Summary", pricingSummary) + renderStaffingFactListRow("Visible drivers", pricingDrivers)}</div></div><div class="staffing-detail-section"><div class="eyebrow">Coverage impact</div><div class="aircraft-facts-list">${renderHireCoverageRows(context.coverage, candidate.qualificationGroup, context.namedPilots, context.staffingState)}</div></div><div class="staffing-detail-section staffing-hire-action-row"><div class="eyebrow">Choose hire path</div><div class="meta-stack">${hireChoiceActions}</div></div></section></div>`;
+    const pilotSnapshotRows = renderStaffingFactRow("Base", currentAirport ? `${currentAirport.code} | ${currentAirport.primaryLabel}` : "Unassigned base")
+        + renderStaffingFactRow("Availability", availabilityLabel)
+        + renderStaffingFactRow("Total career hours", formatPilotHours(profile?.totalCareerHours ?? 0));
+    const snapshotMarkup = `<div class="staffing-snapshot-grid"><div class="staffing-snapshot-brief"><div class="aircraft-facts-list staffing-compact-facts">${pilotSnapshotRows}${renderStaffingFactRow("Certifications", renderCandidateCertificationList(candidate.certifications ?? []))}</div></div>${renderCandidateCertificationHoursTable(profile, candidate.certifications ?? [])}</div>`;
+    const whyHireMarkup = `<ul class="staffing-detail-note-list" data-staffing-strengths-weaknesses>${whyHireLines.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+    return `<div class="aircraft-detail-stack staffing-hire-detail-grid" data-staffing-selected-detail="hire"><section class="aircraft-facts-card staffing-detail-section staffing-detail-section--snapshot"><div class="eyebrow">Pilot snapshot</div>${snapshotMarkup}</section><section class="aircraft-facts-card staffing-detail-section staffing-detail-section--comparison"><div class="eyebrow">Direct versus contract</div><div class="summary-list staffing-comparison-grid">${comparisonCards}</div></section><section class="aircraft-facts-card staffing-detail-section staffing-detail-section--profile"><div class="eyebrow">Operational profile</div>${renderCandidateOperationalProfileGrid(profile)}</section><section class="aircraft-facts-card staffing-detail-section staffing-detail-section--why-hire"><div class="eyebrow">Strengths and weaknesses</div>${whyHireMarkup}</section><section class="aircraft-facts-card staffing-detail-section staffing-detail-section--coverage"><div class="eyebrow">Coverage impact</div><div class="aircraft-facts-list staffing-coverage-strip">${renderHireCoverageRows(context.coverage, candidate.qualificationGroup, context.namedPilots, context.staffingState, { compact: true })}</div></section></div>`;
 }
 function renderPilotRosterTable(namedPilots, selectedPilotId, aircraftById) {
     return `<div class="aircraft-table-wrap table-wrap" data-staffing-roster data-staffing-scroll-region="employees:list"><table><thead><tr><th>Pilot</th><th>Certifications</th><th>Status</th><th>Context</th></tr></thead><tbody>${namedPilots.map((pilot) => {
@@ -1213,10 +1360,10 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
     }
     .staff-portrait-frame {
       display: inline-flex;
-      width: 6px;
-      height: 6px;
-      min-width: 6px;
-      min-height: 6px;
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      min-height: 24px;
       border-radius: 999px;
       overflow: hidden;
       border: 1px solid var(--line);
@@ -1227,11 +1374,17 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       vertical-align: middle;
     }
     .staff-portrait-frame.detail {
-      width: 14px;
-      height: 14px;
-      min-width: 14px;
-      min-height: 14px;
+      width: 64px;
+      height: 64px;
+      min-width: 64px;
+      min-height: 64px;
       border-radius: 999px;
+    }
+    .staff-portrait-frame.detail[data-staff-portrait-frame='hire-detail'] {
+      width: 80px;
+      height: 80px;
+      min-width: 80px;
+      min-height: 80px;
     }
     .staff-portrait-image {
       width: 100%;
@@ -1275,6 +1428,97 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       flex: 1 1 auto;
       min-height: 0;
       overflow: auto;
+    }
+    .staffing-hire-market-list table {
+      min-width: 1520px;
+    }
+    .staffing-hire-market-list th,
+    .staffing-hire-market-list td {
+      padding: 8px 7px;
+      font-size: 13px;
+    }
+    .staffing-hire-market-list td {
+      vertical-align: middle;
+    }
+    .staffing-hire-market-list th {
+      font-size: 12px;
+    }
+    .staffing-hire-market-list .staff-identity {
+      gap: 8px;
+    }
+    .staffing-hire-market-list .staff-identity > strong {
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .staffing-hire-market-list td:nth-child(2),
+    .staffing-hire-market-list td:nth-child(3),
+    .staffing-hire-market-list td:nth-child(4),
+    .staffing-hire-market-list td:nth-child(5),
+    .staffing-hire-market-list td:nth-child(6) {
+      white-space: nowrap;
+    }
+    .staffing-hire-market-list td:nth-child(7),
+    .staffing-hire-market-list td:nth-child(8),
+    .staffing-hire-market-list td:nth-child(9),
+    .staffing-hire-market-list td:nth-child(10) {
+      white-space: nowrap;
+    }
+    .staffing-certifications-cell {
+      font-size: 12px;
+    }
+    .staffing-fact-value {
+      min-width: 0;
+    }
+    .pilot-stat-rating {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .pilot-stat-rating.compact {
+      gap: 6px;
+      font-size: 12px;
+    }
+    .pilot-stat-stars {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      line-height: 1;
+      font-size: 14px;
+    }
+    .pilot-stat-rating.compact .pilot-stat-stars {
+      font-size: 12px;
+    }
+    .pilot-stat-star {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      flex: 0 0 auto;
+      background: linear-gradient(90deg, #d4a73b 0%, #d4a73b var(--pilot-stat-fill, 0%), rgba(212, 167, 59, 0.24) var(--pilot-stat-fill, 0%), rgba(212, 167, 59, 0.24) 100%);
+      -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2l2.97 6.63 7.03.61-5.3 4.73 1.56 7.03L12 17.27 5.74 21l1.56-7.03L2 9.24l7.03-.61z'/%3E%3C/svg%3E");
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='black' d='M12 2l2.97 6.63 7.03.61-5.3 4.73 1.56 7.03L12 17.27 5.74 21l1.56-7.03L2 9.24l7.03-.61z'/%3E%3C/svg%3E");
+      -webkit-mask-repeat: no-repeat;
+      mask-repeat: no-repeat;
+      -webkit-mask-position: center;
+      mask-position: center;
+      -webkit-mask-size: contain;
+      mask-size: contain;
+    }
+    .pilot-stat-score {
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+    .pilot-stat-rating.compact .pilot-stat-score {
+      font-size: 11px;
+    }
+    .staffing-hire-overlay-card .staffing-detail-headline h3 {
+      font-size: clamp(28px, 2.6vw, 34px);
+      line-height: 1.05;
+      letter-spacing: -0.02em;
     }
     .staffing-hire-overlay {
       position: absolute;

@@ -11,31 +11,34 @@ const CERTIFICATION_ORDER: Record<PilotCertificationCode, number> = {
   MEPL: 3,
   MEPS: 4,
   JET: 5,
+  JUMBO: 6,
 };
 
-const LEGACY_QUALIFICATION_TO_CERTIFICATIONS: Record<string, PilotCertificationCode[]> = {
-  single_turboprop_utility: ["SEPL"],
-  single_turboprop_premium: ["SEPL"],
-  twin_turboprop_utility: ["SEPL", "MEPL"],
-  twin_turboprop_commuter: ["SEPL", "MEPL"],
-};
-
-const LEGACY_QUALIFICATION_TO_REQUIRED_CERTIFICATION: Record<string, PilotCertificationCode> = {
+const QUALIFICATION_GROUP_TO_REQUIRED_CERTIFICATION: Record<string, PilotCertificationCode> = {
   single_turboprop_utility: "SEPL",
   single_turboprop_premium: "SEPL",
   twin_turboprop_utility: "MEPL",
   twin_turboprop_commuter: "MEPL",
+  regional_turboprop: "MEPL",
+  classic_regional_jet: "JET",
+  light_business_jet: "JET",
+  super_midsize_business_jet: "JET",
+  regional_jet: "JET",
+  narrowbody_airline: "JET",
+  widebody_airline: "JUMBO",
 };
 
-const TRAINING_AWARDS: Record<PilotCertificationCode, PilotCertificationCode[]> = {
-  SEPL: ["SEPL"],
-  SEPS: ["SEPS"],
-  MEPL: ["SEPL", "MEPL"],
-  MEPS: ["SEPS", "MEPS"],
-  JET: ["SEPL", "MEPL", "JET"],
-};
+const VALID_CERTIFICATIONS = new Set<PilotCertificationCode>(["SEPL", "SEPS", "MEPL", "MEPS", "JET", "JUMBO"]);
 
-const VALID_CERTIFICATIONS = new Set<PilotCertificationCode>(["SEPL", "SEPS", "MEPL", "MEPS", "JET"]);
+const CERTIFICATION_DISPLAY: Record<PilotCertificationCode, string> = {
+  SEPL: "SEPL",
+  SEPS: "SEPS",
+  MEPL: "MEPL",
+  MEPS: "MEPS",
+  JET: "JET",
+  JUMBO: "JUMBO",
+};
+const ALL_CERTIFICATION_CODES = Object.keys(CERTIFICATION_ORDER) as PilotCertificationCode[];
 
 export function normalizePilotCertifications(certifications: ReadonlyArray<string>): PilotCertificationCode[] {
   return [...new Set(
@@ -46,17 +49,21 @@ export function normalizePilotCertifications(certifications: ReadonlyArray<strin
 }
 
 export function certificationsForQualificationGroup(qualificationGroup: string): PilotCertificationCode[] {
-  const mapped = LEGACY_QUALIFICATION_TO_CERTIFICATIONS[qualificationGroup];
-  if (mapped) {
-    return normalizePilotCertifications(mapped);
+  const requiredCertification = requiredCertificationForQualificationGroup(qualificationGroup);
+  if (requiredCertification) {
+    return [requiredCertification];
+  }
+
+  if (qualificationGroup.includes("jumbo") || qualificationGroup.includes("widebody") || qualificationGroup.includes("heavy")) {
+    return ["JUMBO"];
   }
 
   if (qualificationGroup.includes("jet")) {
-    return ["SEPL", "MEPL", "JET"];
+    return ["JET"];
   }
 
   if (qualificationGroup.includes("twin")) {
-    return ["SEPL", "MEPL"];
+    return ["MEPL"];
   }
 
   if (qualificationGroup.includes("single")) {
@@ -67,9 +74,13 @@ export function certificationsForQualificationGroup(qualificationGroup: string):
 }
 
 export function requiredCertificationForQualificationGroup(qualificationGroup: string): PilotCertificationCode | undefined {
-  const mapped = LEGACY_QUALIFICATION_TO_REQUIRED_CERTIFICATION[qualificationGroup];
+  const mapped = QUALIFICATION_GROUP_TO_REQUIRED_CERTIFICATION[qualificationGroup];
   if (mapped) {
     return mapped;
+  }
+
+  if (qualificationGroup.includes("jumbo") || qualificationGroup.includes("widebody") || qualificationGroup.includes("heavy")) {
+    return "JUMBO";
   }
 
   if (qualificationGroup.includes("jet")) {
@@ -134,44 +145,35 @@ export function pilotCertificationsToJson(certifications: ReadonlyArray<string>)
   return JSON.stringify(normalizePilotCertifications(certifications));
 }
 
+export function formatPilotCertificationCode(certification: string): string {
+  return CERTIFICATION_DISPLAY[certification as PilotCertificationCode] ?? certification;
+}
+
 export function formatPilotCertificationList(certifications: ReadonlyArray<string>): string {
   const normalized = normalizePilotCertifications(certifications);
-  return normalized.length > 0 ? normalized.join(", ") : "Uncertified";
+  return normalized.length > 0 ? normalized.map((certification) => formatPilotCertificationCode(certification)).join(", ") : "Uncertified";
+}
+
+export function enumerateReachablePilotCertificationCombinations(): PilotCertificationCode[][] {
+  const combinations: PilotCertificationCode[][] = [];
+
+  for (let mask = 1; mask < 2 ** ALL_CERTIFICATION_CODES.length; mask += 1) {
+    const certifications = ALL_CERTIFICATION_CODES.filter((_, index) => (mask & (1 << index)) !== 0);
+    combinations.push(normalizePilotCertifications(certifications));
+  }
+
+  return combinations.sort((left, right) => {
+    if (left.length !== right.length) {
+      return left.length - right.length;
+    }
+
+    return left.join("|").localeCompare(right.join("|"));
+  });
 }
 
 export function availableCertificationTrainingTargets(certifications: ReadonlyArray<string>): PilotCertificationCode[] {
   const owned = new Set(normalizePilotCertifications(certifications));
-  const targets: PilotCertificationCode[] = [];
-
-  if (owned.has("SEPL") && !owned.has("MEPL")) {
-    targets.push("MEPL");
-  }
-
-  if (owned.has("SEPL") && !owned.has("SEPS")) {
-    targets.push("SEPS");
-  }
-
-  if (owned.has("SEPS") && !owned.has("MEPS")) {
-    targets.push("MEPS");
-  }
-
-  if (owned.has("SEPS") && !owned.has("SEPL")) {
-    targets.push("SEPL");
-  }
-
-  if (owned.has("MEPL") && !owned.has("MEPS")) {
-    targets.push("MEPS");
-  }
-
-  if (owned.has("MEPL") && !owned.has("JET")) {
-    targets.push("JET");
-  }
-
-  if (owned.has("MEPS") && !owned.has("MEPL")) {
-    targets.push("MEPL");
-  }
-
-  return normalizePilotCertifications(targets);
+  return ALL_CERTIFICATION_CODES.filter((certification) => !owned.has(certification));
 }
 
 export function canTrainToCertification(
@@ -187,6 +189,6 @@ export function applyCertificationTrainingAward(
 ): PilotCertificationCode[] {
   return normalizePilotCertifications([
     ...normalizePilotCertifications(certifications),
-    ...TRAINING_AWARDS[targetCertification],
+    targetCertification,
   ]);
 }

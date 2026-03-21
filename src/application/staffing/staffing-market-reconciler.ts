@@ -13,11 +13,19 @@ import {
 import type {
   EmploymentModel,
   PilotCertificationCode,
-  PilotStatBand,
+  PilotStatScore,
+  PilotVisibleCertificationHoursEntry,
   PilotVisibleProfile,
   StaffingPricingExplanation,
 } from "../../domain/staffing/types.js";
-import { certificationsForQualificationGroup, pilotCertificationsToJson } from "../../domain/staffing/pilot-certifications.js";
+import {
+  enumerateReachablePilotCertificationCombinations,
+  certificationsForQualificationGroup,
+  normalizePilotCertifications,
+  pilotCertificationsToJson,
+  pilotCertificationsSatisfyQualificationGroup,
+  requiredCertificationForQualificationGroup,
+} from "../../domain/staffing/pilot-certifications.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 
@@ -120,7 +128,6 @@ const LAST_NAMES = [
 ] as const;
 
 const CONTRACT_DURATION_DAYS = [90, 120, 180] as const;
-const STAT_BAND_VALUES = ["developing", "solid", "strong", "exceptional"] as const satisfies PilotStatBand[];
 
 interface GeneratedPilotCandidateProfile extends PilotVisibleProfile {
   displayName: string;
@@ -160,13 +167,37 @@ function qualificationComplexityIndex(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
       return 1;
+    case "regional_turboprop":
     case "twin_turboprop_utility":
       return 2;
     case "twin_turboprop_commuter":
       return 3;
+    case "light_business_jet":
+      return 4;
+    case "super_midsize_business_jet":
+    case "classic_regional_jet":
+      return 5;
+    case "regional_jet":
+      return 6;
+    case "narrowbody_airline":
+      return 7;
+    case "widebody_airline":
+      return 8;
     case "single_turboprop_utility":
     default:
-      return qualificationGroup.includes("twin") ? 2 : 0;
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 8;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 5;
+      }
+
+      if (qualificationGroup.includes("regional_turboprop") || qualificationGroup.includes("twin")) {
+        return 2;
+      }
+
+      return 0;
   }
 }
 
@@ -174,12 +205,34 @@ function directSalaryBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
       return 11_000;
+    case "regional_turboprop":
+      return 15_000;
     case "twin_turboprop_utility":
       return 13_500;
     case "twin_turboprop_commuter":
       return 16_500;
+    case "light_business_jet":
+      return 18_000;
+    case "super_midsize_business_jet":
+      return 21_000;
+    case "classic_regional_jet":
+      return 22_000;
+    case "regional_jet":
+      return 24_500;
+    case "narrowbody_airline":
+      return 28_000;
+    case "widebody_airline":
+      return 34_000;
     case "single_turboprop_utility":
     default:
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 34_000;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 22_000;
+      }
+
       return qualificationGroup.includes("twin") ? 13_500 : 9_500;
   }
 }
@@ -188,12 +241,34 @@ function contractHourlyBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
       return 120;
+    case "regional_turboprop":
+      return 160;
     case "twin_turboprop_utility":
       return 145;
     case "twin_turboprop_commuter":
       return 170;
+    case "light_business_jet":
+      return 185;
+    case "super_midsize_business_jet":
+      return 215;
+    case "classic_regional_jet":
+      return 225;
+    case "regional_jet":
+      return 245;
+    case "narrowbody_airline":
+      return 300;
+    case "widebody_airline":
+      return 375;
     case "single_turboprop_utility":
     default:
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 375;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 225;
+      }
+
       return qualificationGroup.includes("twin") ? 145 : 105;
   }
 }
@@ -202,73 +277,63 @@ function contractEngagementBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
       return 3_000;
+    case "regional_turboprop":
+      return 4_250;
     case "twin_turboprop_utility":
       return 3_750;
     case "twin_turboprop_commuter":
       return 4_750;
+    case "light_business_jet":
+      return 5_250;
+    case "super_midsize_business_jet":
+      return 6_250;
+    case "classic_regional_jet":
+      return 6_750;
+    case "regional_jet":
+      return 7_500;
+    case "narrowbody_airline":
+      return 9_500;
+    case "widebody_airline":
+      return 12_500;
     case "single_turboprop_utility":
     default:
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 12_500;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 6_750;
+      }
+
       return qualificationGroup.includes("twin") ? 3_750 : 2_500;
   }
 }
 
-function chooseStatBand(seed: string, laneComplexity: number): PilotStatBand {
-  const rolledValue = hashString(seed) % 100;
-  const boostedValue = Math.min(99, rolledValue + laneComplexity * 4);
-
-  if (boostedValue >= 90) {
-    return "exceptional";
-  }
-
-  if (boostedValue >= 60) {
-    return "strong";
-  }
-
-  if (boostedValue >= 24) {
-    return "solid";
-  }
-
-  return "developing";
+function chooseStatScore(seed: string, laneComplexity: number): PilotStatScore {
+  const rolledValue = hashString(seed) % 101;
+  const boostedValue = Math.min(100, rolledValue + laneComplexity * 6);
+  return Math.max(0, Math.min(10, Math.round(boostedValue / 10))) as PilotStatScore;
 }
 
-function statBandWeight(statBand: PilotStatBand): number {
-  return STAT_BAND_VALUES.indexOf(statBand);
-}
-
-function estimateCareerHours(qualificationGroup: string, certifications: PilotCertificationCode[], generatedSeed: string): {
-  totalCareerHours: number;
-  primaryQualificationFamilyHours: number;
-} {
+function estimateTotalCareerHours(qualificationGroup: string, generatedSeed: string): number {
   const complexityIndex = qualificationComplexityIndex(qualificationGroup);
-  const breadthWeight = Math.max(certifications.length - 1, 0);
   const rangeSeed = hashString(`${generatedSeed}:hours`);
-  const totalHourFloor = 900 + complexityIndex * 850 + breadthWeight * 275;
-  const totalHourSpan = 3_100 + complexityIndex * 1_350 + breadthWeight * 450;
-  const totalCareerHours = roundToNearest(
+  const totalHourFloor = 750 + complexityIndex * 900;
+  const totalHourSpan = 2_800 + complexityIndex * 1_250;
+  return roundToNearest(
     totalHourFloor + (rangeSeed % totalHourSpan),
     25,
   );
-  const familyRatioSeed = hashString(`${generatedSeed}:family`);
-  const familyRatio = 0.45 + ((familyRatioSeed % 38) / 100);
-  const primaryQualificationFamilyHours = roundToNearest(
-    Math.max(350, Math.min(totalCareerHours - 75, totalCareerHours * familyRatio)),
-    25,
-  );
-
-  return {
-    totalCareerHours,
-    primaryQualificationFamilyHours,
-  };
 }
 
 function buildVisibleStatProfile(qualificationGroup: string, generatedSeed: string) {
   const complexityIndex = qualificationComplexityIndex(qualificationGroup);
 
   return {
-    operationalReliability: chooseStatBand(`${generatedSeed}:reliability`, complexityIndex),
-    stressTolerance: chooseStatBand(`${generatedSeed}:stress`, complexityIndex),
-    procedureDiscipline: chooseStatBand(`${generatedSeed}:procedure`, complexityIndex),
-    trainingAptitude: chooseStatBand(`${generatedSeed}:training`, complexityIndex),
+    operationalReliability: chooseStatScore(`${generatedSeed}:reliability`, complexityIndex),
+    stressTolerance: chooseStatScore(`${generatedSeed}:stress`, complexityIndex),
+    procedureDiscipline: chooseStatScore(`${generatedSeed}:procedure`, complexityIndex),
+    trainingAptitude: chooseStatScore(`${generatedSeed}:training`, complexityIndex),
   };
 }
 
@@ -288,8 +353,12 @@ function formatHours(hours: number): string {
   return `${hours.toLocaleString("en-US")}h`;
 }
 
-function titleCaseBand(statBand: PilotStatBand): string {
-  return statBand.charAt(0).toUpperCase() + statBand.slice(1);
+function formatStatScore(score: PilotStatScore): string {
+  return `${score}/10`;
+}
+
+function formatCertificationHours(entries: ReadonlyArray<PilotVisibleCertificationHoursEntry>): string {
+  return entries.map((entry) => `${entry.certificationCode} ${formatHours(entry.hours)}`).join(" | ");
 }
 
 function buildPricingExplanation(
@@ -297,23 +366,260 @@ function buildPricingExplanation(
   employmentModel: EmploymentModel,
   contractHourlyRate: number | undefined,
 ): StaffingPricingExplanation {
-  const operatingProfile = `${titleCaseBand(profile.statProfile.operationalReliability)} reliability, `
-    + `${titleCaseBand(profile.statProfile.procedureDiscipline)} procedure discipline`;
+  const operatingProfile = `Reliability ${formatStatScore(profile.statProfile.operationalReliability)}, `
+    + `Stress ${formatStatScore(profile.statProfile.stressTolerance)}, `
+    + `Procedure ${formatStatScore(profile.statProfile.procedureDiscipline)}, `
+    + `Training ${formatStatScore(profile.statProfile.trainingAptitude)}`;
 
   return {
     summary: employmentModel === "contract_hire"
-      ? "Contract pricing uses visible lane complexity, flight time, and operational profile, then bills only completed flight-leg hours."
-      : "Direct salary uses visible lane complexity, flight time, and operational profile with no activation charge in this slice.",
+      ? "Contract pricing uses visible lane complexity, total flight time, certification time, and operational profile, then bills only completed flight-leg hours."
+      : "Direct salary uses visible lane complexity, total flight time, certification time, and operational profile with no activation charge in this slice.",
     drivers: [
       `Qualification lane: ${profile.qualificationLane}`,
-      `Certification breadth: ${profile.certifications.join(", ")}`,
+      `Certifications: ${profile.certifications.join(", ")}`,
       `Total career time: ${formatHours(profile.totalCareerHours)}`,
-      `Lane time: ${formatHours(profile.primaryQualificationFamilyHours)} in ${profile.qualificationLane}`,
+      `Primary lane time: ${formatHours(profile.primaryQualificationFamilyHours)} in ${profile.qualificationLane}`,
+      `Certification time: ${formatCertificationHours(profile.certificationHours)}`,
       employmentModel === "contract_hire" && contractHourlyRate !== undefined
         ? `Usage billing anchor: ${contractHourlyRate.toLocaleString("en-US")}/completed flight hour`
         : `Operational profile: ${operatingProfile}`,
     ],
   };
+}
+
+function minimumQualificationCertifications(
+  qualificationGroup: string,
+): PilotCertificationCode[] {
+  const requiredCertification = requiredCertificationForQualificationGroup(qualificationGroup);
+  if (requiredCertification) {
+    return [requiredCertification];
+  }
+
+  return normalizePilotCertifications(certificationsForQualificationGroup(qualificationGroup));
+}
+
+function certificationCountRangeForHours(totalCareerHours: number): { min: number; max: number } {
+  if (totalCareerHours <= 1_500) {
+    return { min: 1, max: 2 };
+  }
+
+  if (totalCareerHours <= 2_800) {
+    return { min: 1, max: 3 };
+  }
+
+  if (totalCareerHours <= 4_500) {
+    return { min: 2, max: 4 };
+  }
+
+  if (totalCareerHours <= 6_500) {
+    return { min: 2, max: 5 };
+  }
+
+  return { min: 3, max: 6 };
+}
+
+function minimumHoursForCertification(certification: PilotCertificationCode): number {
+  switch (certification) {
+    case "SEPL":
+      return 200;
+    case "SEPS":
+      return 300;
+    case "MEPL":
+      return 650;
+    case "MEPS":
+      return 850;
+    case "JET":
+      return 2_200;
+    case "JUMBO":
+      return 5_200;
+    default:
+      return 200;
+  }
+}
+
+function certificationHourFloor(certification: PilotCertificationCode): number {
+  switch (certification) {
+    case "SEPL":
+      return 150;
+    case "SEPS":
+      return 125;
+    case "MEPL":
+      return 225;
+    case "MEPS":
+      return 200;
+    case "JET":
+      return 350;
+    case "JUMBO":
+      return 500;
+    default:
+      return 100;
+  }
+}
+
+function chooseCertificationCount(
+  totalCareerHours: number,
+  availableCounts: ReadonlyArray<number>,
+  generatedSeed: string,
+): number {
+  const uniqueCounts = [...new Set(availableCounts)].sort((left, right) => left - right);
+  if (uniqueCounts.length === 0) {
+    return 1;
+  }
+
+  const maxCount = uniqueCounts[uniqueCounts.length - 1]!;
+  const weightedCounts: number[] = [];
+
+  uniqueCounts.forEach((count) => {
+    const lowCountBias = maxCount - count + 1;
+    let weight = lowCountBias;
+
+    if (totalCareerHours <= 1_500) {
+      weight = lowCountBias * 5;
+    } else if (totalCareerHours <= 2_800) {
+      weight = lowCountBias * 4;
+    } else if (totalCareerHours <= 4_500) {
+      weight = lowCountBias * 3;
+    } else if (totalCareerHours <= 6_500) {
+      weight = lowCountBias * 2;
+    }
+
+    if (count === maxCount && totalCareerHours > 6_500) {
+      weight += 3;
+    }
+
+    for (let repeat = 0; repeat < Math.max(weight, 1); repeat += 1) {
+      weightedCounts.push(count);
+    }
+  });
+
+  return weightedCounts[hashString(`${generatedSeed}:cert-count`) % weightedCounts.length]!;
+}
+
+function buildCandidateCertifications(
+  qualificationGroup: string,
+  generatedSeed: string,
+  baselineTotalCareerHours: number,
+): PilotCertificationCode[] {
+  const certificationRange = certificationCountRangeForHours(baselineTotalCareerHours);
+  const reachableCombinations = enumerateReachablePilotCertificationCombinations()
+    .filter((certifications) =>
+      pilotCertificationsSatisfyQualificationGroup(certifications, qualificationGroup)
+      && certifications.every((certification) => baselineTotalCareerHours >= minimumHoursForCertification(certification))
+      && certifications.length >= certificationRange.min
+      && certifications.length <= certificationRange.max,
+    );
+
+  const certificationCatalog = reachableCombinations.length > 0
+    ? reachableCombinations
+    : enumerateReachablePilotCertificationCombinations()
+      .filter((certifications) =>
+        pilotCertificationsSatisfyQualificationGroup(certifications, qualificationGroup)
+        && certifications.every((certification) => baselineTotalCareerHours >= minimumHoursForCertification(certification)));
+
+  if (certificationCatalog.length === 0) {
+    return minimumQualificationCertifications(qualificationGroup);
+  }
+
+  const targetCount = chooseCertificationCount(
+    baselineTotalCareerHours,
+    certificationCatalog.map((certifications) => certifications.length),
+    generatedSeed,
+  );
+  const exactCountCatalog = certificationCatalog.filter((certifications) => certifications.length === targetCount);
+  const finalCatalog = exactCountCatalog.length > 0 ? exactCountCatalog : certificationCatalog;
+  const certificationIndex = hashString(`${generatedSeed}:certifications`) % finalCatalog.length;
+  return finalCatalog[certificationIndex]!;
+}
+
+function buildCertificationHours(
+  totalCareerHours: number,
+  certifications: ReadonlyArray<PilotCertificationCode>,
+  qualificationGroup: string,
+  generatedSeed: string,
+): PilotVisibleCertificationHoursEntry[] {
+  const normalizedCertifications = normalizePilotCertifications(certifications);
+  if (normalizedCertifications.length === 0) {
+    return [];
+  }
+
+  const requiredCertification = requiredCertificationForQualificationGroup(qualificationGroup);
+  const floorEntries = normalizedCertifications.map((certificationCode) => ({
+    certificationCode,
+    hours: certificationHourFloor(certificationCode),
+  }));
+  let totalFloorHours = floorEntries.reduce((total, entry) => total + entry.hours, 0);
+  const scaledFloorEntries = totalFloorHours > totalCareerHours
+    ? floorEntries.map((entry) => ({
+        certificationCode: entry.certificationCode,
+        hours: Math.max(25, roundToNearest((entry.hours / totalFloorHours) * totalCareerHours, 25)),
+      }))
+    : floorEntries;
+
+  totalFloorHours = scaledFloorEntries.reduce((total, entry) => total + entry.hours, 0);
+  if (totalFloorHours > totalCareerHours) {
+    let overflowHours = totalFloorHours - totalCareerHours;
+    for (let index = scaledFloorEntries.length - 1; index >= 0 && overflowHours > 0; index -= 1) {
+      const entry = scaledFloorEntries[index]!;
+      const reducibleHours = Math.max(entry.hours - 25, 0);
+      if (reducibleHours <= 0) {
+        continue;
+      }
+
+      const reducedHours = Math.min(reducibleHours, overflowHours);
+      entry.hours -= reducedHours;
+      overflowHours -= reducedHours;
+    }
+
+    totalFloorHours = scaledFloorEntries.reduce((total, entry) => total + entry.hours, 0);
+  }
+  let remainingHours = Math.max(totalCareerHours - totalFloorHours, 0);
+  const weightedEntries = scaledFloorEntries.map((entry) => ({
+    certificationCode: entry.certificationCode,
+    hours: entry.hours,
+    weight: 1
+      + (entry.certificationCode === requiredCertification ? 6 : 0)
+      + Math.max(1, Math.ceil(minimumHoursForCertification(entry.certificationCode) / 1_500))
+      + (hashString(`${generatedSeed}:${entry.certificationCode}:weight`) % 4),
+  }));
+  const totalWeight = weightedEntries.reduce((total, entry) => total + entry.weight, 0);
+
+  weightedEntries.forEach((entry, index) => {
+    if (remainingHours <= 0) {
+      return;
+    }
+
+    const isLast = index === weightedEntries.length - 1;
+    const weightedHours = isLast
+      ? remainingHours
+      : roundToNearest((remainingHours * entry.weight) / totalWeight, 25);
+    const appliedHours = Math.min(remainingHours, Math.max(weightedHours, 0));
+    entry.hours += appliedHours;
+    remainingHours -= appliedHours;
+  });
+
+  if (remainingHours > 0) {
+    const anchorEntry = weightedEntries.find((entry) => entry.certificationCode === requiredCertification)
+      ?? weightedEntries[0]!;
+    anchorEntry.hours += remainingHours;
+  }
+
+  return weightedEntries.map((entry) => ({
+    certificationCode: entry.certificationCode,
+    hours: entry.hours,
+  }));
+}
+
+function primaryQualificationHours(
+  qualificationGroup: string,
+  certificationHours: ReadonlyArray<PilotVisibleCertificationHoursEntry>,
+): number {
+  const requiredCertification = requiredCertificationForQualificationGroup(qualificationGroup);
+  if (requiredCertification) {
+    return certificationHours.find((entry) => entry.certificationCode === requiredCertification)?.hours ?? 0;
+  }
+
+  return certificationHours.reduce((highest, entry) => Math.max(highest, entry.hours), 0);
 }
 
 function buildCandidateProfile(
@@ -323,8 +629,18 @@ function buildCandidateProfile(
   currentAirportId: string,
   generatedSeed: string,
 ): GeneratedPilotCandidateProfile {
-  const certifications = certificationsForQualificationGroup(entry.qualificationGroup);
-  const hourProfile = estimateCareerHours(entry.qualificationGroup, certifications, generatedSeed);
+  const totalCareerHours = estimateTotalCareerHours(entry.qualificationGroup, generatedSeed);
+  const certifications = buildCandidateCertifications(
+    entry.qualificationGroup,
+    generatedSeed,
+    totalCareerHours,
+  );
+  const certificationHours = buildCertificationHours(
+    totalCareerHours,
+    certifications,
+    entry.qualificationGroup,
+    generatedSeed,
+  );
 
   return {
     candidateProfileId,
@@ -332,8 +648,9 @@ function buildCandidateProfile(
     qualificationGroup: entry.qualificationGroup,
     qualificationLane: humanizeQualificationGroup(entry.qualificationGroup),
     certifications,
-    totalCareerHours: hourProfile.totalCareerHours,
-    primaryQualificationFamilyHours: hourProfile.primaryQualificationFamilyHours,
+    totalCareerHours,
+    primaryQualificationFamilyHours: primaryQualificationHours(entry.qualificationGroup, certificationHours),
+    certificationHours,
     companyHours: 0,
     statProfile: buildVisibleStatProfile(entry.qualificationGroup, generatedSeed),
     currentAirportId,
@@ -352,6 +669,7 @@ function buildOfferExplanationMetadata(
       qualificationLane: profile.qualificationLane,
       totalCareerHours: profile.totalCareerHours,
       primaryQualificationFamilyHours: profile.primaryQualificationFamilyHours,
+      certificationHours: profile.certificationHours,
       companyHours: profile.companyHours,
       statProfile: profile.statProfile,
     },

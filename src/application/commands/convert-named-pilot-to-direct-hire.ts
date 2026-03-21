@@ -136,6 +136,7 @@ function resolveDirectSalaryAmount(
     certifications: [...certifications],
     totalCareerHours: candidateProfile.totalCareerHours,
     primaryQualificationFamilyHours: candidateProfile.primaryQualificationFamilyHours,
+    certificationHours: candidateProfile.certificationHours,
     statProfile: candidateProfile.statProfile,
   });
 }

@@ -236,9 +236,15 @@ export async function handleActivateStaffingPackage(
 
   const rawStartsAtUtc = marketOffer?.startsAtUtc ?? command.payload.startsAtUtc ?? companyContext?.currentTimeUtc ?? command.issuedAtUtc;
   const rawEndsAtUtc = marketOffer?.endsAtUtc ?? command.payload.endsAtUtc ?? null;
-  const startsAtUtc = normalizeOptionalUtcTimestamp(rawStartsAtUtc);
+  const normalizedStartsAtUtc = normalizeOptionalUtcTimestamp(rawStartsAtUtc);
   const endsAtUtc = normalizeOptionalUtcTimestamp(rawEndsAtUtc);
   const hiredAtUtc = companyContext?.currentTimeUtc ?? command.issuedAtUtc;
+  const startsAtUtc = marketOffer
+    && companyContext
+    && normalizedStartsAtUtc
+    && Date.parse(normalizedStartsAtUtc) < Date.parse(companyContext.currentTimeUtc)
+      ? companyContext.currentTimeUtc
+      : normalizedStartsAtUtc;
 
   if (!startsAtUtc) {
     hardBlockers.push(`Staffing package start time ${rawStartsAtUtc} is not a valid UTC timestamp.`);

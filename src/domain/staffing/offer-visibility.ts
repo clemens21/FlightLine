@@ -1,5 +1,12 @@
 import type { JsonObject } from "../common/primitives.js";
-import type { PilotStatBand, PilotVisibleProfile, PilotVisibleStatProfile, StaffingPricingExplanation } from "./types.js";
+import type {
+  PilotCertificationCode,
+  PilotStatScore,
+  PilotVisibleCertificationHoursEntry,
+  PilotVisibleProfile,
+  PilotVisibleStatProfile,
+  StaffingPricingExplanation,
+} from "./types.js";
 
 export interface StaffingOfferVisibility {
   candidateProfileId: string | undefined;
@@ -34,11 +41,41 @@ function asStringArray(value: unknown): string[] {
     .filter((entry) => entry.length > 0);
 }
 
-function isPilotStatBand(value: string | undefined): value is PilotStatBand {
-  return value === "developing"
-    || value === "solid"
-    || value === "strong"
-    || value === "exceptional";
+function normalizePilotStatScore(value: unknown): PilotStatScore | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, Math.min(10, Math.round(value))) as PilotStatScore;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  switch (value.trim()) {
+    case "developing":
+      return 2;
+    case "solid":
+      return 5;
+    case "strong":
+      return 7;
+    case "exceptional":
+      return 9;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeCertificationCode(value: unknown): PilotCertificationCode | undefined {
+  switch (value) {
+    case "SEPL":
+    case "SEPS":
+    case "MEPL":
+    case "MEPS":
+    case "JET":
+    case "JUMBO":
+      return value;
+    default:
+      return undefined;
+  }
 }
 
 function parsePilotVisibleStatProfile(rawValue: unknown): PilotVisibleStatProfile | undefined {
@@ -47,16 +84,16 @@ function parsePilotVisibleStatProfile(rawValue: unknown): PilotVisibleStatProfil
     return undefined;
   }
 
-  const operationalReliability = asString(rawProfile.operationalReliability);
-  const stressTolerance = asString(rawProfile.stressTolerance);
-  const procedureDiscipline = asString(rawProfile.procedureDiscipline);
-  const trainingAptitude = asString(rawProfile.trainingAptitude);
+  const operationalReliability = normalizePilotStatScore(rawProfile.operationalReliability);
+  const stressTolerance = normalizePilotStatScore(rawProfile.stressTolerance);
+  const procedureDiscipline = normalizePilotStatScore(rawProfile.procedureDiscipline);
+  const trainingAptitude = normalizePilotStatScore(rawProfile.trainingAptitude);
 
   if (
-    !isPilotStatBand(operationalReliability)
-    || !isPilotStatBand(stressTolerance)
-    || !isPilotStatBand(procedureDiscipline)
-    || !isPilotStatBand(trainingAptitude)
+    operationalReliability === undefined
+    || stressTolerance === undefined
+    || procedureDiscipline === undefined
+    || trainingAptitude === undefined
   ) {
     return undefined;
   }
@@ -69,6 +106,32 @@ function parsePilotVisibleStatProfile(rawValue: unknown): PilotVisibleStatProfil
   };
 }
 
+function parsePilotVisibleCertificationHours(rawValue: unknown): PilotVisibleCertificationHoursEntry[] {
+  if (!Array.isArray(rawValue)) {
+    return [];
+  }
+
+  return rawValue
+    .map((entry) => {
+      const rawEntry = asJsonObject(entry);
+      if (!rawEntry) {
+        return undefined;
+      }
+
+      const certificationCode = normalizeCertificationCode(rawEntry.certificationCode);
+      const hours = asFiniteNumber(rawEntry.hours);
+      if (!certificationCode || hours === undefined) {
+        return undefined;
+      }
+
+      return {
+        certificationCode,
+        hours: Math.max(0, Math.round(hours)),
+      };
+    })
+    .filter((entry): entry is PilotVisibleCertificationHoursEntry => Boolean(entry));
+}
+
 function parsePilotVisibleProfile(rawValue: unknown): PilotVisibleProfile | undefined {
   const rawProfile = asJsonObject(rawValue);
   if (!rawProfile) {
@@ -79,6 +142,7 @@ function parsePilotVisibleProfile(rawValue: unknown): PilotVisibleProfile | unde
   const qualificationLane = asString(rawProfile.qualificationLane);
   const totalCareerHours = asFiniteNumber(rawProfile.totalCareerHours);
   const primaryQualificationFamilyHours = asFiniteNumber(rawProfile.primaryQualificationFamilyHours);
+  const certificationHours = parsePilotVisibleCertificationHours(rawProfile.certificationHours);
   const companyHours = asFiniteNumber(rawProfile.companyHours);
   const statProfile = parsePilotVisibleStatProfile(rawProfile.statProfile);
 
@@ -98,6 +162,7 @@ function parsePilotVisibleProfile(rawValue: unknown): PilotVisibleProfile | unde
     qualificationLane,
     totalCareerHours,
     primaryQualificationFamilyHours,
+    certificationHours,
     companyHours,
     statProfile,
   };

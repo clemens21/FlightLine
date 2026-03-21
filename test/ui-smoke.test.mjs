@@ -579,6 +579,10 @@ try {
   assert.ok((await page.locator("[data-pilot-candidate-market]").count()) >= 1);
   await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]").length >= 8);
   assert.equal(await page.locator("[data-staffing-hire-overlay]").isVisible(), false);
+  assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Reliability" }).count(), 1);
+  assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Stress" }).count(), 1);
+  assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Procedure" }).count(), 1);
+  assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Training" }).count(), 1);
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
   });
@@ -610,6 +614,8 @@ try {
   assert.equal(firstCandidateRowText.includes("Available now"), false);
   assert.equal(firstCandidateRowText.includes("Direct hire"), false);
   assert.equal(firstCandidateRowText.includes("Contract hire"), false);
+  assert.equal(firstCandidateRowText.includes("single turboprop utility"), false);
+  assert.ok(await page.locator("[data-pilot-candidate-row]").first().locator("[data-pilot-stat-rating='operationalReliability']").count() >= 1);
   const hireRowPortraitBox = await page.locator("[data-pilot-candidate-row] [data-staff-portrait-frame='hire-row']").first().evaluate((element) => {
     if (!(element instanceof HTMLElement)) {
       return { width: 0, height: 0 };
@@ -618,9 +624,9 @@ try {
     const rect = element.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
   });
-  assert.ok(hireRowPortraitBox.width <= 8);
-  assert.ok(hireRowPortraitBox.height <= 8);
-  await page.setViewportSize({ width: 1300, height: 520 });
+  assert.ok(hireRowPortraitBox.width >= 20 && hireRowPortraitBox.width <= 28);
+  assert.ok(hireRowPortraitBox.height >= 20 && hireRowPortraitBox.height <= 28);
+  await page.setViewportSize({ width: 1440, height: 900 });
   const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
   const firstCandidatePortrait = await page.locator("[data-pilot-candidate-row]").first().locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
   assert.ok(firstCandidatePortrait);
@@ -633,19 +639,23 @@ try {
     return overlay instanceof HTMLElement
       && !overlay.hidden
       && title.includes(expectedName)
-      && detail.includes("Qualification lane")
+      && detail.includes("Pilot snapshot")
       && detail.includes("Total career hours")
       && detail.includes("Operational reliability")
-      && detail.includes("Choose hire path")
+      && detail.includes("/10")
+      && detail.includes("Strengths and weaknesses")
       && detail.includes("Availability")
       && detail.includes("Direct hire")
       && detail.includes("Contract hire");
   }, firstCandidateName);
   const hireDetailText = (await page.locator("[data-staffing-detail-body='hire']").textContent()) ?? "";
-  assert.equal(hireDetailText.includes("Identity brief"), true);
-  assert.equal(hireDetailText.includes("Flight profile"), true);
-  assert.equal(hireDetailText.includes("Pricing summary"), true);
-  assert.equal(hireDetailText.includes("Choose hire path"), true);
+  assert.equal(hireDetailText.includes("Pilot snapshot"), true);
+  assert.equal(hireDetailText.includes("Pricing summary"), false);
+  assert.equal(hireDetailText.includes("Choose hire path"), false);
+  assert.equal(hireDetailText.includes("Qualification lane"), false);
+  assert.equal(hireDetailText.includes("Certification hours"), true);
+  assert.equal(hireDetailText.includes("Strengths and weaknesses"), true);
+  assert.equal(hireDetailText.includes("which means this pilot should"), true);
   assert.equal(hireDetailText.includes("Pilot candidate"), false);
   assert.equal(hireDetailText.includes(firstCandidateName), false);
   assert.equal(hireDetailText.includes("Coverage posture"), false);
@@ -658,14 +668,25 @@ try {
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-support-coverage-start]").count(), 0);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='direct_hire']").count(), 1);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='contract_hire']").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='direct_hire'] [data-pilot-candidate-hire]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='contract_hire'] [data-pilot-candidate-hire]").count(), 1);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-pilot-candidate-hire]").count(), 2);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-cert-hours]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-strengths-weaknesses] li").count(), 3);
+  const hireDetailScroll = await page.locator("[data-staffing-detail-body='hire']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return { scrollHeight: 0, clientHeight: 0 };
+    }
+    return { scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+  });
+  assert.ok(hireDetailScroll.scrollHeight - hireDetailScroll.clientHeight <= 6, `expected no hire detail scroll, got ${hireDetailScroll.scrollHeight - hireDetailScroll.clientHeight}`);
   const hireOverlayGeometry = await page.locator("[data-staffing-hire-overlay]").evaluate((overlayElement) => {
     if (!(overlayElement instanceof HTMLElement)) {
       return {
         overlayPosition: "",
         overlayHidden: true,
-        stageWidth: 0,
-      stageHeight: 0,
+        viewportWidth: 0,
+        viewportHeight: 0,
       backdropWidth: 0,
       backdropHeight: 0,
       backdropBackgroundColor: "",
@@ -674,15 +695,14 @@ try {
     };
     }
 
-    const stageElement = overlayElement.closest("[data-staffing-hire-stage]");
     const backdrop = overlayElement.querySelector(".staffing-hire-overlay-backdrop");
     const card = overlayElement.querySelector(".staffing-hire-overlay-card");
-    if (!(stageElement instanceof HTMLElement) || !(backdrop instanceof HTMLElement) || !(card instanceof HTMLElement)) {
+    if (!(backdrop instanceof HTMLElement) || !(card instanceof HTMLElement)) {
       return {
         overlayPosition: "",
         overlayHidden: true,
-        stageWidth: 0,
-        stageHeight: 0,
+        viewportWidth: 0,
+        viewportHeight: 0,
         backdropWidth: 0,
         backdropHeight: 0,
         backdropBackgroundColor: "",
@@ -691,7 +711,6 @@ try {
       };
     }
 
-    const stageRect = stageElement.getBoundingClientRect();
     const backdropRect = backdrop.getBoundingClientRect();
     const cardRect = card.getBoundingClientRect();
     const backdropStyle = window.getComputedStyle(backdrop);
@@ -699,8 +718,8 @@ try {
     return {
       overlayPosition: window.getComputedStyle(overlayElement).position,
       overlayHidden: overlayElement.hidden,
-      stageWidth: stageRect.width,
-      stageHeight: stageRect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
       backdropWidth: backdropRect.width,
       backdropHeight: backdropRect.height,
       backdropBackgroundColor: backdropStyle.backgroundColor,
@@ -716,13 +735,15 @@ try {
     const channels = match[1].split(",").map((value) => Number.parseFloat(value.trim()));
     return channels.length >= 4 && Number.isFinite(channels[3]) ? channels[3] : 1;
   })();
-  assert.equal(hireOverlayGeometry.overlayPosition, "absolute");
+  assert.equal(hireOverlayGeometry.overlayPosition, "fixed");
   assert.equal(hireOverlayGeometry.overlayHidden, false);
-  assert.ok(Math.abs(hireOverlayGeometry.backdropWidth - hireOverlayGeometry.stageWidth) <= 2);
-  assert.ok(Math.abs(hireOverlayGeometry.backdropHeight - hireOverlayGeometry.stageHeight) <= 2);
   assert.ok(hireOverlayBackdropAlpha <= 0.08, `expected subtle overlay backdrop, got ${hireOverlayGeometry.backdropBackgroundColor}`);
-  assert.ok(hireOverlayGeometry.cardWidth < hireOverlayGeometry.stageWidth);
-  assert.ok(hireOverlayGeometry.cardHeight < hireOverlayGeometry.stageHeight);
+  assert.ok(hireOverlayGeometry.cardWidth < hireOverlayGeometry.viewportWidth);
+  assert.ok(hireOverlayGeometry.cardHeight < hireOverlayGeometry.viewportHeight);
+  const hireDetailTitleFontSize = await page.locator("[data-staffing-detail-title='hire']").evaluate((element) => {
+    return element instanceof HTMLElement ? Number.parseFloat(window.getComputedStyle(element).fontSize) : 0;
+  });
+  assert.ok(hireDetailTitleFontSize >= 28);
   const hireDetailPortraitBox = await page.locator("[data-staffing-detail-panel='hire'] [data-staff-portrait-frame='hire-detail']").evaluate((element) => {
     if (!(element instanceof HTMLElement)) {
       return { width: 0, height: 0 };
@@ -731,8 +752,8 @@ try {
     const rect = element.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
   });
-  assert.ok(hireDetailPortraitBox.width <= 16);
-  assert.ok(hireDetailPortraitBox.height <= 16);
+  assert.ok(hireDetailPortraitBox.width >= 76 && hireDetailPortraitBox.width <= 84);
+  assert.ok(hireDetailPortraitBox.height >= 76 && hireDetailPortraitBox.height <= 84);
   assert.equal(await page.locator("[data-staffing-detail-panel='hire'] [data-staff-portrait-surface='hire-detail']").getAttribute("src"), firstCandidatePortrait);
   await clickUi(page.locator("[data-staffing-detail-close='hire']").first());
   await page.waitForFunction(() => {
@@ -814,16 +835,28 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-aircraft-workspace='market']")?.getAttribute("aria-selected") === "true");
   const initialMarketRows = await page.locator("[data-market-select]").count();
   assert.ok(initialMarketRows > 0);
-  const marketDetailPanel = page.locator(".aircraft-detail-panel");
-  const selectedOfferId = await marketDetailPanel.locator("[data-market-review='owned']").first().getAttribute("data-market-review-offer");
+  const firstMarketRow = page.locator("[data-market-select]").first();
+  assert.equal(await firstMarketRow.locator(".aircraft-market-listing-thumb img").count(), 1);
+  const selectedOfferId = await firstMarketRow.getAttribute("data-market-select");
   assert.ok(selectedOfferId);
-  await clickUi(marketDetailPanel.locator("[data-market-review='owned']").first());
+  await clickUi(firstMarketRow);
+  await page.waitForFunction(() => !document.querySelector("[data-aircraft-market-overlay]")?.hasAttribute("hidden"));
+  assert.equal(await page.locator("[data-aircraft-market-stage]").evaluate((element) => {
+    return element instanceof HTMLElement && element.classList.contains("overlay-open");
+  }), true);
+  const marketOverlay = page.locator(".aircraft-market-overlay-card");
+  assert.equal(
+    await marketOverlay.locator("[data-market-review='owned']").first().getAttribute("data-market-review-offer"),
+    selectedOfferId,
+  );
+  await clickUi(marketOverlay.locator("[data-market-review='owned']").first());
   await page.waitForFunction(() => document.querySelector(".market-review-card") !== null);
-  await clickUi(marketDetailPanel.getByRole("button", { name: "Confirm purchase" }));
+  await clickUi(marketOverlay.getByRole("button", { name: "Confirm purchase" }));
   await page.waitForFunction(() => {
     const marketTab = document.querySelector("[data-aircraft-workspace='market']");
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
-    return marketTab?.getAttribute("aria-selected") === "true" && flashText.includes("Acquired");
+    const overlayHidden = document.querySelector("[data-aircraft-market-overlay]")?.hasAttribute("hidden") ?? false;
+    return marketTab?.getAttribute("aria-selected") === "true" && overlayHidden && flashText.includes("Acquired");
   });
   assert.equal(await page.locator("[data-aircraft-workspace='market']").getAttribute("aria-selected"), "true");
   assert.equal(await page.locator(`[data-market-select='${selectedOfferId}']`).count(), 0);

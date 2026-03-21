@@ -16,15 +16,20 @@ import type {
 
 export type LaborCategory = "pilot" | "flight_attendant" | "mechanic" | "ops_support";
 export type EmploymentModel = "direct_hire" | "contract_hire" | "contract_pool" | "service_agreement";
-export type PilotCertificationCode = "SEPL" | "SEPS" | "MEPL" | "MEPS" | "JET";
+export type PilotCertificationCode = "SEPL" | "SEPS" | "MEPL" | "MEPS" | "JET" | "JUMBO";
 export type NamedPilotTrainingProgramKind = "recurrent" | "certification";
-export type PilotStatBand = "developing" | "solid" | "strong" | "exceptional";
+export type PilotStatScore = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export interface PilotVisibleStatProfile {
-  operationalReliability: PilotStatBand;
-  stressTolerance: PilotStatBand;
-  procedureDiscipline: PilotStatBand;
-  trainingAptitude: PilotStatBand;
+  operationalReliability: PilotStatScore;
+  stressTolerance: PilotStatScore;
+  procedureDiscipline: PilotStatScore;
+  trainingAptitude: PilotStatScore;
+}
+
+export interface PilotVisibleCertificationHoursEntry {
+  certificationCode: PilotCertificationCode;
+  hours: number;
 }
 
 export interface PilotVisibleProfile {
@@ -32,6 +37,7 @@ export interface PilotVisibleProfile {
   qualificationLane: string;
   totalCareerHours: number;
   primaryQualificationFamilyHours: number;
+  certificationHours: PilotVisibleCertificationHoursEntry[];
   companyHours: number;
   statProfile: PilotVisibleStatProfile;
 }
