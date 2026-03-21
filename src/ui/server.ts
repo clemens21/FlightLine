@@ -3030,6 +3030,9 @@ async function handleRequest(request, response) {
             case "commit-schedule":
                 await withUiTiming(`action save=${saveId} name=commit-schedule`, () => handleCommitScheduleApi(response, saveId, form));
                 return;
+            case "discard-schedule-draft":
+                await withUiTiming(`action save=${saveId} name=discard-schedule-draft`, () => handleDiscardScheduleDraftApi(response, saveId, form));
+                return;
             case "advance-time":
                 await withUiTiming(`action save=${saveId} name=advance-time`, () => handleAdvanceTimeApi(response, saveId, form));
                 return;
@@ -3556,6 +3559,21 @@ async function handleCommitScheduleApi(response, saveId, form) {
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: `Committed schedule ${scheduleId}.`, notificationLevel: "important" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not commit schedule." });
+}
+async function handleDiscardScheduleDraftApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const scheduleId = form.get("scheduleId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_discard_draft_api"),
+        saveId,
+        commandName: "DiscardAircraftScheduleDraft",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: { scheduleId },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: `Discarded draft schedule ${scheduleId}.`, notificationLevel: "important" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not discard the draft schedule." });
 }
 async function handleAdvanceTimeApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));

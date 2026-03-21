@@ -601,6 +601,25 @@ try {
     bindRoutePlanResult.payload.tab.dispatchPayload.aircraft.some((aircraft) => aircraft.aircraftId === draftAircraftId && aircraft.schedule?.isDraft),
     true,
   );
+  const stagedDraftScheduleId = bindRoutePlanResult.payload.tab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === draftAircraftId)?.schedule?.scheduleId;
+  assert.ok(stagedDraftScheduleId);
+
+  const discardDraftResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/discard-schedule-draft`, {
+    tab: "dispatch",
+    saveId,
+    scheduleId: stagedDraftScheduleId,
+  });
+  assert.equal(discardDraftResult.response.ok, true);
+  assert.equal(discardDraftResult.payload.success, true);
+  assert.equal(discardDraftResult.payload.tab.tabId, "dispatch");
+  assert.ok(discardDraftResult.payload.tab.dispatchPayload);
+  const draftAircraftAfterDiscard = discardDraftResult.payload.tab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === draftAircraftId);
+  assert.ok(draftAircraftAfterDiscard);
+  assert.equal(draftAircraftAfterDiscard.schedule, undefined);
+  assert.equal(
+    discardDraftResult.payload.tab.dispatchPayload.aircraft.some((aircraft) => aircraft.registration === "N208HT" && aircraft.schedule?.isDraft === false),
+    true,
+  );
 
   const autoPlanFailureResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/auto-plan-contract`, {
     tab: "dispatch",
@@ -675,4 +694,3 @@ try {
   ]);
   await removeWorkspaceSave(saveId);
 }
-

@@ -3,7 +3,7 @@
 - `Status:` active
 - `Workflow state:` landed_slice
 - `Current owner:` Mara Sterling
-- `Current active slice:` Slice 2 - readiness checklist and commit impact summary
+- `Current active slice:` Slice 3 - draft control and calendar reflection clarity
 - `Next routing target:` Mara Sterling
 - `Last updated:` 2026-03-20
 
@@ -480,13 +480,13 @@ Once source selection is clear, make readiness read like one trusted checklist:
 - commit impact summary with one primary home
 - reduced duplication between validation rail and commit bar
 
-### Slice 3 - Draft recovery, revision safety, and calendar reflection
+### Slice 3 - Draft control and calendar reflection clarity
 
 After source and readiness are trustworthy:
 
-- make staged draft state easier to resume and revise
-- make abandon or replace behavior easier to understand
-- reflect committed dispatch truth in the calendar without turning Dispatch into a calendar editor
+- make current draft state easier to resume and revise
+- make replace behavior and intentional discard behavior explicit
+- reflect committed dispatch truth in Dispatch by pointing clearly at the existing calendar truth instead of embedding a second calendar surface
 
 ### Later slices under this capability
 
@@ -496,70 +496,69 @@ After source and readiness are trustworthy:
 
 ## Approved Next Slice
 
-`Slice 2 - Readiness checklist and commit impact summary`
+`Slice 3 - Draft control and calendar reflection clarity`
 
 Main conclusion:
 
-Dispatch should stop making the player infer readiness from a mix of validation messages and commit-bar metrics.
-It should present one checklist-first readiness surface and one concise commit-impact summary.
+Dispatch should stop making draft state feel implicit.
+It should show the player what draft is currently staged, what replacing it will do, how to discard it intentionally, and how committed dispatch windows already reflect into the shell calendar.
 
 Reason for doing it now:
 
-- slice 1 made source selection and selected work readable enough to trust
-- the next remaining gap is understanding whether the assignment is `Ready`, `Watch`, or `Blocked`
-- the existing backend validation already exposes enough truth to improve readiness reading without reopening the schedule engine first
+- slice 2 made readiness and commit impact trustworthy enough to act on
+- the next remaining gap is draft control clarity, not another validation pass
+- committed dispatches already project into the clock and calendar model, so the missing work is Dispatch-side explanation and control rather than a new calendar system
 
 In scope:
 
-- replace the generic validation-rail reading path with a checklist-first readiness surface
-- present a small stable set of checklist items derived from the current draft and validation snapshot, such as:
-  - work selected
-  - aircraft selected
-  - route or operational fit
-  - pilot coverage or named-pilot readiness
-  - timing and continuity
-  - commitment conflict status
-- show each checklist item as `Pass`, `Watch`, or `Blocked`
-- surface one plain-English likely recovery action for the highest-severity blocker or warning
-- make commit impact read as one concise consequence summary instead of duplicated status fragments
-- reduce duplication between the readiness surface and the bottom commit bar
-- keep the current backend validation engine and commit command flow in place
-- preserve the current named-pilot readiness and committed-assignment truth already present in Dispatch
+- show one explicit current-draft summary for the selected aircraft, including whether the aircraft already has a draft and what work window it covers
+- make replace-draft consequences more explicit on the selected-work staging surface
+- add an intentional `Discard draft` path for eligible staged drafts instead of making replacement the only escape hatch
+- keep discard behavior safe and truthful by clearing the staged draft without pretending committed schedules were undone
+- add one concise calendar-reflection summary for committed schedules so Dispatch and Clock/Calendar tell the same story
+- keep the existing calendar implementation as the source of truth rather than embedding a new calendar inside Dispatch
+- preserve the current readiness checklist, commit impact summary, named-pilot readiness, and commit command flow
 
 Explicit non-goals:
 
-- no calendar embedding yet
+- no calendar embedding or calendar editor
 - no map panel yet
 - no new dispatch legality engine
-- no draft recovery or abandon-flow redesign yet
+- no committed-schedule cancellation flow
+- no broader schedule-management system outside the staged-draft case
 - no live operations monitoring
 
 Affected systems or files:
 
+- `src\application\commands\types.ts`
+- `src\application\backend-service.ts`
+- `src\application\commands\save-schedule-draft.ts`
+- `src\ui\server.ts`
 - `src/ui/public/dispatch-tab-client.ts`
 - `src/ui/dispatch-tab-model.ts`
-- any focused Dispatch UI test coverage that proves readiness and commit-impact clarity
+- any focused Dispatch UI and backend tests that prove draft replacement, discard, and calendar-reflection clarity
 
 Validation bar:
 
 - `npm run build`
+- focused backend coverage proving an eligible draft can be discarded cleanly without affecting committed schedules
 - focused UI or UI-server coverage proving:
-  - checklist-first readiness rendering
-  - visible `Pass`, `Watch`, and `Blocked` states
-  - one plain-English recovery path on blocked or watch states
-  - reduced duplication between readiness and commit impact
+  - explicit current-draft summary rendering
+  - clear replace-draft messaging on the selected-work surface
+  - visible discard-draft control only when a discardable draft exists
+  - committed schedule calendar-reflection summary
 - preserve current Dispatch draft and commit flow coverage
 - preserve current named-pilot readiness and committed-assignment coverage
 
 Stop conditions or escalation triggers:
 
-- if the existing validation snapshot is too weak to drive a truthful checklist without backend shape changes
-- if commit-impact summary requires reopening event-model or schedule-command behavior
-- if the UI change starts forcing calendar or draft-recovery work into the same pass
+- if safe draft discard cannot be implemented without reopening committed-schedule lifecycle behavior
+- if calendar-reflection clarity needs new calendar backend shape rather than simple Dispatch-side projection
+- if the slice starts pulling map context, named-pilot manual assignment, or schedule editing into the same pass
 
 ## Validation And Tracking
 
 - Slice 1 landed on `codex/dev` in commits `2781d90` and `bb7ecef`.
-- Slice 2 is now landed on `codex/dev`.
-- Slice 3 and later remain deferred until Mara activates the next slice.
+- Slice 2 landed on `codex/dev` in commit `d599517`.
+- Slice 3 landed on `codex/dev`.
 - This capability should stay in one dossier unless execution complexity later justifies an exceptional standalone workstream.

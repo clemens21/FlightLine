@@ -533,6 +533,29 @@ try {
   assert.equal(blockedByRestResult.success, false);
   assert.equal(blockedByRestResult.hardBlockers.some((blocker) => /named pilots/i.test(blocker)), true);
 
+  const discardBlockedDraftResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_discard_rest_blocked`,
+    saveId,
+    commandName: "DiscardAircraftScheduleDraft",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: postRestScheduleId,
+    },
+  });
+
+  assert.equal(discardBlockedDraftResult.success, true);
+  const schedulesAfterDiscard = await backend.loadAircraftSchedules(saveId, fleetState.aircraft[0].aircraftId);
+  const discardedSchedule = schedulesAfterDiscard.find((schedule) => schedule.scheduleId === postRestScheduleId);
+  assert.ok(discardedSchedule);
+  assert.equal(discardedSchedule?.isDraft, false);
+  assert.equal(discardedSchedule?.scheduleState, "cancelled");
+  assert.equal(discardedSchedule?.legs.length, 0);
+  assert.equal(
+    schedulesAfterDiscard.some((schedule) => schedule.scheduleId === draftScheduleId && schedule.scheduleState === "completed"),
+    true,
+  );
+
   const postRestAdvanceResult = await backend.dispatch({
     commandId: `cmd_${saveId}_advance_rest`,
     saveId,
@@ -692,9 +715,164 @@ try {
 
   assert.equal(duplicateCompanyResult.success, false);
   assert.match(duplicateCompanyResult.hardBlockers[0] ?? "", /already has an active company/i);
+
+  const discardSaveId = `${saveId}_discard`;
+  const discardStartedAtUtc = addHours(startedAtUtc, 4);
+
+  const createDiscardSaveResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_save`,
+    saveId: discardSaveId,
+    commandName: "CreateSaveGame",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      worldSeed: "seed-discard-regression",
+      difficultyProfile: "standard",
+      startTimeUtc: discardStartedAtUtc,
+    },
+  });
+  assert.equal(createDiscardSaveResult.success, true);
+
+  const createDiscardCompanyResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_company`,
+    saveId: discardSaveId,
+    commandName: "CreateCompany",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      displayName: "Discard Draft Air",
+      starterAirportId: "KDEN",
+      startingCashAmount: 3_500_000,
+    },
+  });
+  assert.equal(createDiscardCompanyResult.success, true);
+
+  const acquireDiscardAircraftResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_aircraft`,
+    saveId: discardSaveId,
+    commandName: "AcquireAircraft",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      deliveryAirportId: "KDEN",
+      ownershipType: "owned",
+      registration: "N208DD",
+    },
+  });
+  assert.equal(acquireDiscardAircraftResult.success, true);
+
+  const activateDiscardStaffingResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_staffing`,
+    saveId: discardSaveId,
+    commandName: "ActivateStaffingPackage",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      laborCategory: "pilot",
+      employmentModel: "direct_hire",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 1,
+      fixedCostAmount: 12_000,
+    },
+  });
+  assert.equal(activateDiscardStaffingResult.success, true);
+
+  const discardFleetState = await backend.loadFleetState(discardSaveId);
+  assert.ok(discardFleetState);
+  const discardAircraft = discardFleetState.aircraft[0];
+  assert.ok(discardAircraft);
+
+  const committedDraftResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_draft_committed`,
+    saveId: discardSaveId,
+    commandName: "SaveScheduleDraft",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: discardAircraft.aircraftId,
+      scheduleKind: "operational",
+      legs: [
+        {
+          legType: "reposition",
+          originAirportId: "KDEN",
+          destinationAirportId: "KCOS",
+          plannedDepartureUtc: addHours(discardStartedAtUtc, 1),
+          plannedArrivalUtc: addHours(discardStartedAtUtc, 2),
+        },
+      ],
+    },
+  });
+  assert.equal(committedDraftResult.success, true);
+  const committedScheduleId = String(committedDraftResult.metadata?.scheduleId ?? "");
+  assert.ok(committedScheduleId);
+
+  const commitDiscardScheduleResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_commit_committed`,
+    saveId: discardSaveId,
+    commandName: "CommitAircraftSchedule",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: committedScheduleId,
+    },
+  });
+  assert.equal(commitDiscardScheduleResult.success, true);
+
+  const resumableDraftResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_draft_resumable`,
+    saveId: discardSaveId,
+    commandName: "SaveScheduleDraft",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: discardAircraft.aircraftId,
+      scheduleKind: "operational",
+      legs: [
+        {
+          legType: "reposition",
+          originAirportId: "KCOS",
+          destinationAirportId: "KDEN",
+          plannedDepartureUtc: addHours(discardStartedAtUtc, 4),
+          plannedArrivalUtc: addHours(discardStartedAtUtc, 5),
+        },
+      ],
+    },
+  });
+  assert.equal(resumableDraftResult.success, true);
+  const resumableDraftScheduleId = String(resumableDraftResult.metadata?.scheduleId ?? "");
+  assert.ok(resumableDraftScheduleId);
+  assert.notEqual(resumableDraftScheduleId, committedScheduleId);
+
+  const discardDraftResult = await backend.dispatch({
+    commandId: `cmd_${discardSaveId}_discard`,
+    saveId: discardSaveId,
+    commandName: "DiscardAircraftScheduleDraft",
+    issuedAtUtc: discardStartedAtUtc,
+    actorType: "player",
+    payload: {
+      scheduleId: resumableDraftScheduleId,
+    },
+  });
+  assert.equal(discardDraftResult.success, true);
+
+  const discardSchedules = await backend.loadAircraftSchedules(discardSaveId, discardAircraft.aircraftId);
+  assert.equal(discardSchedules.length, 2);
+  const committedScheduleAfterDiscard = discardSchedules.find((schedule) => schedule.scheduleId === committedScheduleId);
+  const discardedScheduleAfterDiscard = discardSchedules.find((schedule) => schedule.scheduleId === resumableDraftScheduleId);
+  assert.ok(committedScheduleAfterDiscard);
+  assert.ok(discardedScheduleAfterDiscard);
+  assert.equal(committedScheduleAfterDiscard.isDraft, false);
+  assert.equal(committedScheduleAfterDiscard.scheduleState, "committed");
+  assert.equal(committedScheduleAfterDiscard.legs.length, 1);
+  assert.equal(discardedScheduleAfterDiscard.isDraft, false);
+  assert.equal(discardedScheduleAfterDiscard.scheduleState, "cancelled");
+  assert.equal(discardedScheduleAfterDiscard.legs.length, 0);
+  assert.equal(discardedScheduleAfterDiscard.laborAllocations.length, 0);
 } finally {
   await Promise.allSettled([
     backend.closeSaveSession(saveId),
+    backend.closeSaveSession(`${saveId}_discard`),
     backend.close(),
     airportReference.close(),
   ]);

@@ -297,8 +297,14 @@ try {
   const committedRecoveryText = (await page.locator("[data-dispatch-readiness-recovery]").textContent()) ?? "";
   assert.equal(committedRecoveryText.length > 0, true);
   assert.equal(committedRecoveryText.includes("Stage a draft to evaluate dispatch readiness."), false);
+  assert.equal(await page.locator("[data-dispatch-calendar-reflection]").isVisible(), true);
+  assert.equal((await page.locator("[data-dispatch-calendar-reflection]").textContent())?.includes("Clock & Calendar already shows N208UI as occupied"), true);
+  assert.equal(await page.locator("[data-dispatch-discard-draft]").count(), 0);
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));
+  assert.equal((await page.locator("[data-dispatch-draft-status]").textContent())?.includes("Discard it if you want a clean planning lane first."), true);
+  assert.equal(await page.locator("[data-dispatch-discard-draft]").isVisible(), true);
+  assert.equal(await page.locator("[data-dispatch-calendar-reflection]").count(), 0);
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
 
@@ -329,8 +335,15 @@ try {
   assert.equal(await page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='accepted_contracts'][role='tab']").isVisible(), true);
   assert.equal(await page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']").isVisible(), true);
   assert.equal(await page.locator("[data-dispatch-selected-work]").isVisible(), true);
+  assert.equal((await page.locator("[data-dispatch-draft-status]").textContent())?.includes("Current draft staged"), true);
+  assert.equal(await page.locator("[data-dispatch-discard-draft]").isVisible(), true);
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Use Discard draft first"), true);
+  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N208UI" }).first());
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N208UI"));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-calendar-reflection]")?.textContent?.includes("Clock & Calendar"));
+  assert.equal((await page.locator("[data-dispatch-calendar-reflection]").textContent())?.includes("Clock & Calendar"), true);
 
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20CUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20CUI"));

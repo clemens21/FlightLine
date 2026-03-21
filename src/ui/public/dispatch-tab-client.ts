@@ -213,7 +213,7 @@ function renderDispatchWorkspace(
               ${selectedAircraft ? `<div class="pill-row">${renderBadge(selectedAircraft.dispatchAvailable ? "available" : selectedAircraft.operationalState)}${renderBadge(selectedAircraft.maintenanceState)}</div>` : ""}
             </div>
             <div class="panel-body">
-              ${renderSelectedAircraftSummary(selectedAircraft)}
+              ${renderSelectedAircraftSummary(payload, selectedAircraft)}
             </div>
           </section>
           <section class="panel dispatch-timeline-panel">
@@ -314,7 +314,7 @@ function renderAircraftCard(aircraft: DispatchAircraftView, selected: boolean): 
   `;
 }
 
-function renderSelectedAircraftSummary(selectedAircraft: DispatchAircraftView | undefined): string {
+function renderSelectedAircraftSummary(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView | undefined): string {
   if (!selectedAircraft) {
     return `<div class="empty-state">No aircraft is selected yet.</div>`;
   }
@@ -360,6 +360,47 @@ function renderSelectedAircraftSummary(selectedAircraft: DispatchAircraftView | 
       </article>
     </div>
     ${renderAssignedPilotsSection(selectedAircraft)}
+    ${renderDraftControlSummary(payload, selectedAircraft)}
+  `;
+}
+
+function renderDraftControlSummary(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView): string {
+  const schedule = selectedAircraft.schedule;
+  if (!schedule) {
+    return `
+      <section class="dispatch-message-list" data-dispatch-draft-status>
+        <article class="dispatch-message-item info">
+          <div class="dispatch-message-head">${renderBadge("info")}<strong>No resumable draft</strong></div>
+          <span class="muted">Stage selected work on ${escapeHtml(selectedAircraft.registration)} to create a draft you can revise, discard, or commit later.</span>
+        </article>
+      </section>
+    `;
+  }
+
+  if (schedule.isDraft) {
+    return `
+      <section class="dispatch-message-list" data-dispatch-draft-status>
+        <article class="dispatch-message-item info" data-dispatch-current-draft>
+          <div class="dispatch-message-head">${renderBadge(schedule.validation?.isCommittable === false ? "blocked_draft" : "draft")}<strong>Current draft staged</strong></div>
+          <span class="muted">${escapeHtml(`${selectedAircraft.registration} has a staged draft from ${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}. Replacing selected work will overwrite only this draft. Discard it if you want a clean planning lane first.`)}</span>
+        </article>
+        <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/discard-schedule-draft" class="dispatch-inline-action" data-api-form data-dispatch-draft-discard-form="1">
+          <input type="hidden" name="tab" value="dispatch" />
+          <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
+          <input type="hidden" name="scheduleId" value="${escapeHtml(schedule.scheduleId)}" />
+          <button type="submit" data-dispatch-discard-draft="1" data-pending-label="Discarding draft...">Discard draft</button>
+        </form>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="dispatch-message-list" data-dispatch-calendar-reflection>
+      <article class="dispatch-message-item info">
+        <div class="dispatch-message-head">${renderBadge("committed")}<strong>Calendar reflection</strong></div>
+        <span class="muted">${escapeHtml(`Clock & Calendar already shows ${selectedAircraft.registration} as occupied from ${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)} for this committed dispatch.`)}</span>
+      </article>
+    </section>
   `;
 }
 
@@ -670,6 +711,11 @@ function renderSelectedRoutePlanSummary(
             <strong>${escapeHtml(summaryItem.originAirport.code)} -> ${escapeHtml(summaryItem.destinationAirport.code)}</strong>
             <span class="muted">${escapeHtml(summaryItem.originAirport.primaryLabel)} to ${escapeHtml(summaryItem.destinationAirport.primaryLabel)}</span>
           </article>
+          <article class="summary-item compact" data-dispatch-draft-impact>
+            <div class="eyebrow">Draft impact</div>
+            <strong>${escapeHtml(selectedAircraft ? selectedAircraft.registration : "No aircraft selected")}</strong>
+            <span class="muted">${escapeHtml(describeDraftReplacementImpact(selectedAircraft))}</span>
+          </article>
           <article class="summary-item compact">
             <div class="eyebrow">Chain</div>
             <strong>${escapeHtml(String(items.length))} planned items</strong>
@@ -744,7 +790,7 @@ function renderSelectedAcceptedContractSummary(
           <article class="summary-item compact">
             <div class="eyebrow">Draft impact</div>
             <strong>${escapeHtml(selectedAircraft ? selectedAircraft.registration : "No aircraft selected")}</strong>
-            <span class="muted">${escapeHtml(selectedAircraft?.schedule?.isDraft ? "Replacing the current draft." : "Staging a new draft on selection.")}</span>
+            <span class="muted">${escapeHtml(describeDraftReplacementImpact(selectedAircraft))}</span>
           </article>
         </div>
         <div class="dispatch-selected-work-actions">
@@ -1569,8 +1615,24 @@ function describeAcceptedContractSummaryNote(
   selectedContract: DispatchTabPayload["workInputs"]["acceptedContracts"][number],
 ): string {
   return selectedAircraft
-    ? `Drafting ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code} will use ${selectedAircraft.registration} and replace any current draft on that aircraft.`
+    ? `Drafting ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code} will use ${selectedAircraft.registration}. ${describeDraftReplacementImpact(selectedAircraft)}`
     : `Select an aircraft first to stage ${selectedContract.originAirport.code} -> ${selectedContract.destinationAirport.code}.`;
+}
+
+function describeDraftReplacementImpact(selectedAircraft: DispatchAircraftView | undefined): string {
+  if (!selectedAircraft) {
+    return "Select an aircraft first to stage this work.";
+  }
+
+  if (selectedAircraft.schedule?.isDraft) {
+    return `Replacing selected work clears only the current draft window ${formatDate(selectedAircraft.schedule.plannedStartUtc)} to ${formatDate(selectedAircraft.schedule.plannedEndUtc)}. Use Discard draft first if you want to abandon it without staging new work.`;
+  }
+
+  if (selectedAircraft.schedule) {
+    return `This stages a new draft on ${selectedAircraft.registration} and does not undo the committed schedule already reflected in Clock & Calendar.`;
+  }
+
+  return `This stages a new draft on ${selectedAircraft.registration}.`;
 }
 
 function escapeHtml(value: string): string {

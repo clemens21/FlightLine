@@ -41,6 +41,7 @@ export type CommandName =
   | "ShortlistContractOffer"
   | "CancelCompanyContract"
   | "SaveScheduleDraft"
+  | "DiscardAircraftScheduleDraft"
   | "CommitAircraftSchedule"
   | "StartNamedPilotTraining"
   | "StartNamedPilotTransfer"
@@ -128,6 +129,10 @@ export interface CommitAircraftSchedulePayload {
   scheduleId: string;
 }
 
+export interface DiscardAircraftScheduleDraftPayload {
+  scheduleId: string;
+}
+
 export interface StartNamedPilotTrainingPayload {
   namedPilotId: NamedPilotId;
   trainingProgramKind?: NamedPilotTrainingProgramKind;
@@ -207,6 +212,10 @@ export type CommitAircraftScheduleCommand = CommandEnvelope<CommitAircraftSchedu
   commandName: "CommitAircraftSchedule";
 };
 
+export type DiscardAircraftScheduleDraftCommand = CommandEnvelope<DiscardAircraftScheduleDraftPayload> & {
+  commandName: "DiscardAircraftScheduleDraft";
+};
+
 export type StartNamedPilotTrainingCommand = CommandEnvelope<StartNamedPilotTrainingPayload> & {
   commandName: "StartNamedPilotTraining";
 };
@@ -253,6 +262,7 @@ export type SupportedCommand =
   | AcquireAircraftCommand
   | ActivateStaffingPackageCommand
   | SaveScheduleDraftCommand
+  | DiscardAircraftScheduleDraftCommand
   | CommitAircraftScheduleCommand
   | StartNamedPilotTrainingCommand
   | StartNamedPilotTransferCommand
