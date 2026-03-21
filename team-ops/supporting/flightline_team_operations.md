@@ -42,6 +42,25 @@ If you need real simultaneous build work, do not fake it. Either:
 - sequence the implementation work
 - or let Mara explicitly authorize temporary additional implementation sessions with frozen boundaries
 
+## Default Branch Lanes
+
+Use this branch model by default:
+
+- `main`:
+  - the promoted line
+  - local `main` and GitHub `main` should normally stay aligned
+- `codex/dev`:
+  - the clean integration branch for the next bounded landing set
+  - should usually match `main` when no landing set is actively being assembled
+- `codex/<workstream>`:
+  - the normal home for active implementation work
+  - one bounded workstream branch per active implementation stream
+
+Important rule:
+
+- do not leave mixed unfinished work parked on `codex/dev`
+- if work on `codex/dev` stops being one coherent landing candidate, preserve it on a `codex/<workstream>` branch and return `codex/dev` to a clean integration state
+
 ## Default Intake Artifact
 
 Use `flightline_task_intake_brief.md` as the standard intake format for new non-trivial development work routed to Mara.

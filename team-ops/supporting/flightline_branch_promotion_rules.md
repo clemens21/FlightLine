@@ -15,11 +15,16 @@ If `dev` contains unrelated experiments, partial work, or stale changes, do not 
 
 ## Branch Meanings
 
-- `dev`: active local development branch or the current integration branch for ongoing work
+- `codex/<workstream>`: the normal branch for active implementation work on one bounded stream
+- `dev`: the clean local integration branch for the next intended landing set
 - local `main`: the local integration and pre-push branch that should contain only work intended to be eligible for remote promotion
 - GitHub `main`: the remote `main` branch on GitHub
 
-If you use additional workstream branches, they should normally branch from `dev` unless there is a strong reason not to.
+Default expectation:
+
+- local `main` and GitHub `main` should normally stay aligned
+- `dev` should normally match `main` when no bounded landing is actively being assembled
+- new coding work should normally start on `codex/<workstream>` from the current shared tip
 
 ## Core Promotion Rules
 
@@ -33,6 +38,22 @@ If you use additional workstream branches, they should normally branch from `dev
 8. Promotion blockers raised by QA or Integration remain blocking until resolved or explicitly waived by the human.
 9. If tests, validation, docs, or migration notes are required, they should be completed or explicitly called out before promotion.
 10. If the exact commit set cannot be described clearly, the work is not ready to promote.
+11. Do not use `dev` as a long-lived mixed-work scratch branch.
+12. If unfinished work accumulates on `dev`, preserve it on a `codex/<workstream>` branch before trying to align `dev` or promote it.
+
+## Default Branch Workflow
+
+Use this flow by default:
+
+1. start from the current shared promoted tip
+2. open a bounded `codex/<workstream>` branch for active coding
+3. keep `dev` clean until a bounded landing set is ready to integrate
+4. integrate only that bounded set into `dev`
+5. verify `dev`
+6. fast-forward local `main`
+7. push local `main` to GitHub `main`
+
+This keeps `dev` readable as an integration checkpoint instead of a second scratchpad.
 
 ## Dev To Local Main
 
@@ -50,6 +71,7 @@ Preferred promotion methods:
 
 - fast-forward or merge only when `dev` contains only the intended ready work
 - cherry-pick or otherwise isolate commits when `dev` contains mixed work
+- if `dev` drifted because mixed work was parked there, move that mixed work back onto a `codex/<workstream>` branch before promotion
 
 Do not treat "merge dev into main" as the default safe move.
 
@@ -103,6 +125,7 @@ If `dev` is carrying several unrelated tasks at once:
 - do not promote the whole branch
 - isolate the intended work first
 - if isolation is messy, stop and clean up the branch structure before promotion
+- the preferred cleanup move is to preserve unfinished work on one or more `codex/<workstream>` branches and return `dev` to a clean integration state
 
 If a change touches save data, schema, migrations, event flow, or other red-flag areas:
 

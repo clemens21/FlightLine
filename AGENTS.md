@@ -187,6 +187,27 @@ For several active development efforts at once:
 6. QA should review either each risky stream independently or the integrated result, depending on where the real risk sits.
 7. Integration review is required before landing when multiple streams touch adjacent systems or shared state.
 
+## Branch Working Model
+
+Use this default branch model unless the human explicitly changes it:
+
+- `main`:
+  - the current promoted line
+  - local `main` and GitHub `main` should normally stay aligned
+- `codex/dev`:
+  - the clean integration branch for the next intended landing set
+  - should normally match `main` when no bounded landing is actively being assembled
+- `codex/<workstream>`:
+  - the normal home for active implementation work
+  - one bounded workstream branch per active implementation stream
+
+Important rules:
+
+- do not leave mixed unfinished work parked on `codex/dev`
+- do not treat `codex/dev` as the default scratch branch
+- if active work on `codex/dev` becomes mixed, move or preserve it on a `codex/<workstream>` branch before the next promotion decision
+- if several streams are active, use separate workstream branches or separate worktrees rather than stacking unrelated work on `codex/dev`
+
 ## Required Handoff Contract
 
 Every non-trivial handoff between roles should include:
