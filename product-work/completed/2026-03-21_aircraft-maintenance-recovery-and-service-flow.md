@@ -3,10 +3,10 @@
 ## Status
 
 - Status: active
-- Workflow state: ready_for_nadia
-- Current owner: Nadia Cross
-- Current active slice: Slice 2 - proactive service visibility and due-soon planning support
-- Next routing target: Nadia Cross
+- Workflow state: completed_capability
+- Current owner: Owen Hart
+- Current active slice: none - capability landed
+- Next routing target: none
 - Last updated: 2026-03-21
 
 ## Capability Brief
@@ -52,7 +52,10 @@
   - Slice 1 - maintenance recovery and return-to-service loop
   - Slice 2 - proactive service visibility and due-soon planning support
 - Approved next slice:
+  - none
+- Completed slices:
   - Slice 1 - maintenance recovery and return-to-service loop
+  - Slice 2 - proactive service visibility and due-soon planning support
 - Deferred slices:
   - any richer maintenance economy or provider differentiation after slice 2
 
@@ -71,6 +74,7 @@
 - Notes from Mara, Nadia, or Owen:
   - Current promoted line already includes partial maintenance command/state scaffolding, so slice 1 should complete the player-facing loop instead of inventing a broad new subsystem.
   - Current worktree candidate implements both slice 1 recovery flow and slice 2 proactive visibility together because the same Aircraft and Dispatch truth paths were already open on this branch.
+  - Nadia cleared the landed candidate at `db9aff8` with no blocker or fix-soon findings before promotion.
 
 ## Notes
 
