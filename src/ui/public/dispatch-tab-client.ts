@@ -93,11 +93,16 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
   const selectedPilotOverrideIdsByScheduleId = new Map<string, string[]>();
 
   function render(): void {
-    const resolvedSourceSelection = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
     const viewState = applyDispatchWorkspaceViewState(payload, {
       ...(selectedAircraftId ? { selectedAircraftId } : {}),
       ...(selectedLegId ? { selectedLegId } : {}),
     });
+    const resolvedSourceSelection = resolveSourceSelection(
+      payload,
+      selectedSourceMode,
+      selectedSourceId,
+      viewState.selectedAircraft,
+    );
 
     selectedAircraftId = viewState.selectedAircraftId;
     selectedLegId = viewState.selectedLegId;
@@ -783,7 +788,7 @@ function renderSelectedWorkSummary(
   selectedSourceMode: DispatchSourceMode | undefined,
   selectedSourceId: string | undefined,
 ): string {
-  const resolved = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
+  const resolved = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId, selectedAircraft);
   if (resolved.sourceMode === "planned_routes") {
     return renderSelectedRoutePlanSummary(payload, selectedAircraft, resolved.sourceId);
   }
@@ -797,7 +802,7 @@ function renderSourceModeBody(
   selectedSourceMode: DispatchSourceMode | undefined,
   selectedSourceId: string | undefined,
 ): string {
-  const resolved = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId);
+  const resolved = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId, selectedAircraft);
   if (resolved.sourceMode === "planned_routes") {
     return renderPlannedRoutesList(payload, resolved.sourceId);
   }
@@ -904,7 +909,7 @@ function renderSelectedAcceptedContractSummary(
   selectedAircraft: DispatchAircraftView | undefined,
   selectedCompanyContractId: string | undefined,
 ): string {
-  const contracts = payload.workInputs.acceptedContracts;
+  const contracts = prioritizeAcceptedContracts(payload.workInputs.acceptedContracts, selectedAircraft);
   if (contracts.length === 0) {
     return `
       <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
@@ -994,12 +999,8 @@ function renderAcceptedContractsList(
   selectedAircraft: DispatchAircraftView | undefined,
   selectedCompanyContractId: string | undefined,
 ): string {
-  const contracts = payload.workInputs.acceptedContracts;
-  const attachedContractIds = new Set(
-    selectedAircraft?.schedule?.legs
-      .map((leg) => leg.linkedCompanyContractId)
-      .filter((entry): entry is string => Boolean(entry)) ?? [],
-  );
+  const contracts = prioritizeAcceptedContracts(payload.workInputs.acceptedContracts, selectedAircraft);
+  const attachedContractIds = listAttachedContractIds(selectedAircraft);
 
   if (contracts.length === 0) {
     return `<div class="empty-state compact">No accepted contracts are waiting for a dispatch plan.</div>`;
@@ -1710,31 +1711,45 @@ function resolveDefaultSourceMode(payload: DispatchTabPayload): DispatchSourceMo
   return payload.workInputs.acceptedContracts.length > 0 ? "accepted_contracts" : "planned_routes";
 }
 
-function resolveSourceSelection(
+export function resolveSourceSelection(
   payload: DispatchTabPayload,
   sourceMode: DispatchSourceMode | undefined,
   sourceId: string | undefined,
+  selectedAircraft: DispatchAircraftView | undefined,
 ): { sourceMode: DispatchSourceMode; sourceId?: string } {
   if (sourceMode) {
-    const modeItems = getSourceItems(payload, sourceMode);
-    const resolvedSourceId = sourceId && modeItems.some((item) => item.id === sourceId)
-      ? sourceId
-      : modeItems[0]?.id;
+    const modeItems = getSourceItems(payload, sourceMode, selectedAircraft);
+    if (modeItems.length > 0) {
+      const resolvedSourceId = sourceMode === "accepted_contracts"
+        ? resolveAcceptedContractSourceId(payload.workInputs.acceptedContracts, selectedAircraft, sourceId)
+        : resolveSourceId(modeItems, sourceId);
+
+      return {
+        sourceMode,
+        ...(resolvedSourceId ? { sourceId: resolvedSourceId } : {}),
+      };
+    }
+
+    const alternateMode: DispatchSourceMode = sourceMode === "accepted_contracts" ? "planned_routes" : "accepted_contracts";
+    const alternateItems = getSourceItems(payload, alternateMode, selectedAircraft);
+    const resolvedAlternateSourceId = alternateMode === "accepted_contracts"
+      ? resolveAcceptedContractSourceId(payload.workInputs.acceptedContracts, selectedAircraft, sourceId)
+      : resolveSourceId(alternateItems, sourceId);
 
     return {
-      sourceMode,
-      ...(resolvedSourceId ? { sourceId: resolvedSourceId } : {}),
+      sourceMode: alternateMode,
+      ...(resolvedAlternateSourceId ? { sourceId: resolvedAlternateSourceId } : {}),
     };
   }
 
   const defaultMode = resolveDefaultSourceMode(payload);
-  const defaultItems = getSourceItems(payload, defaultMode);
+  const defaultItems = getSourceItems(payload, defaultMode, selectedAircraft);
   const alternateMode: DispatchSourceMode = defaultMode === "accepted_contracts" ? "planned_routes" : "accepted_contracts";
   const resolvedMode = defaultItems.length > 0 ? defaultMode : alternateMode;
-  const resolvedItems = getSourceItems(payload, resolvedMode);
-  const resolvedSourceId = sourceId && resolvedItems.some((item) => item.id === sourceId)
-    ? sourceId
-    : resolvedItems[0]?.id;
+  const resolvedItems = getSourceItems(payload, resolvedMode, selectedAircraft);
+  const resolvedSourceId = resolvedMode === "accepted_contracts"
+    ? resolveAcceptedContractSourceId(payload.workInputs.acceptedContracts, selectedAircraft, sourceId)
+    : resolveSourceId(resolvedItems, sourceId);
 
   return {
     sourceMode: resolvedMode,
@@ -1745,6 +1760,7 @@ function resolveSourceSelection(
 function getSourceItems(
   payload: DispatchTabPayload,
   sourceMode: DispatchSourceMode,
+  selectedAircraft: DispatchAircraftView | undefined,
 ): { id: string; title: string; subtitle: string; status: string; meta: string; originAirportCode: string; destinationAirportCode: string }[] {
   if (sourceMode === "planned_routes") {
     return payload.workInputs.routePlanItems.map((item) => ({
@@ -1758,7 +1774,7 @@ function getSourceItems(
     }));
   }
 
-  return payload.workInputs.acceptedContracts.map((contract) => ({
+  return prioritizeAcceptedContracts(payload.workInputs.acceptedContracts, selectedAircraft).map((contract) => ({
     id: contract.companyContractId,
     title: `${contract.originAirport.code} -> ${contract.destinationAirport.code}`,
     subtitle: `${contract.originAirport.primaryLabel} to ${contract.destinationAirport.primaryLabel}`,
@@ -1781,6 +1797,54 @@ function findSelectedAcceptedContract(
   selectedCompanyContractId: string | undefined,
 ): DispatchTabPayload["workInputs"]["acceptedContracts"][number] | undefined {
   return items.find((item) => item.companyContractId === selectedCompanyContractId) ?? items[0];
+}
+
+function listAttachedContractIds(selectedAircraft: DispatchAircraftView | undefined): Set<string> {
+  return new Set(
+    selectedAircraft?.schedule?.legs
+      .map((leg) => leg.linkedCompanyContractId)
+      .filter((entry): entry is string => Boolean(entry)) ?? [],
+  );
+}
+
+export function prioritizeAcceptedContracts(
+  contracts: DispatchTabPayload["workInputs"]["acceptedContracts"],
+  selectedAircraft: DispatchAircraftView | undefined,
+): DispatchTabPayload["workInputs"]["acceptedContracts"] {
+  const attachedContractIds = listAttachedContractIds(selectedAircraft);
+  return [...contracts].sort((left, right) => {
+    const leftAttached = attachedContractIds.has(left.companyContractId) ? 1 : 0;
+    const rightAttached = attachedContractIds.has(right.companyContractId) ? 1 : 0;
+    if (leftAttached !== rightAttached) {
+      return leftAttached - rightAttached;
+    }
+
+    return left.deadlineUtc.localeCompare(right.deadlineUtc);
+  });
+}
+
+function resolveSourceId(
+  items: { id: string }[],
+  sourceId: string | undefined,
+): string | undefined {
+  return sourceId && items.some((item) => item.id === sourceId)
+    ? sourceId
+    : items[0]?.id;
+}
+
+export function resolveAcceptedContractSourceId(
+  contracts: DispatchTabPayload["workInputs"]["acceptedContracts"],
+  selectedAircraft: DispatchAircraftView | undefined,
+  sourceId: string | undefined,
+): string | undefined {
+  const prioritizedContracts = prioritizeAcceptedContracts(contracts, selectedAircraft);
+  const attachedContractIds = listAttachedContractIds(selectedAircraft);
+
+  if (sourceId && prioritizedContracts.some((contract) => contract.companyContractId === sourceId) && !attachedContractIds.has(sourceId)) {
+    return sourceId;
+  }
+
+  return prioritizedContracts[0]?.companyContractId;
 }
 
 function describeRoutePlanChain(

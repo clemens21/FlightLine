@@ -147,6 +147,37 @@ export async function handleSaveScheduleDraft(
     };
   }
 
+  const stagedContractIds = [...new Set(validation.snapshot.contractIdsAttached)];
+  const staleBlockedScheduleIds = stagedContractIds.length > 0
+    ? dependencies.saveDatabase.all<{ scheduleId: string }>(
+        `SELECT DISTINCT s.schedule_id AS scheduleId
+         FROM aircraft_schedule AS s
+         JOIN flight_leg AS fl ON fl.schedule_id = s.schedule_id
+         WHERE s.is_draft = 1
+           AND s.schedule_state = 'blocked'
+           AND s.schedule_id <> $schedule_id
+           AND s.aircraft_id <> $aircraft_id
+         GROUP BY s.schedule_id
+         HAVING SUM(CASE
+             WHEN fl.linked_company_contract_id IN (${stagedContractIds.map((_, index) => `$company_contract_id_${index}`).join(", ")})
+             THEN 1
+             ELSE 0
+           END) > 0
+           AND SUM(CASE
+             WHEN fl.linked_company_contract_id IS NOT NULL
+               AND fl.linked_company_contract_id NOT IN (${stagedContractIds.map((_, index) => `$company_contract_id_${index}`).join(", ")})
+             THEN 1
+             ELSE 0
+           END) = 0`,
+        stagedContractIds.reduce<Record<string, string>>((accumulator, contractId, index) => {
+          accumulator[`$company_contract_id_${index}`] = contractId;
+          return accumulator;
+        }, {
+          $schedule_id: scheduleId,
+          $aircraft_id: command.payload.aircraftId,
+        } as Record<string, string>),
+      ).map((row) => row.scheduleId)
+    : [];
   const eventLogEntryId = createPrefixedId("event");
 
   dependencies.saveDatabase.transaction(() => {
@@ -164,6 +195,38 @@ export async function handleSaveScheduleDraft(
         $schedule_id: scheduleId,
       },
     );
+
+    if (staleBlockedScheduleIds.length > 0) {
+      const schedulePlaceholders = staleBlockedScheduleIds.map((_, index) => `$stale_schedule_id_${index}`).join(", ");
+      const staleBlockedDraftCleanupParams = staleBlockedScheduleIds.reduce<Record<string, string>>((accumulator, staleScheduleId, index) => {
+        accumulator[`$stale_schedule_id_${index}`] = staleScheduleId;
+        return accumulator;
+      }, {
+        $updated_at_utc: companyContext.currentTimeUtc,
+      } as Record<string, string>);
+
+      // Legacy blocked drafts should not keep accepted contracts hostage once a new viable staging is attempted.
+      dependencies.saveDatabase.run(
+        `UPDATE aircraft_schedule
+         SET schedule_state = 'cancelled',
+             is_draft = 0,
+             updated_at_utc = $updated_at_utc
+         WHERE schedule_id IN (${schedulePlaceholders})`,
+        staleBlockedDraftCleanupParams,
+      );
+
+      dependencies.saveDatabase.run(
+        `DELETE FROM labor_allocation
+         WHERE schedule_id IN (${schedulePlaceholders})`,
+        staleBlockedDraftCleanupParams,
+      );
+
+      dependencies.saveDatabase.run(
+        `DELETE FROM flight_leg
+         WHERE schedule_id IN (${schedulePlaceholders})`,
+        staleBlockedDraftCleanupParams,
+      );
+    }
 
     dependencies.saveDatabase.run(
       `DELETE FROM flight_leg WHERE schedule_id = $schedule_id`,

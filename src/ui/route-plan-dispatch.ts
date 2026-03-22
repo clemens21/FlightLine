@@ -4,6 +4,7 @@
  */
 
 import type { FlightLineBackend, ScheduleDraftLegPayload } from "../index.js";
+import { validateProposedSchedule } from "../application/dispatch/schedule-validation.js";
 import { loadRoutePlanState } from "./route-plan-state.js";
 
 const turnaroundMinutes = 45;
@@ -117,6 +118,25 @@ export async function bindRoutePlanToAircraft(
     boundContractIds.push(contract.companyContractId);
     cursorAirportId = contract.destinationAirportId;
     cursorTimeUtc = addMinutesIso(contractArrivalUtc, turnaroundMinutes);
+  }
+
+  const preview = await backend.withExistingSaveDatabase(saveId, (context) => validateProposedSchedule({
+    aircraftId,
+    scheduleKind: "operational",
+    legs,
+  }, {
+    saveDatabase: context.saveDatabase,
+    airportReference: backend.getAirportReference(),
+    aircraftReference: backend.getAircraftReference(),
+    companyId: companyContext.companyId,
+    currentTimeUtc: companyContext.currentTimeUtc,
+  }));
+  if (!preview) {
+    return { success: false, error: "Could not validate the route plan schedule." };
+  }
+  const previewBlocker = preview.snapshot.validationMessages.find((message) => message.severity === "blocker")?.summary;
+  if (previewBlocker) {
+    return { success: false, error: previewBlocker };
   }
 
   const draftResult = await backend.dispatch({

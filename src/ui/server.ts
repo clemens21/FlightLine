@@ -23,7 +23,9 @@ import { renderSaveOpeningPage } from "./save-opening-page.js";
 import { renderIncrementalSavePage } from "./save-shell-page.js";
 import { resolveAircraftImageAsset } from "./aircraft-image-cache.js";
 import { ensureStaffPortraitAsset, isValidStaffPortraitAssetId, readStaffPortraitAsset, resolveCandidatePortraitSeed, resolveEmployeePortraitSeed, resolveStaffPortraitAssetId, } from "./staff-portrait-cache.js";
+import { validateProposedSchedule } from "../application/dispatch/schedule-validation.js";
 import { availableCertificationTrainingTargets, formatPilotCertificationList } from "../domain/staffing/pilot-certifications.js";
+import { planDispatchContractWork } from "./dispatch-contract-planning.js";
 // Process-wide resources are initialized once because every request shares the same backend and the same reference catalogs.
 const port = Number.parseInt(process.env.PORT ?? "4321", 10);
 const turnaroundMinutes = 45;
@@ -2915,11 +2917,7 @@ async function handlePlannerAcceptApi(response, saveId, form) {
         notificationLevel: result.success ? "important" : undefined,
     });
 }
-async function handleAutoPlanContract(response, form) {
-    const saveId = form.get("saveId") ?? "";
-    const tab = normalizeTab(form.get("tab"));
-    const companyContractId = form.get("companyContractId") ?? "";
-    const aircraftId = form.get("aircraftId") ?? "";
+async function draftAcceptedContractOnAircraft(saveId, companyContractId, aircraftId, commandName) {
     const [companyContext, companyContracts, fleetState] = await Promise.all([
         backend.loadCompanyContext(saveId),
         backend.loadCompanyContracts(saveId),
@@ -2929,57 +2927,61 @@ async function handleAutoPlanContract(response, form) {
     const aircraft = fleetState?.aircraft.find((entry) => entry.aircraftId === aircraftId);
     const aircraftModel = aircraft ? aircraftReference.findModel(aircraft.aircraftModelId) : null;
     if (!companyContext || !contract || !aircraft || !aircraftModel) {
-        redirect(response, saveRoute(saveId, { tab, flash: { error: "Could not resolve the contract or aircraft for auto-planning." } }));
-        return;
+        return { success: false, error: "Could not resolve the contract or aircraft for auto-planning." };
     }
+    const planningResult = planDispatchContractWork(companyContext.currentTimeUtc, aircraft.currentAirportId, aircraftModel, {
+        linkedCompanyContractId: contract.companyContractId,
+        originAirportId: contract.originAirportId,
+        destinationAirportId: contract.destinationAirportId,
+        earliestStartUtc: contract.earliestStartUtc,
+        deadlineUtc: contract.deadlineUtc,
+    }, airportReference);
+    if (!planningResult.success) {
+        return { success: false, error: planningResult.message };
+    }
+    const preview = await backend.withExistingSaveDatabase(saveId, (context) => validateProposedSchedule({
+        aircraftId,
+        scheduleKind: "operational",
+        legs: planningResult.legs,
+    }, {
+        saveDatabase: context.saveDatabase,
+        airportReference,
+        aircraftReference,
+        companyId: companyContext.companyId,
+        currentTimeUtc: companyContext.currentTimeUtc,
+    }));
+    const previewBlocker = preview?.snapshot.validationMessages.find((message) => message.severity === "blocker")?.summary;
+    if (previewBlocker) {
+        return { success: false, error: previewBlocker };
+    }
+    const result = await backend.dispatch({
+        commandId: commandId(commandName),
+        saveId,
+        commandName: "SaveScheduleDraft",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            aircraftId,
+            scheduleKind: "operational",
+            legs: planningResult.legs,
+        },
+    });
+    return result.hardBlockers.length > 0
+        ? { success: false, error: result.hardBlockers[0] ?? "Could not draft the schedule." }
+        : { success: true, scheduleId: String(result.metadata?.scheduleId ?? "") };
+}
+async function handleAutoPlanContract(response, form) {
+    const saveId = form.get("saveId") ?? "";
+    const tab = normalizeTab(form.get("tab"));
+    const companyContractId = form.get("companyContractId") ?? "";
+    const aircraftId = form.get("aircraftId") ?? "";
     try {
-        const earliestStart = contract.earliestStartUtc && contract.earliestStartUtc > companyContext.currentTimeUtc
-            ? contract.earliestStartUtc
-            : companyContext.currentTimeUtc;
-        const legs = [];
-        let cursorTime = companyContext.currentTimeUtc;
-        if (aircraft.currentAirportId !== contract.originAirportId) {
-            const repositionArrival = addMinutesIso(cursorTime, estimateFlightMinutes(aircraft.currentAirportId, contract.originAirportId, aircraftModel.cruiseSpeedKtas));
-            legs.push({
-                legType: "reposition",
-                originAirportId: aircraft.currentAirportId,
-                destinationAirportId: contract.originAirportId,
-                plannedDepartureUtc: cursorTime,
-                plannedArrivalUtc: repositionArrival,
-            });
-            cursorTime = addMinutesIso(repositionArrival, turnaroundMinutes);
-        }
-        const contractDeparture = cursorTime > earliestStart ? cursorTime : earliestStart;
-        const contractArrival = addMinutesIso(contractDeparture, estimateFlightMinutes(contract.originAirportId, contract.destinationAirportId, aircraftModel.cruiseSpeedKtas));
-        if (contractArrival > contract.deadlineUtc) {
-            redirect(response, saveRoute(saveId, { tab, flash: { error: "Auto-plan would miss the contract deadline for this aircraft." } }));
-            return;
-        }
-        legs.push({
-            legType: "contract_flight",
-            linkedCompanyContractId: contract.companyContractId,
-            originAirportId: contract.originAirportId,
-            destinationAirportId: contract.destinationAirportId,
-            plannedDepartureUtc: contractDeparture,
-            plannedArrivalUtc: contractArrival,
-        });
-        const result = await backend.dispatch({
-            commandId: commandId("cmd_draft"),
-            saveId,
-            commandName: "SaveScheduleDraft",
-            issuedAtUtc: new Date().toISOString(),
-            actorType: "player",
-            payload: {
-                aircraftId,
-                scheduleKind: "operational",
-                legs,
-            },
-        });
+        const result = await draftAcceptedContractOnAircraft(saveId, companyContractId, aircraftId, "cmd_draft");
         redirect(response, saveRoute(saveId, {
             tab,
-            flash: result.hardBlockers.length > 0
-                ? { error: result.hardBlockers[0] }
-                : { notice: `Drafted schedule ${String(result.metadata?.scheduleId ?? "")}.` },
+            flash: result.success
+                ? { notice: `Drafted schedule ${result.scheduleId}.` }
+                : { error: result.error },
         }));
     }
     catch (error) {
@@ -3989,64 +3991,11 @@ async function handleAutoPlanContractApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
     const companyContractId = form.get("companyContractId") ?? "";
     const aircraftId = form.get("aircraftId") ?? "";
-    const [companyContext, companyContracts, fleetState] = await Promise.all([
-        backend.loadCompanyContext(saveId),
-        backend.loadCompanyContracts(saveId),
-        backend.loadFleetState(saveId),
-    ]);
-    const contract = companyContracts?.contracts.find((entry) => entry.companyContractId === companyContractId);
-    const aircraft = fleetState?.aircraft.find((entry) => entry.aircraftId === aircraftId);
-    const aircraftModel = aircraft ? aircraftReference.findModel(aircraft.aircraftModelId) : null;
-    if (!companyContext || !contract || !aircraft || !aircraftModel) {
-        await sendShellActionResponse(response, saveId, tab, { success: false, error: "Could not resolve the contract or aircraft for auto-planning." });
-        return;
-    }
     try {
-        const earliestStart = contract.earliestStartUtc && contract.earliestStartUtc > companyContext.currentTimeUtc
-            ? contract.earliestStartUtc
-            : companyContext.currentTimeUtc;
-        const legs = [];
-        let cursorTime = companyContext.currentTimeUtc;
-        if (aircraft.currentAirportId !== contract.originAirportId) {
-            const repositionArrival = addMinutesIso(cursorTime, estimateFlightMinutes(aircraft.currentAirportId, contract.originAirportId, aircraftModel.cruiseSpeedKtas));
-            legs.push({
-                legType: "reposition",
-                originAirportId: aircraft.currentAirportId,
-                destinationAirportId: contract.originAirportId,
-                plannedDepartureUtc: cursorTime,
-                plannedArrivalUtc: repositionArrival,
-            });
-            cursorTime = addMinutesIso(repositionArrival, turnaroundMinutes);
-        }
-        const contractDeparture = cursorTime > earliestStart ? cursorTime : earliestStart;
-        const contractArrival = addMinutesIso(contractDeparture, estimateFlightMinutes(contract.originAirportId, contract.destinationAirportId, aircraftModel.cruiseSpeedKtas));
-        if (contractArrival > contract.deadlineUtc) {
-            await sendShellActionResponse(response, saveId, tab, { success: false, error: "Auto-plan would miss the contract deadline for this aircraft." });
-            return;
-        }
-        legs.push({
-            legType: "contract_flight",
-            linkedCompanyContractId: contract.companyContractId,
-            originAirportId: contract.originAirportId,
-            destinationAirportId: contract.destinationAirportId,
-            plannedDepartureUtc: contractDeparture,
-            plannedArrivalUtc: contractArrival,
-        });
-        const result = await backend.dispatch({
-            commandId: commandId("cmd_draft_api"),
-            saveId,
-            commandName: "SaveScheduleDraft",
-            issuedAtUtc: new Date().toISOString(),
-            actorType: "player",
-            payload: {
-                aircraftId,
-                scheduleKind: "operational",
-                legs,
-            },
-        });
-        await sendShellActionResponse(response, saveId, tab, result.hardBlockers.length > 0
-            ? { success: false, error: result.hardBlockers[0] ?? "Could not draft the schedule." }
-            : { success: true, message: `Drafted schedule ${String(result.metadata?.scheduleId ?? "")}.`, notificationLevel: "important" });
+        const result = await draftAcceptedContractOnAircraft(saveId, companyContractId, aircraftId, "cmd_draft_api");
+        await sendShellActionResponse(response, saveId, tab, result.success
+            ? { success: true, message: `Drafted schedule ${result.scheduleId}.`, notificationLevel: "important" }
+            : { success: false, error: result.error });
     }
     catch (error) {
         const message = error instanceof Error ? error.message : "Auto-plan failed.";

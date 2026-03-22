@@ -474,6 +474,9 @@ try {
   const {
     deriveDispatchCommitImpactSummary,
     deriveDispatchReadinessSummary,
+    prioritizeAcceptedContracts,
+    resolveSourceSelection,
+    resolveAcceptedContractSourceId,
   } = await import("../dist/ui/public/dispatch-tab-client.js");
   const readinessSummary = deriveDispatchReadinessSummary({
     ...committedDispatchAircraft,
@@ -602,6 +605,70 @@ try {
     false,
   );
 
+  const stagedAcceptedContract = dispatchTab.dispatchPayload.workInputs.acceptedContracts[0];
+  assert.ok(stagedAcceptedContract);
+  const liveAcceptedContract = {
+    ...stagedAcceptedContract,
+    companyContractId: `${stagedAcceptedContract.companyContractId}_live`,
+    deadlineUtc: "2026-03-17T00:00:00.000Z",
+  };
+  const acceptedContractsForSelection = [
+    stagedAcceptedContract,
+    liveAcceptedContract,
+  ];
+  const stagedDraftAircraftForSelection = {
+    ...draftDispatchAircraft,
+    schedule: {
+      ...draftDispatchAircraft.schedule,
+      legs: [
+        ...(draftDispatchAircraft.schedule?.legs ?? []),
+        {
+          flightLegId: "leg_staged_contract",
+          sequenceNumber: 99,
+          legType: "contract_flight",
+          originAirport: stagedAcceptedContract.originAirport,
+          destinationAirport: stagedAcceptedContract.destinationAirport,
+          plannedDepartureUtc: stagedAcceptedContract.earliestStartUtc ?? stagedAcceptedContract.deadlineUtc,
+          plannedArrivalUtc: stagedAcceptedContract.deadlineUtc,
+          linkedCompanyContractId: stagedAcceptedContract.companyContractId,
+          payloadLabel: "staged contract",
+          durationMinutes: 60,
+          validationMessages: [],
+        },
+      ],
+    },
+  };
+  const prioritizedAcceptedContracts = prioritizeAcceptedContracts(
+    acceptedContractsForSelection,
+    stagedDraftAircraftForSelection,
+  );
+  assert.equal(prioritizedAcceptedContracts[0]?.companyContractId, liveAcceptedContract.companyContractId);
+  assert.equal(
+    resolveAcceptedContractSourceId(
+      acceptedContractsForSelection,
+      stagedDraftAircraftForSelection,
+      stagedAcceptedContract.companyContractId,
+    ),
+    liveAcceptedContract.companyContractId,
+  );
+  const resolvedFallbackSelection = resolveSourceSelection(
+    {
+      ...dispatchTab.dispatchPayload,
+      workInputs: {
+        ...dispatchTab.dispatchPayload.workInputs,
+        acceptedContracts: [],
+      },
+    },
+    "accepted_contracts",
+    stagedAcceptedContract.companyContractId,
+    stagedDraftAircraftForSelection,
+  );
+  assert.equal(resolvedFallbackSelection.sourceMode, "planned_routes");
+  assert.equal(
+    resolvedFallbackSelection.sourceId,
+    dispatchTab.dispatchPayload.workInputs.routePlanItems[0]?.routePlanItemId,
+  );
+
   assert.ok(acceptedDispatchContractId);
 
   const bindRoutePlanFailureResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/bind-route-plan`, {
@@ -673,32 +740,12 @@ try {
   assert.equal(autoPlanFailureResult.payload.tab.tabId, "dispatch");
   assert.ok(autoPlanFailureResult.payload.tab.dispatchPayload);
   const constrainedAfterAutoPlanFailure = autoPlanFailureResult.payload.tab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === constrainedAircraftId);
-  assert.ok(constrainedAfterAutoPlanFailure?.schedule);
-  assert.equal(constrainedAfterAutoPlanFailure.schedule.isDraft, true);
-  assert.equal(constrainedAfterAutoPlanFailure.schedule.scheduleState, "blocked");
-  assert.equal(constrainedAfterAutoPlanFailure.schedule.validation?.isCommittable, false);
+  assert.ok(constrainedAfterAutoPlanFailure);
+  assert.equal(constrainedAfterAutoPlanFailure.schedule, undefined);
   assert.equal(
     autoPlanFailureResult.payload.tab.dispatchPayload.workInputs.acceptedContracts.some((contract) => contract.companyContractId === acceptedDispatchContractId),
     true,
   );
-
-  const blockedScheduleId = constrainedAfterAutoPlanFailure.schedule.scheduleId;
-  const blockedCommitResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/commit-schedule`, {
-    tab: "dispatch",
-    saveId,
-    scheduleId: blockedScheduleId,
-  });
-  assert.equal(blockedCommitResult.response.ok, false);
-  assert.equal(blockedCommitResult.payload.success, false);
-  assert.match(blockedCommitResult.payload.error ?? "", /not dispatchable/i);
-  assert.equal(blockedCommitResult.payload.tab.tabId, "dispatch");
-  assert.ok(blockedCommitResult.payload.tab.dispatchPayload);
-  const constrainedAfterBlockedCommit = blockedCommitResult.payload.tab.dispatchPayload.aircraft.find((aircraft) => aircraft.aircraftId === constrainedAircraftId);
-  assert.ok(constrainedAfterBlockedCommit?.schedule);
-  assert.equal(constrainedAfterBlockedCommit.schedule.scheduleId, blockedScheduleId);
-  assert.equal(constrainedAfterBlockedCommit.schedule.isDraft, true);
-  assert.equal(constrainedAfterBlockedCommit.schedule.scheduleState, "blocked");
-  assert.equal(constrainedAfterBlockedCommit.schedule.validation?.isCommittable, false);
 
   const clockResult = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/clock`);
   assert.ok(clockResult.payload);

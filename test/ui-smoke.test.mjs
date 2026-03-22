@@ -449,15 +449,11 @@ try {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
     const legButtons = document.querySelectorAll("[data-dispatch-leg-select]");
-    return (
-      flashText.includes("is not dispatchable in its current state.")
-      && commitButton.includes("Resolve blockers")
-      && legButtons.length >= 1
-    ) || (
-      flashText.includes("would miss the contract deadline for this aircraft.")
+    const previewFailure = flashText.includes("is not dispatchable in its current state.")
+      || flashText.includes("would miss the contract deadline for this aircraft.");
+    return previewFailure
       && commitButton.includes("No draft to commit")
-      && legButtons.length === 0
-    );
+      && legButtons.length === 0;
   }, { timeout: 45_000 });
 
   const acceptedContractOutcome = await page.evaluate(() => {
@@ -468,35 +464,15 @@ try {
       flashText,
       commitButton,
       legButtons,
-      blockedByAircraftState: flashText.includes("is not dispatchable in its current state.")
-        && commitButton.includes("Resolve blockers")
-        && legButtons >= 1,
+      previewFailed: flashText.includes("is not dispatchable in its current state.")
+        || flashText.includes("would miss the contract deadline for this aircraft."),
     };
   });
 
-  if (acceptedContractOutcome.blockedByAircraftState) {
-    await clickUi(page.locator("[data-dispatch-leg-select]").first());
-    await page.waitForFunction(() => {
-      const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
-      return detail.includes("Selected Leg") && detail.includes("->");
-    });
-    const blockedLegDetailText = await page.locator("[data-dispatch-selected-leg-detail]").textContent();
-    await forceButtonSubmit(page, "[data-dispatch-commit-button]");
-    await page.waitForFunction((expectedDetail) => {
-      const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
-      const detail = document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent ?? "";
-      const commitButton = document.querySelector("[data-dispatch-commit-button]");
-      return flashText.includes("is not dispatchable in its current state.")
-        && detail === expectedDetail
-        && commitButton?.textContent?.includes("Resolve blockers")
-        && commitButton instanceof HTMLButtonElement
-        && commitButton.disabled;
-    }, blockedLegDetailText ?? "", { timeout: 45_000 });
-  } else {
-    assert.equal(acceptedContractOutcome.flashText.includes("would miss the contract deadline for this aircraft."), true);
-    assert.equal(acceptedContractOutcome.commitButton.includes("No draft to commit"), true);
-    assert.equal(acceptedContractOutcome.legButtons, 0);
-  }
+  assert.equal(acceptedContractOutcome.previewFailed, true);
+  assert.equal(acceptedContractOutcome.commitButton.includes("No draft to commit"), true);
+  assert.equal(acceptedContractOutcome.commitButton.includes("Resolve blockers"), false);
+  assert.equal(acceptedContractOutcome.legButtons, 0);
 
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: "N20DUI" }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-aircraft]")?.textContent?.includes("N20DUI"));

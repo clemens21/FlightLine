@@ -613,7 +613,7 @@ export function validateProposedSchedule(
           JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
           WHERE fl.linked_company_contract_id = $company_contract_id
             AND s.is_draft = 1
-            AND s.schedule_state IN ('draft', 'blocked')
+            AND s.schedule_state = 'draft'
             AND s.schedule_id <> $schedule_id
             AND s.aircraft_id <> $aircraft_id
           LIMIT 1`,

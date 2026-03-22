@@ -13,8 +13,10 @@ import type { ContractBoardView } from "../application/queries/contract-board.js
 import { loadFleetState, type FleetAircraftView, type FleetStateView } from "../application/queries/fleet-state.js";
 import { loadStaffingState, type StaffingStateView } from "../application/queries/staffing-state.js";
 import { pilotCertificationsSatisfyQualificationGroup } from "../domain/staffing/pilot-certifications.js";
+import type { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository, AirportRecord } from "../infrastructure/reference/airport-reference.js";
 import { ensureActiveContractBoard } from "./contracts-board-lifecycle.js";
+import { planDispatchContractWork } from "./dispatch-contract-planning.js";
 import {
   loadRoutePlanState,
   buildVisibleRoutePlanState,
@@ -106,6 +108,7 @@ function hasReadyPilotCoverage(
 
 function canAircraftStructurallyOperateOffer(
   aircraft: FleetAircraftView,
+  aircraftReference: AircraftReferenceRepository,
   offer: ContractBoardView["offers"][number],
   originAirport: AirportRecord,
   destinationAirport: AirportRecord,
@@ -140,13 +143,18 @@ function canAircraftStructurallyOperateOffer(
     return false;
   }
 
+  const aircraftModel = aircraftReference.findModel(aircraft.aircraftModelId);
+  if (!aircraftModel) {
+    return false;
+  }
+
   if (offer.volumeType === "passenger") {
     const seatCapacity = Math.min(aircraft.activeCabinSeats ?? aircraft.maxPassengers, aircraft.maxPassengers);
     return (offer.passengerCount ?? 0) <= seatCapacity;
   }
 
   const cargoCapacity = Math.min(aircraft.activeCabinCargoCapacityLb ?? aircraft.maxCargoLb, aircraft.maxCargoLb);
-  return (offer.cargoWeightLb ?? 0) <= cargoCapacity;
+  return (offer.cargoWeightLb ?? 0) <= cargoCapacity && (offer.cargoWeightLb ?? 0) <= aircraftModel.maxPayloadLb;
 }
 
 function hasNominalCrewCoverage(
@@ -190,10 +198,12 @@ function hasCurrentCrewReadiness(
 }
 
 function deriveOfferFitBucket(
+  currentTimeUtc: string,
   offer: ContractBoardView["offers"][number],
   airportMap: Map<string, AirportRecord>,
   fleetState: FleetStateView | null,
   staffingState: StaffingStateView | null,
+  aircraftReference: AircraftReferenceRepository,
 ): ContractsViewOffer["fitBucket"] {
   const fallbackFitBucket = readFitBucket(offer.explanationMetadata);
   const originAirport = airportMap.get(offer.originAirportId.toUpperCase()) ?? null;
@@ -206,11 +216,33 @@ function deriveOfferFitBucket(
 
   const distanceNm = haversineDistanceNm(originAirport, destinationAirport);
   const structurallyCompatibleAircraft = fleetAircraft.filter((aircraft) =>
-    canAircraftStructurallyOperateOffer(aircraft, offer, originAirport, destinationAirport, distanceNm));
+    canAircraftStructurallyOperateOffer(aircraft, aircraftReference, offer, originAirport, destinationAirport, distanceNm));
   const crewCompatibleAircraft = structurallyCompatibleAircraft.filter((aircraft) =>
     hasNominalCrewCoverage(aircraft, offer, staffingState));
   const currentlyOperableAircraft = crewCompatibleAircraft.filter((aircraft) =>
-    aircraft.dispatchAvailable && hasCurrentCrewReadiness(aircraft, offer, staffingState));
+    aircraft.dispatchAvailable
+    && hasCurrentCrewReadiness(aircraft, offer, staffingState)
+    && (() => {
+      const aircraftModel = aircraftReference.findModel(aircraft.aircraftModelId);
+      if (!aircraftModel) {
+        return false;
+      }
+
+      return planDispatchContractWork(
+        currentTimeUtc,
+        aircraft.currentAirportId,
+        aircraftModel,
+        {
+          originAirportId: offer.originAirportId,
+          destinationAirportId: offer.destinationAirportId,
+          earliestStartUtc: offer.earliestStartUtc,
+          deadlineUtc: offer.latestCompletionUtc,
+        },
+        {
+          findAirport: (airportId: string) => airportMap.get(airportId.toUpperCase()) ?? null,
+        } as AirportReferenceRepository,
+      ).success;
+    })());
 
   if (currentlyOperableAircraft.some((aircraft) => aircraft.currentAirportId === offer.originAirportId)) {
     return "flyable_now";
@@ -304,6 +336,7 @@ function buildOfferView(
   routePlan: RoutePlanState | null,
   fleetState: FleetStateView | null,
   staffingState: StaffingStateView | null,
+  aircraftReference: AircraftReferenceRepository,
 ): ContractsViewOffer[] {
   const { plannedOfferIds } = buildRoutePlanIndexes(routePlan);
 
@@ -322,7 +355,7 @@ function buildOfferView(
       offerStatus: offer.offerStatus,
       likelyRole: offer.likelyRole,
       difficultyBand: offer.difficultyBand,
-      fitBucket: deriveOfferFitBucket(offer, airportMap, fleetState, staffingState),
+      fitBucket: deriveOfferFitBucket(currentTimeUtc, offer, airportMap, fleetState, staffingState, aircraftReference),
       timeRemainingHours: Math.max(
         0,
         (new Date(offer.latestCompletionUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000,
@@ -409,11 +442,20 @@ export function buildContractsViewPayload(
   routePlan: RoutePlanState | null,
   fleetState: FleetStateView | null,
   staffingState: StaffingStateView | null,
+  aircraftReference: AircraftReferenceRepository,
   airportReference: AirportReferenceRepository,
 ): ContractsViewPayload {
   const visibleRoutePlan = buildVisibleRoutePlanState(routePlan);
   const airportMap = resolveAirportMap(airportReference, board, companyContracts, visibleRoutePlan);
-  const offers = buildOfferView(companyContext.currentTimeUtc, board, airportMap, visibleRoutePlan, fleetState, staffingState);
+  const offers = buildOfferView(
+    companyContext.currentTimeUtc,
+    board,
+    airportMap,
+    visibleRoutePlan,
+    fleetState,
+    staffingState,
+    aircraftReference,
+  );
   const companyContractsView = buildCompanyContractsView(companyContracts, airportMap, visibleRoutePlan);
   const acceptedContracts = companyContractsView.filter((contract) => activeCompanyContractStates.has(contract.contractState));
 
@@ -465,6 +507,7 @@ export async function loadContractsViewPayload(
     supportingState?.routePlan ?? null,
     supportingState?.fleetState ?? null,
     supportingState?.staffingState ?? null,
+    backend.getAircraftReference(),
     airportReference,
   );
 }
