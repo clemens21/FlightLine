@@ -17,7 +17,7 @@ import type { StaffingStateView } from "../application/queries/staffing-state.js
 import { resolveDispatchPilotAssignment } from "../domain/dispatch/named-pilot-assignment.js";
 import type { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import type { ScheduleValidationSnapshot } from "../application/dispatch/schedule-validation.js";
-import { buildVisibleRoutePlanState, type RoutePlanItemState, type RoutePlanState } from "./route-plan-state.js";
+import type { RoutePlanItemState, RoutePlanState } from "./route-plan-state.js";
 
 export interface DispatchAirportView {
   airportId: string;
@@ -298,6 +298,22 @@ export function buildDispatchTabPayload({
       committedScheduleCount: activeSchedules.filter((schedule) => !schedule.isDraft).length,
     },
     ...(defaultSelectedAircraftId ? { defaultSelectedAircraftId } : {}),
+  };
+}
+
+function buildVisibleRoutePlanState(routePlan: RoutePlanState | null): RoutePlanState | null {
+  if (!routePlan) {
+    return null;
+  }
+
+  const visibleItems = routePlan.items.filter((item) => item.plannerItemStatus !== "closed");
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return {
+    ...routePlan,
+    items: visibleItems,
   };
 }
 

@@ -71,6 +71,31 @@ function parseAirportCode(detailText, prefix) {
   return match[1];
 }
 
+function createSameOriginScriptFailureTracker(page, baseUrl) {
+  const failures = [];
+  const baseOrigin = new URL(baseUrl).origin;
+  const onResponse = (response) => {
+    const url = new URL(response.url());
+    if (url.origin !== baseOrigin || !url.pathname.endsWith(".js") || response.status() < 400) {
+      return;
+    }
+
+    failures.push({
+      path: url.pathname,
+      status: response.status(),
+    });
+  };
+
+  page.on("response", onResponse);
+
+  return {
+    failures,
+    stop() {
+      page.off("response", onResponse);
+    },
+  };
+}
+
 async function waitForLauncher(page) {
   await page.waitForURL((url) => url.pathname === "/");
   await page.waitForFunction(() => document.body.innerText.includes("Open or Create Save"));
@@ -260,12 +285,15 @@ try {
     page.waitForURL(openSaveUrlPattern(seededSaveId)),
     clickUi(launcherSaveRow(page, seededSaveId).getByRole("link", { name: "Open" })),
   ]);
+  const seededSaveOpenScriptFailures = createSameOriginScriptFailureTracker(page, server.baseUrl);
   await waitForOpenSaveProgress(page);
   await page.waitForURL(saveUrlPattern(seededSaveId));
   await waitForShellTitle(page, displayName);
 
   await page.waitForFunction(() => document.body.innerText.includes("Control Tower"));
   await waitForCompanyClock(page);
+  seededSaveOpenScriptFailures.stop();
+  assert.deepEqual(seededSaveOpenScriptFailures.failures, []);
   assert.equal(await page.locator(".panel").filter({ hasText: "Control Tower" }).count(), 1);
   assert.equal(await page.getByRole("button", { name: "Advance 12h" }).count(), 0);
 
