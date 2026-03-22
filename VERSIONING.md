@@ -17,11 +17,11 @@ Format:
 
 The current released version is:
 
-- `0.2.3`
+- `0.2.4`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
-The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first release at `0.1.0`, cut the first patch release at `0.1.1`, cut the first feature-slice minor release at `0.2.0`, then cut patch releases at `0.2.1`, `0.2.2`, and `0.2.3`.
+The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first release at `0.1.0`, cut the first patch release at `0.1.1`, cut the first feature-slice minor release at `0.2.0`, then cut patch releases at `0.2.1`, `0.2.2`, `0.2.3`, and `0.2.4`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
