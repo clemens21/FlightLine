@@ -100,6 +100,12 @@ async function loadMaintenanceRow(backend, saveId, aircraftId) {
   );
 }
 
+async function loadCompanyCash(backend, saveId) {
+  const companyContext = await backend.loadCompanyContext(saveId);
+  assert.ok(companyContext);
+  return companyContext.currentCashAmount;
+}
+
 const harness = await createTestHarness("flightline-maintenance-recovery-backend");
 const { backend } = harness;
 const saveId = uniqueSaveId("maintenance_recovery");
@@ -213,6 +219,94 @@ try {
     companyContextAfterCompletion.currentTimeUtc,
     advanceResult.metadata?.advancedToUtc,
   );
+
+  const financedSaveId = uniqueSaveId("maintenance_recovery_financed");
+  await createCompanySave(backend, financedSaveId, {
+    startedAtUtc,
+    displayName: `Maintenance Recovery Financed ${financedSaveId}`,
+    startingCashAmount: 3_500_000,
+  });
+  await acquireAircraft(backend, financedSaveId, startedAtUtc, {
+    aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    ownershipType: "financed",
+    registration: "N208FN",
+  });
+  const financedFleetState = await backend.loadFleetState(financedSaveId);
+  assert.ok(financedFleetState);
+  const financedAircraftId = financedFleetState.aircraft[0]?.aircraftId;
+  assert.ok(financedAircraftId);
+  await placeAircraftInMaintenanceWindow(backend, financedSaveId, financedAircraftId, {
+    maintenanceStateInput: "due_soon",
+    hoursToService: 4,
+  });
+  const financedCashBefore = await loadCompanyCash(backend, financedSaveId);
+  const financedScheduleResult = await dispatchOrThrow(backend, {
+    commandId: `cmd_${financedSaveId}_schedule_maintenance`,
+    saveId: financedSaveId,
+    commandName: "ScheduleMaintenance",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: financedAircraftId,
+    },
+  });
+  assert.match(financedScheduleResult.validationMessages[0] ?? "", /Started maintenance recovery/i);
+  const financedCashAfter = await loadCompanyCash(backend, financedSaveId);
+  assert.ok(financedCashAfter < financedCashBefore);
+
+  const leasedSaveId = uniqueSaveId("maintenance_recovery_leased");
+  await createCompanySave(backend, leasedSaveId, {
+    startedAtUtc,
+    displayName: `Maintenance Recovery Leased ${leasedSaveId}`,
+    startingCashAmount: 3_500_000,
+  });
+  await acquireAircraft(backend, leasedSaveId, startedAtUtc, {
+    aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    ownershipType: "leased",
+    registration: "N208LS",
+  });
+  const leasedFleetState = await backend.loadFleetState(leasedSaveId);
+  assert.ok(leasedFleetState);
+  const leasedAircraftId = leasedFleetState.aircraft[0]?.aircraftId;
+  assert.ok(leasedAircraftId);
+  await placeAircraftInMaintenanceWindow(backend, leasedSaveId, leasedAircraftId, {
+    maintenanceStateInput: "overdue",
+    hoursToService: -3,
+  });
+  await backend.withExistingSaveDatabase(leasedSaveId, async (context) => {
+    const companyRow = context.saveDatabase.getOne(
+      `SELECT active_company_id AS companyId
+       FROM save_game
+       WHERE save_id = $save_id
+       LIMIT 1`,
+      { $save_id: leasedSaveId },
+    );
+    assert.ok(companyRow?.companyId);
+    context.saveDatabase.run(
+      `UPDATE company_financial_state
+       SET current_cash_amount = 0,
+           updated_at_utc = $updated_at_utc
+       WHERE company_id = $company_id`,
+      {
+        $updated_at_utc: startedAtUtc,
+        $company_id: companyRow.companyId,
+      },
+    );
+    await context.saveDatabase.persist();
+  });
+  const leasedScheduleResult = await dispatchOrThrow(backend, {
+    commandId: `cmd_${leasedSaveId}_schedule_maintenance`,
+    saveId: leasedSaveId,
+    commandName: "ScheduleMaintenance",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      aircraftId: leasedAircraftId,
+    },
+  });
+  assert.match(leasedScheduleResult.validationMessages[0] ?? "", /lease-covered maintenance/i);
+  const leasedCashAfter = await loadCompanyCash(backend, leasedSaveId);
+  assert.equal(leasedCashAfter, 0);
 } finally {
   await Promise.allSettled([
     backend.closeSaveSession(saveId),

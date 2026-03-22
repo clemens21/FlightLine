@@ -3693,7 +3693,7 @@ async function handleAcquireAircraftOfferApi(response, saveId, form) {
         return;
     }
     const model = aircraftReference.findModel(offer.aircraftModelId);
-    const dealLabel = ownershipType === "financed" ? "loan" : ownershipType === "leased" ? "lease" : "purchase";
+    const dealLabel = ownershipType === "financed" ? "finance" : ownershipType === "leased" ? "lease" : "purchase";
     const canonicalTermMonths = ownershipType === "financed" ? offer.financeTerms.termMonths : ownershipType === "leased" ? offer.leaseTerms.termMonths : undefined;
     const result = await backend.dispatch({
         commandId: commandId("cmd_aircraft_offer_acquire_api"),

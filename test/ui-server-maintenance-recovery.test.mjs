@@ -71,9 +71,13 @@ function addHours(utcIsoString, hours) {
 }
 
 const saveId = uniqueSaveId("ui_maintenance_recovery");
+const financedSaveId = uniqueSaveId("ui_maintenance_recovery_financed");
+const leasedSaveId = uniqueSaveId("ui_maintenance_recovery_leased");
 const startedAtUtc = "2026-03-16T13:00:00.000Z";
 let server = null;
 let aircraftId = "";
+let financedAircraftId = "";
+let leasedAircraftId = "";
 
 try {
   const backend = await createWorkspaceBackend();
@@ -96,6 +100,38 @@ try {
     assert.ok(aircraftId);
 
     await placeAircraftInMaintenanceWindow(backend, saveId, aircraftId, "due_soon");
+
+    await createCompanySave(backend, financedSaveId, {
+      startedAtUtc,
+      displayName: `UI Maintenance ${financedSaveId}`,
+      startingCashAmount: 3_500_000,
+    });
+    await acquireAircraft(backend, financedSaveId, startedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      ownershipType: "financed",
+      registration: "N208UF",
+    });
+    const financedFleetState = await backend.loadFleetState(financedSaveId);
+    assert.ok(financedFleetState);
+    financedAircraftId = financedFleetState.aircraft[0]?.aircraftId ?? "";
+    assert.ok(financedAircraftId);
+    await placeAircraftInMaintenanceWindow(backend, financedSaveId, financedAircraftId, "due_soon");
+
+    await createCompanySave(backend, leasedSaveId, {
+      startedAtUtc,
+      displayName: `UI Maintenance ${leasedSaveId}`,
+      startingCashAmount: 3_500_000,
+    });
+    await acquireAircraft(backend, leasedSaveId, startedAtUtc, {
+      aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+      ownershipType: "leased",
+      registration: "N208UL",
+    });
+    const leasedFleetState = await backend.loadFleetState(leasedSaveId);
+    assert.ok(leasedFleetState);
+    leasedAircraftId = leasedFleetState.aircraft[0]?.aircraftId ?? "";
+    assert.ok(leasedAircraftId);
+    await placeAircraftInMaintenanceWindow(backend, leasedSaveId, leasedAircraftId, "due_soon");
   } finally {
     await backend.close();
   }
@@ -138,6 +174,27 @@ try {
       && card.detail.includes("in service")));
   assert.match(scheduleResult.tab.contentHtml, /data-aircraft-tab-host/);
 
+  const financedAircraftTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(financedSaveId)}/tab/aircraft`);
+  const financedAircraft = financedAircraftTab.aircraftPayload.aircraft.find((entry) => entry.aircraftId === financedAircraftId);
+  assert.ok(financedAircraft?.maintenanceRecovery);
+  assert.equal(financedAircraft.ownershipType, "financed");
+  assert.equal(financedAircraft.maintenanceRecovery.playerPaysCost, true);
+
+  const leasedAircraftTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(leasedSaveId)}/tab/aircraft`);
+  const leasedAircraft = leasedAircraftTab.aircraftPayload.aircraft.find((entry) => entry.aircraftId === leasedAircraftId);
+  assert.ok(leasedAircraft?.maintenanceRecovery);
+  assert.equal(leasedAircraft.ownershipType, "leased");
+  assert.equal(leasedAircraft.maintenanceRecovery.playerPaysCost, false);
+  assert.equal(leasedAircraft.maintenanceRecovery.estimatedCostAmount, 0);
+
+  const leasedScheduleResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(leasedSaveId)}/actions/schedule-maintenance`, {
+    tab: "aircraft",
+    saveId: leasedSaveId,
+    aircraftId: leasedAircraftId,
+  });
+  assert.equal(leasedScheduleResult.success, true);
+  assert.match(leasedScheduleResult.message ?? "", /lease-covered maintenance/i);
+
   const advanceResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/actions/advance-time`, {
     tab: "aircraft",
     saveId,
@@ -156,6 +213,8 @@ try {
 } finally {
   await Promise.allSettled([
     server?.stop(),
+    removeWorkspaceSave(financedSaveId),
+    removeWorkspaceSave(leasedSaveId),
     removeWorkspaceSave(saveId),
   ]);
 }

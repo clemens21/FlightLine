@@ -663,9 +663,11 @@ function renderMaintenanceRecoveryPanel(saveId: string, aircraft: AircraftTabAir
           `Ready again around ${formatDate(recovery.readyAtUtc)}.`,
         )}
         ${renderFactRow(
-          "Upfront cost",
-          formatMoney(recovery.estimatedCostAmount),
-          "Collected immediately when service starts.",
+          "Player cost",
+          recovery.playerPaysCost ? formatMoney(recovery.estimatedCostAmount) : "Covered by lease",
+          recovery.playerPaysCost
+            ? "Collected immediately when service starts."
+            : "You still schedule the work, but the lease covers this maintenance cost.",
         )}
       </div>
       <form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/schedule-maintenance" class="actions" data-api-form>
@@ -712,7 +714,7 @@ function renderMarketDetail(
         ? renderDealReview(saveId, currentCashAmount, offer, activeReview)
         : `<section class="summary-list market-deals">
             ${renderDealCard(offer, offer.buyOption, "Buy")}
-            ${renderDealCard(offer, cheapestOption(offer.financeOptions), "Loan")}
+            ${renderDealCard(offer, cheapestOption(offer.financeOptions), "Finance")}
             ${renderDealCard(offer, cheapestOption(offer.leaseOptions), "Lease")}
           </section>`}
       <section class="aircraft-facts-card">
@@ -826,12 +828,12 @@ function renderDealReview(
   const reviewLabel = reviewState.ownershipType === "owned"
     ? "Purchase terms"
     : reviewState.ownershipType === "financed"
-      ? "Loan terms"
+      ? "Finance terms"
       : "Lease terms";
   const pendingLabel = reviewState.ownershipType === "owned"
     ? "Purchasing aircraft..."
     : reviewState.ownershipType === "financed"
-      ? "Finalizing loan..."
+      ? "Finalizing finance..."
       : "Finalizing lease...";
   const cashAfterUpfrontAmount = currentCashAmount - selectedOption.upfrontPaymentAmount;
 
@@ -876,7 +878,7 @@ function renderDealReview(
         ${selectedOption.termMonths !== undefined ? `<input type="hidden" name="termMonths" value="${escapeHtml(String(selectedOption.termMonths))}" />` : ""}
         ${selectedOption.rateBandOrApr !== undefined ? `<input type="hidden" name="rateBandOrApr" value="${escapeHtml(String(selectedOption.rateBandOrApr))}" />` : ""}
         ${selectedOption.paymentCadence ? `<input type="hidden" name="paymentCadence" value="${escapeHtml(selectedOption.paymentCadence)}" />` : ""}
-        <button type="submit" ${selectedOption.isAffordable ? "" : "disabled"} data-pending-label="${escapeHtml(pendingLabel)}">Confirm ${escapeHtml(reviewState.ownershipType === "owned" ? "purchase" : reviewState.ownershipType === "financed" ? "loan" : "lease")}</button>
+        <button type="submit" ${selectedOption.isAffordable ? "" : "disabled"} data-pending-label="${escapeHtml(pendingLabel)}">Confirm ${escapeHtml(reviewState.ownershipType === "owned" ? "purchase" : reviewState.ownershipType === "financed" ? "finance" : "lease")}</button>
         ${selectedOption.isAffordable
           ? `<span class="muted">This aircraft will remain at ${escapeHtml(offer.location.code)} after acquisition.</span>`
           : `<span class="muted">Insufficient cash for the required upfront payment.</span>`}
@@ -1105,7 +1107,7 @@ function humanize(value: string): string {
 
 function labelForUi(value: string): string {
   if (value === "financed") {
-    return "Loaned";
+    return "Financed";
   }
   if (value === "watch") {
     return "Attention";

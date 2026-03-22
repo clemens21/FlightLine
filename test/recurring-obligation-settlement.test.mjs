@@ -58,6 +58,29 @@ async function loadRecurringState(backend, saveId) {
   });
 }
 
+async function loadAgreementAndAircraft(backend, saveId) {
+  return backend.withExistingSaveDatabase(saveId, async (context) =>
+    context.saveDatabase.getOne(
+      `SELECT
+         aa.acquisition_agreement_id AS acquisitionAgreementId,
+         aa.status AS agreementStatus,
+         ca.aircraft_id AS aircraftId,
+         ca.ownership_type AS ownershipType
+       FROM acquisition_agreement AS aa
+       JOIN company_aircraft AS ca ON ca.aircraft_id = aa.aircraft_id
+       WHERE ca.company_id = (
+         SELECT active_company_id
+         FROM save_game
+         WHERE save_id = $save_id
+         LIMIT 1
+       )
+       ORDER BY aa.start_at_utc ASC
+       LIMIT 1`,
+      { $save_id: saveId },
+    ),
+  );
+}
+
 const harness = await createTestHarness("flightline-recurring-obligations");
 const { backend } = harness;
 
@@ -193,6 +216,68 @@ try {
     nextCycleClockPayload.agenda.filter((event) => event.title === "Payment Due").length,
     1,
   );
+
+  const payoffSaveId = uniqueSaveId("finance_payoff");
+  const payoffStartedAtUtc = await createCompanySave(backend, payoffSaveId, {
+    startedAtUtc: "2026-03-16T13:00:00.000Z",
+    startingCashAmount: 10_000_000,
+  });
+
+  await acquireAircraft(backend, payoffSaveId, payoffStartedAtUtc, {
+    ownershipType: "financed",
+    registration: "N208PO",
+  });
+
+  const payoffRecurringState = await loadRecurringState(backend, payoffSaveId);
+  const payoffFinanceObligation = payoffRecurringState.obligations.find((entry) => entry.obligationType === "finance");
+  assert.ok(payoffFinanceObligation);
+
+  await backend.withExistingSaveDatabase(payoffSaveId, async (context) => {
+    context.saveDatabase.run(
+      `UPDATE recurring_obligation
+       SET end_at_utc = $end_at_utc
+       WHERE recurring_obligation_id = $recurring_obligation_id`,
+      {
+        $end_at_utc: payoffFinanceObligation.nextDueAtUtc,
+        $recurring_obligation_id: payoffFinanceObligation.recurringObligationId,
+      },
+    );
+    context.saveDatabase.run(
+      `UPDATE acquisition_agreement
+       SET end_at_utc = $end_at_utc
+       WHERE acquisition_agreement_id = $acquisition_agreement_id`,
+      {
+        $end_at_utc: payoffFinanceObligation.nextDueAtUtc,
+        $acquisition_agreement_id: payoffFinanceObligation.sourceObjectId,
+      },
+    );
+    await context.saveDatabase.persist();
+  });
+
+  const payoffAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${payoffSaveId}_advance_final_finance_due`,
+    saveId: payoffSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: payoffStartedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: "2026-04-17T13:00:00.000Z",
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(payoffAdvanceResult.success, true, payoffAdvanceResult.hardBlockers?.[0] ?? "Expected finance payoff to settle.");
+
+  const agreementAfterPayoff = await loadAgreementAndAircraft(backend, payoffSaveId);
+  assert.ok(agreementAfterPayoff);
+  assert.equal(agreementAfterPayoff.agreementStatus, "completed");
+  assert.equal(agreementAfterPayoff.ownershipType, "owned");
+
+  const fleetStateAfterPayoff = await backend.loadFleetState(payoffSaveId);
+  assert.ok(fleetStateAfterPayoff);
+  assert.equal(fleetStateAfterPayoff.financedCount, 0);
+  assert.equal(fleetStateAfterPayoff.ownedCount, 1);
+  assert.equal(fleetStateAfterPayoff.aircraft[0]?.ownershipType, "owned");
+  assert.equal(fleetStateAfterPayoff.aircraft[0]?.recurringPaymentAmount, undefined);
 } finally {
   await harness.cleanup();
 }

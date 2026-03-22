@@ -133,7 +133,9 @@ export function loadFleetState(
       mps.maintenance_state_input AS maintenanceStateInput,
       mps.aog_flag AS aogFlag
     FROM company_aircraft AS ca
-    LEFT JOIN acquisition_agreement AS aa ON aa.aircraft_id = ca.aircraft_id
+    LEFT JOIN acquisition_agreement AS aa
+      ON aa.aircraft_id = ca.aircraft_id
+     AND aa.status = 'active'
     LEFT JOIN maintenance_program_state AS mps ON mps.aircraft_id = ca.aircraft_id
     WHERE ca.company_id = $company_id
     ORDER BY ca.acquired_at_utc, ca.registration`,

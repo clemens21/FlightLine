@@ -36,6 +36,10 @@ interface AircraftMaintenanceRow extends Record<string, unknown> {
   aogFlag: number;
 }
 
+function playerPaysMaintenanceRecovery(ownershipType: string): boolean {
+  return ownershipType !== "leased";
+}
+
 function buildFailureResult(
   command: ScheduleMaintenanceCommand,
   hardBlockers: string[],
@@ -115,8 +119,8 @@ export async function handleScheduleMaintenance(
     hardBlockers.push(`${aircraftRow.registration} is not in an operable delivery state.`);
   }
 
-  if (aircraftRow.ownershipType !== "owned") {
-    hardBlockers.push(`${aircraftRow.registration} must be owned before it can enter maintenance recovery.`);
+  if (!["owned", "financed", "leased"].includes(aircraftRow.ownershipType)) {
+    hardBlockers.push(`${aircraftRow.registration} is not using a maintenance-supported ownership structure.`);
   }
 
   if (aircraftRow.activeScheduleId) {
@@ -149,21 +153,22 @@ export async function handleScheduleMaintenance(
   }
 
   const recoveryPlan = deriveMaintenanceRecoveryPlan(recoverySeverity!, aircraftModel!, companyContext.currentTimeUtc);
-  if (companyContext.currentCashAmount < recoveryPlan.estimatedCostAmount) {
+  const playerCostAmount = playerPaysMaintenanceRecovery(aircraftRow.ownershipType) ? recoveryPlan.estimatedCostAmount : 0;
+  if (playerCostAmount > companyContext.currentCashAmount) {
     return buildFailureResult(
       command,
       [`${companyContext.displayName} does not have enough cash for this maintenance recovery.`],
-      [`Estimated recovery cost is ${recoveryPlan.estimatedCostAmount}.`],
+      [`Estimated player cost is ${playerCostAmount}.`],
     );
   }
 
   const maintenanceTaskId = createPrefixedId("maint");
   const completionEventId = createPrefixedId("eventq");
   const eventLogEntryId = createPrefixedId("event");
-  const ledgerEntryId = createPrefixedId("ledger");
+  const ledgerEntryId = playerCostAmount > 0 ? createPrefixedId("ledger") : null;
   const effectiveTimeUtc = companyContext.currentTimeUtc;
   const plannedEndUtc = recoveryPlan.readyAtUtc;
-  const updatedCashAmount = companyContext.currentCashAmount - recoveryPlan.estimatedCostAmount;
+  const updatedCashAmount = companyContext.currentCashAmount - playerCostAmount;
 
   dependencies.saveDatabase.transaction(() => {
     dependencies.saveDatabase.run(
@@ -199,7 +204,7 @@ export async function handleScheduleMaintenance(
         $planned_start_utc: effectiveTimeUtc,
         $planned_end_utc: plannedEndUtc,
         $actual_start_utc: effectiveTimeUtc,
-        $cost_estimate_amount: recoveryPlan.estimatedCostAmount,
+        $cost_estimate_amount: playerCostAmount,
       },
     );
 
@@ -242,47 +247,50 @@ export async function handleScheduleMaintenance(
       },
     );
 
-    dependencies.saveDatabase.run(
-      `INSERT INTO ledger_entry (
-        ledger_entry_id,
-        company_id,
-        entry_time_utc,
-        entry_type,
-        amount,
-        currency_code,
-        source_object_type,
-        source_object_id,
-        description,
-        metadata_json
-      ) VALUES (
-        $ledger_entry_id,
-        $company_id,
-        $entry_time_utc,
-        'maintenance_recovery',
-        $amount,
-        'USD',
-        'maintenance_task',
-        $source_object_id,
-        $description,
-        $metadata_json
-      )`,
-      {
-        $ledger_entry_id: ledgerEntryId,
-        $company_id: companyContext.companyId,
-        $entry_time_utc: effectiveTimeUtc,
-        $amount: recoveryPlan.estimatedCostAmount * -1,
-        $source_object_id: maintenanceTaskId,
-        $description: `Started maintenance recovery for ${aircraftRow.registration}.`,
-        $metadata_json: JSON.stringify({
-          aircraftId: aircraftRow.aircraftId,
-          registration: aircraftRow.registration,
-          maintenanceType: recoveryPlan.maintenanceType,
-          durationHours: recoveryPlan.durationHours,
-          plannedEndUtc,
-          recoverySeverity,
-        }),
-      },
-    );
+    if (ledgerEntryId) {
+      dependencies.saveDatabase.run(
+        `INSERT INTO ledger_entry (
+          ledger_entry_id,
+          company_id,
+          entry_time_utc,
+          entry_type,
+          amount,
+          currency_code,
+          source_object_type,
+          source_object_id,
+          description,
+          metadata_json
+        ) VALUES (
+          $ledger_entry_id,
+          $company_id,
+          $entry_time_utc,
+          'maintenance_recovery',
+          $amount,
+          'USD',
+          'maintenance_task',
+          $source_object_id,
+          $description,
+          $metadata_json
+        )`,
+        {
+          $ledger_entry_id: ledgerEntryId,
+          $company_id: companyContext.companyId,
+          $entry_time_utc: effectiveTimeUtc,
+          $amount: playerCostAmount * -1,
+          $source_object_id: maintenanceTaskId,
+          $description: `Started maintenance recovery for ${aircraftRow.registration}.`,
+          $metadata_json: JSON.stringify({
+            aircraftId: aircraftRow.aircraftId,
+            registration: aircraftRow.registration,
+            maintenanceType: recoveryPlan.maintenanceType,
+            durationHours: recoveryPlan.durationHours,
+            plannedEndUtc,
+            recoverySeverity,
+            ownershipType: aircraftRow.ownershipType,
+          }),
+        },
+      );
+    }
 
     dependencies.saveDatabase.run(
       `INSERT INTO scheduled_event (
@@ -359,7 +367,8 @@ export async function handleScheduleMaintenance(
           durationHours: recoveryPlan.durationHours,
           plannedEndUtc,
           recoverySeverity,
-          estimatedCostAmount: recoveryPlan.estimatedCostAmount,
+          estimatedCostAmount: playerCostAmount,
+          ownershipType: aircraftRow.ownershipType,
         }),
       },
     );
@@ -398,7 +407,8 @@ export async function handleScheduleMaintenance(
           plannedStartUtc: effectiveTimeUtc,
           plannedEndUtc,
           recoverySeverity,
-          estimatedCostAmount: recoveryPlan.estimatedCostAmount,
+          estimatedCostAmount: playerCostAmount,
+          ownershipType: aircraftRow.ownershipType,
         }),
       },
     );
@@ -410,17 +420,22 @@ export async function handleScheduleMaintenance(
     success: true,
     commandId: command.commandId,
     changedAggregateIds: [aircraftRow.aircraftId, maintenanceTaskId],
-    validationMessages: [`Started maintenance recovery for ${aircraftRow.registration}; ready ${plannedEndUtc}.`],
+    validationMessages: [
+      playerCostAmount > 0
+        ? `Started maintenance recovery for ${aircraftRow.registration}; ready ${plannedEndUtc}.`
+        : `Started lease-covered maintenance for ${aircraftRow.registration}; ready ${plannedEndUtc}.`,
+    ],
     hardBlockers: [],
     warnings,
     emittedEventIds: [eventLogEntryId],
-    emittedLedgerEntryIds: [ledgerEntryId],
+    emittedLedgerEntryIds: ledgerEntryId ? [ledgerEntryId] : [],
     metadata: {
       aircraftId: aircraftRow.aircraftId,
       maintenanceTaskId,
       plannedEndUtc,
-      estimatedCostAmount: recoveryPlan.estimatedCostAmount,
+      estimatedCostAmount: playerCostAmount,
       recoverySeverity,
+      ownershipType: aircraftRow.ownershipType,
     },
   };
 }

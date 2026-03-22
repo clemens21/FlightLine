@@ -73,6 +73,7 @@ export interface AircraftMaintenanceRecoveryView {
   maintenanceTypeLabel: string;
   estimatedDowntimeHours: number;
   estimatedCostAmount: number;
+  playerPaysCost: boolean;
   readyAtUtc: string;
   summary: string;
 }
@@ -754,9 +755,9 @@ function buildFinanceDealOptions(
     );
 
     return {
-      optionId: `${offer.aircraftOfferId}:loan:${termMonths}`,
+      optionId: `${offer.aircraftOfferId}:finance:${termMonths}`,
       ownershipType: "financed",
-      label: `${termMonths} month loan`,
+      label: `${termMonths} month finance plan`,
       detail: `${formatPercentValue(apr, 1)} APR | ${formatPercentValue(depositRate * 100, 0)} down`,
       upfrontPaymentAmount,
       recurringPaymentAmount,
@@ -1764,7 +1765,7 @@ function buildMaintenanceRecovery(
     aogFlag: aircraft.aogFlag,
   });
 
-  if (!severity || aircraft.ownershipType !== "owned") {
+  if (!severity) {
     return null;
   }
 
@@ -1785,20 +1786,29 @@ function buildMaintenanceRecovery(
     },
     currentTimeUtc,
   );
+  const playerPaysCost = aircraft.ownershipType !== "leased";
+  const estimatedCostAmount = playerPaysCost ? plan.estimatedCostAmount : 0;
 
   return {
     severity,
     maintenanceType: plan.maintenanceType,
     maintenanceTypeLabel: plan.maintenanceType.replaceAll("_", " ").replace(/^./, (value: string) => value.toUpperCase()),
     estimatedDowntimeHours: plan.durationHours,
-    estimatedCostAmount: plan.estimatedCostAmount,
+    estimatedCostAmount,
+    playerPaysCost,
     readyAtUtc: plan.readyAtUtc,
     summary:
-      severity === "due_soon"
-        ? "Service is due soon. Recovery now keeps the aircraft off the dead-end path."
-        : severity === "overdue"
-          ? "Service is overdue. Recovery now gets the airframe back into dispatchable condition."
-          : "Aircraft is AOG. Recovery now is the visible path back to service.",
+      aircraft.ownershipType === "leased"
+        ? severity === "due_soon"
+          ? "Service is due soon. You still need to schedule it, but the lease covers the maintenance cost."
+          : severity === "overdue"
+            ? "Service is overdue. Schedule it now to restore dispatchability; the lease covers the maintenance cost."
+            : "Aircraft is AOG. Schedule recovery now to get it back in service under the lease."
+        : severity === "due_soon"
+          ? "Service is due soon. Recovery now keeps the aircraft off the dead-end path."
+          : severity === "overdue"
+            ? "Service is overdue. Recovery now gets the airframe back into dispatchable condition."
+            : "Aircraft is AOG. Recovery now is the visible path back to service.",
   };
 }
 

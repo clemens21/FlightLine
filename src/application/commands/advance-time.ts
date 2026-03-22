@@ -2123,6 +2123,61 @@ export async function handleAdvanceTime(
     };
 
     const settleDueRecurringObligations = (toUtc: string): void => {
+      const completeFinancedOwnershipIfPaidOff = (
+        acquisitionAgreementId: string,
+        completedAtUtc: string,
+      ): void => {
+        const financedAgreement = dependencies.saveDatabase.getOne<{
+          aircraftId: string;
+          agreementType: string;
+          status: string;
+        }>(
+          `SELECT
+             aircraft_id AS aircraftId,
+             agreement_type AS agreementType,
+             status AS status
+           FROM acquisition_agreement
+           WHERE acquisition_agreement_id = $acquisition_agreement_id
+           LIMIT 1`,
+          { $acquisition_agreement_id: acquisitionAgreementId },
+        );
+
+        if (!financedAgreement || financedAgreement.agreementType !== "financed") {
+          return;
+        }
+
+        dependencies.saveDatabase.run(
+          `UPDATE acquisition_agreement
+           SET status = 'completed'
+           WHERE acquisition_agreement_id = $acquisition_agreement_id`,
+          { $acquisition_agreement_id: acquisitionAgreementId },
+        );
+        dependencies.saveDatabase.run(
+          `UPDATE company_aircraft
+           SET ownership_type = 'owned'
+           WHERE aircraft_id = $aircraft_id
+             AND ownership_type = 'financed'`,
+          { $aircraft_id: financedAgreement.aircraftId },
+        );
+
+        insertEventLog(
+          completedAtUtc,
+          "acquisition_finance_completed",
+          "acquisition_agreement",
+          acquisitionAgreementId,
+          "info",
+          "Aircraft financing completed; ownership is now fully owned.",
+          {
+            aircraftId: financedAgreement.aircraftId,
+            acquisitionAgreementId,
+            completedAtUtc,
+          },
+        );
+
+        changedAggregateIds.add(acquisitionAgreementId);
+        changedAggregateIds.add(financedAgreement.aircraftId);
+      };
+
       while (true) {
         const recurringObligation = dependencies.saveDatabase.getOne<DueRecurringObligationRow>(
           `SELECT
@@ -2160,6 +2215,12 @@ export async function handleAdvanceTime(
             WHERE recurring_obligation_id = $recurring_obligation_id`,
             { $recurring_obligation_id: recurringObligation.recurringObligationId },
           );
+          if (
+            recurringObligation.obligationType === "finance"
+            && recurringObligation.sourceObjectType === "acquisition_agreement"
+          ) {
+            completeFinancedOwnershipIfPaidOff(recurringObligation.sourceObjectId, recurringObligation.nextDueAtUtc);
+          }
           changedAggregateIds.add(recurringObligation.recurringObligationId);
           changedAggregateIds.add(recurringObligation.sourceObjectId);
           continue;
@@ -2213,6 +2274,14 @@ export async function handleAdvanceTime(
             completedAtUtc: completesAfterCollection ? recurringObligation.nextDueAtUtc : undefined,
           },
         );
+
+        if (
+          completesAfterCollection
+          && recurringObligation.obligationType === "finance"
+          && recurringObligation.sourceObjectType === "acquisition_agreement"
+        ) {
+          completeFinancedOwnershipIfPaidOff(recurringObligation.sourceObjectId, recurringObligation.nextDueAtUtc);
+        }
 
         changedAggregateIds.add(recurringObligation.recurringObligationId);
         changedAggregateIds.add(recurringObligation.sourceObjectId);
