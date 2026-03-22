@@ -153,6 +153,10 @@ export interface DismissNamedPilotPayload {
   namedPilotId: NamedPilotId;
 }
 
+export interface ScheduleMaintenancePayload {
+  aircraftId: string;
+}
+
 export interface RefreshContractBoardPayload {
   refreshReason?: "scheduled" | "manual" | "bootstrap";
 }
@@ -233,6 +237,10 @@ export type DismissNamedPilotCommand = CommandEnvelope<DismissNamedPilotPayload>
   commandName: "DismissNamedPilot";
 };
 
+export type ScheduleMaintenanceCommand = CommandEnvelope<ScheduleMaintenancePayload> & {
+  commandName: "ScheduleMaintenance";
+};
+
 export type RefreshContractBoardCommand = CommandEnvelope<RefreshContractBoardPayload> & {
   commandName: "RefreshContractBoard";
 };
@@ -269,6 +277,7 @@ export type SupportedCommand =
   | StartNamedPilotTransferCommand
   | ConvertNamedPilotToDirectHireCommand
   | DismissNamedPilotCommand
+  | ScheduleMaintenanceCommand
   | RefreshContractBoardCommand
   | RefreshAircraftMarketCommand
   | RefreshStaffingMarketCommand

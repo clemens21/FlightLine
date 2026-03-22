@@ -16,6 +16,11 @@ import {
   pilotCertificationsSatisfyQualificationGroup,
   requiredCertificationForQualificationGroup,
 } from "../domain/staffing/pilot-certifications.js";
+import {
+  deriveMaintenanceRecoveryPlan,
+  resolveMaintenanceRecoverySeverity,
+  type MaintenanceRecoverySeverity,
+} from "../domain/maintenance/maintenance-recovery.js";
 import type { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository, AirportRecord } from "../infrastructure/reference/airport-reference.js";
 import { aircraftImageAssetPathForModel } from "./aircraft-image-sources.js";
@@ -62,6 +67,16 @@ export interface AircraftTabEventView {
   relatedTab: AircraftRelatedTab;
 }
 
+export interface AircraftMaintenanceRecoveryView {
+  severity: MaintenanceRecoverySeverity;
+  maintenanceType: "inspection_a" | "recovery_service";
+  maintenanceTypeLabel: string;
+  estimatedDowntimeHours: number;
+  estimatedCostAmount: number;
+  readyAtUtc: string;
+  summary: string;
+}
+
 export interface AircraftTabAircraftView {
   aircraftId: string;
   registration: string;
@@ -105,6 +120,7 @@ export interface AircraftTabAircraftView {
   currentCommitment: AircraftTabEventView | undefined;
   whyItMatters: string[];
   attentionScore: number;
+  maintenanceRecovery: AircraftMaintenanceRecoveryView | null;
 }
 
 export interface AircraftTableFilters {
@@ -462,6 +478,7 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
     const schedules = schedulesByAircraftId.get(entry.aircraftId) ?? [];
     const primarySchedule = selectPrimarySchedule(schedules, entry.activeScheduleId, currentTimeMs);
     const maintenanceTask = maintenanceTaskByAircraftId.get(entry.aircraftId);
+    const aircraftModel = params.aircraftReference?.findModel(entry.aircraftModelId) ?? null;
     const location = describeAirport(params.airportReference, entry.currentAirportId);
     const operationalState = deriveOperationalState(entry, primarySchedule, maintenanceTask);
     const conditionBand = mapConditionBand(entry.conditionBandInput, entry.conditionValue);
@@ -499,6 +516,7 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
       nextEvent,
       currentTimeMs,
     });
+    const maintenanceRecovery = buildMaintenanceRecovery(entry, aircraftModel, params.companyContext.currentTimeUtc);
 
     return {
       aircraftId: entry.aircraftId,
@@ -543,6 +561,7 @@ function buildFleetWorkspace(params: BuildAircraftTabPayloadParams): AircraftFle
       currentCommitment,
       whyItMatters,
       attentionScore,
+      maintenanceRecovery,
     };
   });
 
@@ -845,6 +864,10 @@ function buildFleetSummaryCards(
   const watchCount = aircraft.filter((entry) => entry.riskBand === "watch").length;
   const criticalCount = aircraft.filter((entry) => entry.riskBand === "critical").length;
   const totalRecurring = aircraft.reduce((sum, entry) => sum + (entry.recurringPaymentAmount ?? 0), 0);
+  const aogCount = aircraft.filter((entry) => entry.maintenanceState === "aog").length;
+  const overdueCount = aircraft.filter((entry) => entry.maintenanceState === "overdue").length;
+  const dueSoonCount = aircraft.filter((entry) => entry.maintenanceState === "due_soon").length;
+  const inServiceCount = aircraft.filter((entry) => entry.maintenanceState === "in_service").length;
 
   return [
     {
@@ -852,6 +875,12 @@ function buildFleetSummaryCards(
       value: `${readyCount}/${aircraft.length}`,
       detail: `${constrainedCount} constrained | ${watchCount + criticalCount} need attention soon.`,
       tone: criticalCount > 0 ? "warn" : "accent",
+    },
+    {
+      label: "Service pressure",
+      value: `${aogCount} AOG | ${overdueCount} overdue`,
+      detail: `${dueSoonCount} due soon | ${inServiceCount} in service right now.`,
+      tone: aogCount + overdueCount > 0 ? "warn" : dueSoonCount + inServiceCount > 0 ? "accent" : "neutral",
     },
     {
       label: "Ownership mix",
@@ -1722,6 +1751,54 @@ function buildNextEvent(
     detail: "No active schedule or maintenance milestone is currently queued.",
     tone: "neutral",
     relatedTab: "dispatch",
+  };
+}
+
+function buildMaintenanceRecovery(
+  aircraft: FleetAircraftView,
+  aircraftModel: ReturnType<AircraftReferenceRepository["findModel"]>,
+  currentTimeUtc: string,
+): AircraftMaintenanceRecoveryView | null {
+  const severity = resolveMaintenanceRecoverySeverity({
+    maintenanceStateInput: aircraft.maintenanceStateInput,
+    aogFlag: aircraft.aogFlag,
+  });
+
+  if (!severity || aircraft.ownershipType !== "owned") {
+    return null;
+  }
+
+  if (!aircraftModel) {
+    return null;
+  }
+
+  if (aircraft.activeMaintenanceTaskId || aircraft.activeScheduleId || aircraft.statusInput === "in_flight" || aircraft.statusInput === "scheduled" || !["available", "delivered"].includes(aircraft.deliveryState)) {
+    return null;
+  }
+
+  const plan = deriveMaintenanceRecoveryPlan(
+    severity,
+    {
+      maintenanceDowntimeHours: aircraftModel.maintenanceDowntimeHours,
+      maintenanceReservePerHourUsd: aircraftModel.maintenanceReservePerHourUsd,
+      fixedSupportCostPerDayUsd: aircraftModel.fixedSupportCostPerDayUsd,
+    },
+    currentTimeUtc,
+  );
+
+  return {
+    severity,
+    maintenanceType: plan.maintenanceType,
+    maintenanceTypeLabel: plan.maintenanceType.replaceAll("_", " ").replace(/^./, (value: string) => value.toUpperCase()),
+    estimatedDowntimeHours: plan.durationHours,
+    estimatedCostAmount: plan.estimatedCostAmount,
+    readyAtUtc: plan.readyAtUtc,
+    summary:
+      severity === "due_soon"
+        ? "Service is due soon. Recovery now keeps the aircraft off the dead-end path."
+        : severity === "overdue"
+          ? "Service is overdue. Recovery now gets the airframe back into dispatchable condition."
+          : "Aircraft is AOG. Recovery now is the visible path back to service.",
   };
 }
 

@@ -22,6 +22,7 @@ import { handleDismissNamedPilot } from "./commands/dismiss-named-pilot.js";
 import { handleRefreshAircraftMarket } from "./commands/refresh-aircraft-market.js";
 import { handleRefreshContractBoard } from "./commands/refresh-contract-board.js";
 import { handleRefreshStaffingMarket } from "./commands/refresh-staffing-market.js";
+import { handleScheduleMaintenance } from "./commands/schedule-maintenance.js";
 import { handleSaveScheduleDraft } from "./commands/save-schedule-draft.js";
 import { handleStartNamedPilotTransfer } from "./commands/start-named-pilot-transfer.js";
 import { handleStartNamedPilotTraining } from "./commands/start-named-pilot-training.js";
@@ -199,6 +200,14 @@ export class FlightLineBackend {
       case "DismissNamedPilot": {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleDismissNamedPilot(command, {
           saveDatabase: context.saveDatabase,
+        }));
+        return result ?? this.missingSaveResult(command.commandId, command.saveId);
+      }
+
+      case "ScheduleMaintenance": {
+        const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleScheduleMaintenance(command, {
+          saveDatabase: context.saveDatabase,
+          aircraftReference: this.aircraftReference,
         }));
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }

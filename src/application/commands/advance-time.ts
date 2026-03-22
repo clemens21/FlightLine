@@ -82,6 +82,27 @@ interface MaintenanceProgramRow extends Record<string, unknown> {
   aogFlag: number;
 }
 
+interface MaintenanceTaskExecutionRow extends Record<string, unknown> {
+  maintenanceTaskId: string;
+  aircraftId: string;
+  aircraftModelId: string;
+  maintenanceType: string;
+  plannedStartUtc: string;
+  plannedEndUtc: string;
+  actualStartUtc: string | null;
+  actualEndUtc: string | null;
+  costEstimateAmount: number | null;
+  actualCostAmount: number | null;
+  taskState: "planned" | "in_progress" | "completed" | "cancelled";
+  currentAirportId: string;
+  statusInput: string;
+  dispatchAvailable: number;
+  activeScheduleId: string | null;
+  activeMaintenanceTaskId: string | null;
+  deliveryState: string;
+  conditionValue: number;
+}
+
 interface CountRow extends Record<string, unknown> {
   countValue: number;
 }
@@ -311,6 +332,10 @@ function deriveMaintenanceStatus(hoursToService: number, conditionValue: number)
     maintenanceStateInput: "current",
     aogFlag: 0,
   };
+}
+
+function resolvePostMaintenanceConditionValue(maintenanceType: string): number {
+  return maintenanceType === "inspection_a" ? 0.92 : 0.84;
 }
 
 function determineStopReason(
@@ -582,6 +607,35 @@ export async function handleAdvanceTime(
         WHERE aircraft_id = $aircraft_id
         LIMIT 1`,
         { $aircraft_id: aircraftId },
+      )
+    );
+
+    const loadMaintenanceTaskExecution = (maintenanceTaskId: string): MaintenanceTaskExecutionRow | null => (
+      dependencies.saveDatabase.getOne<MaintenanceTaskExecutionRow>(
+        `SELECT
+          mt.maintenance_task_id AS maintenanceTaskId,
+          mt.aircraft_id AS aircraftId,
+          ca.aircraft_model_id AS aircraftModelId,
+          mt.maintenance_type AS maintenanceType,
+          mt.planned_start_utc AS plannedStartUtc,
+          mt.planned_end_utc AS plannedEndUtc,
+          mt.actual_start_utc AS actualStartUtc,
+          mt.actual_end_utc AS actualEndUtc,
+          mt.cost_estimate_amount AS costEstimateAmount,
+          mt.actual_cost_amount AS actualCostAmount,
+          mt.task_state AS taskState,
+          ca.current_airport_id AS currentAirportId,
+          ca.status_input AS statusInput,
+          ca.dispatch_available AS dispatchAvailable,
+          ca.active_schedule_id AS activeScheduleId,
+          ca.active_maintenance_task_id AS activeMaintenanceTaskId,
+          ca.delivery_state AS deliveryState,
+          ca.condition_value AS conditionValue
+        FROM maintenance_task AS mt
+        JOIN company_aircraft AS ca ON ca.aircraft_id = mt.aircraft_id
+        WHERE mt.maintenance_task_id = $maintenance_task_id
+        LIMIT 1`,
+        { $maintenance_task_id: maintenanceTaskId },
       )
     );
 
@@ -1429,6 +1483,150 @@ export async function handleAdvanceTime(
         changedAggregateIds.add(legRow.aircraftId);
       };
 
+      const processMaintenanceTaskCompletedEvent = (scheduledEvent: ScheduledEventRow, batchOutcome: MutableBatchOutcome): void => {
+        const eventTimeUtc = scheduledEvent.scheduledTimeUtc;
+        const maintenanceTaskId = scheduledEvent.maintenanceTaskId ?? null;
+
+        if (!maintenanceTaskId) {
+          markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+          insertEventLog(
+            eventTimeUtc,
+            "scheduled_event_invalid",
+            "scheduled_event",
+            scheduledEvent.scheduledEventId,
+            "critical",
+            `Scheduled maintenance completion event ${scheduledEvent.scheduledEventId} is missing its maintenance-task reference.`,
+          );
+          batchOutcome.criticalAlertTriggered = true;
+          return;
+        }
+
+        const taskRow = loadMaintenanceTaskExecution(maintenanceTaskId);
+        if (!taskRow) {
+          markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+          insertEventLog(
+            eventTimeUtc,
+            "scheduled_event_invalid",
+            "scheduled_event",
+            scheduledEvent.scheduledEventId,
+            "critical",
+            `Scheduled maintenance completion event ${scheduledEvent.scheduledEventId} could not resolve maintenance task ${maintenanceTaskId}.`,
+            {
+              maintenanceTaskId,
+            },
+          );
+          batchOutcome.criticalAlertTriggered = true;
+          return;
+        }
+
+        if (taskRow.taskState === "completed" || taskRow.taskState === "cancelled") {
+          markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+          return;
+        }
+
+        if (taskRow.taskState !== "in_progress") {
+          markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+          insertEventLog(
+            eventTimeUtc,
+            "scheduled_event_invalid",
+            "scheduled_event",
+            scheduledEvent.scheduledEventId,
+            "warning",
+            `Scheduled maintenance completion event ${scheduledEvent.scheduledEventId} found task ${maintenanceTaskId} in state ${taskRow.taskState}.`,
+            {
+              maintenanceTaskId,
+              taskState: taskRow.taskState,
+            },
+          );
+          return;
+        }
+
+        const aircraftModel = dependencies.aircraftReference.findModel(taskRow.aircraftModelId);
+        const restoredConditionValue = resolvePostMaintenanceConditionValue(taskRow.maintenanceType);
+        if (!aircraftModel) {
+          markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+          insertEventLog(
+            eventTimeUtc,
+            "scheduled_event_invalid",
+            "scheduled_event",
+            scheduledEvent.scheduledEventId,
+            "critical",
+            `Scheduled maintenance completion event ${scheduledEvent.scheduledEventId} could not resolve aircraft model ${taskRow.aircraftModelId}.`,
+            {
+              maintenanceTaskId,
+              aircraftId: taskRow.aircraftId,
+            },
+          );
+          batchOutcome.criticalAlertTriggered = true;
+          return;
+        }
+
+        dependencies.saveDatabase.run(
+          `UPDATE maintenance_task
+          SET actual_end_utc = $actual_end_utc,
+              actual_cost_amount = COALESCE(actual_cost_amount, cost_estimate_amount),
+              task_state = 'completed'
+          WHERE maintenance_task_id = $maintenance_task_id`,
+          {
+            $actual_end_utc: eventTimeUtc,
+            $maintenance_task_id: maintenanceTaskId,
+          },
+        );
+
+        dependencies.saveDatabase.run(
+          `UPDATE maintenance_program_state
+          SET condition_band_input = $condition_band_input,
+              hours_since_inspection = 0,
+              cycles_since_inspection = 0,
+              hours_to_service = $hours_to_service,
+              maintenance_state_input = 'current',
+              aog_flag = 0,
+              updated_at_utc = $updated_at_utc
+          WHERE aircraft_id = $aircraft_id`,
+          {
+            $condition_band_input: deriveConditionBandInput(restoredConditionValue),
+            $hours_to_service: aircraftModel.inspectionIntervalHours,
+            $updated_at_utc: eventTimeUtc,
+            $aircraft_id: taskRow.aircraftId,
+          },
+        );
+
+        dependencies.saveDatabase.run(
+          `UPDATE company_aircraft
+          SET status_input = 'available',
+              condition_value = $condition_value,
+              dispatch_available = 1,
+              active_maintenance_task_id = NULL
+          WHERE aircraft_id = $aircraft_id`,
+          {
+            $condition_value: restoredConditionValue,
+            $aircraft_id: taskRow.aircraftId,
+          },
+        );
+
+        markScheduledEventProcessed(scheduledEvent.scheduledEventId);
+        insertEventLog(
+          eventTimeUtc,
+          "maintenance_task_completed",
+          "maintenance_task",
+          maintenanceTaskId,
+          "info",
+          `Maintenance task ${maintenanceTaskId} completed for ${taskRow.aircraftId}.`,
+          {
+            aircraftId: taskRow.aircraftId,
+            maintenanceTaskId,
+            maintenanceType: taskRow.maintenanceType,
+            plannedStartUtc: taskRow.plannedStartUtc,
+            plannedEndUtc: taskRow.plannedEndUtc,
+          },
+        );
+
+        batchOutcome.availableAircraftIds.add(taskRow.aircraftId);
+        availableAircraftIds.add(taskRow.aircraftId);
+        changedAggregateIds.add(taskRow.aircraftId);
+        changedAggregateIds.add(maintenanceTaskId);
+      };
+
       const settleContractDeadline = (
         contractRow: ContractDeadlineRow,
         eventTimeUtc: string,
@@ -2112,6 +2310,7 @@ export async function handleAdvanceTime(
             WHEN 'flight_leg_departure_due' THEN 0
             WHEN 'flight_leg_arrival_due' THEN 1
             WHEN 'contract_deadline_check' THEN 2
+            WHEN 'maintenance_task_completed' THEN 3
             ELSE 99
           END ASC,
           scheduled_event_id ASC
@@ -2179,6 +2378,9 @@ export async function handleAdvanceTime(
             break;
           case "contract_deadline_check":
             processContractDeadlineEvent(dueEvent, batchOutcome);
+            break;
+          case "maintenance_task_completed":
+            processMaintenanceTaskCompletedEvent(dueEvent, batchOutcome);
             break;
           default:
             markScheduledEventProcessed(dueEvent.scheduledEventId);

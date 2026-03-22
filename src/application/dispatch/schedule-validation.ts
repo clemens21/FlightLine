@@ -426,11 +426,25 @@ export function validateProposedSchedule(
     }
 
     if (["grounded", "maintenance"].includes(aircraftRow.statusInput)) {
-      pushMessage(messages, "blocker", "aircraft.unavailable", `Aircraft ${aircraftRow.aircraftId} is not dispatchable in its current state.`);
+      pushMessage(
+        messages,
+        "blocker",
+        "aircraft.unavailable",
+        `Aircraft ${aircraftRow.aircraftId} is not dispatchable in its current state.`,
+        undefined,
+        "Open Aircraft and start maintenance recovery, or wait for the current service state to clear before dispatching.",
+      );
     }
 
     if (aircraftRow.activeMaintenanceTaskId) {
-      pushMessage(messages, "blocker", "aircraft.maintenance_active", `Aircraft ${aircraftRow.aircraftId} has an active maintenance task.`);
+      pushMessage(
+        messages,
+        "blocker",
+        "aircraft.maintenance_active",
+        `Aircraft ${aircraftRow.aircraftId} has an active maintenance task.`,
+        undefined,
+        "Let the current maintenance task finish, then return to Dispatch once the aircraft is back in service.",
+      );
     }
   }
 
@@ -448,11 +462,25 @@ export function validateProposedSchedule(
     : null;
 
   if (maintenanceProgram?.aogFlag === 1 || maintenanceProgram?.maintenanceStateInput === "aog") {
-    pushMessage(messages, "blocker", "maintenance.aog", `Aircraft ${proposedSchedule.aircraftId} is AOG and cannot be scheduled.`);
+    pushMessage(
+      messages,
+      "blocker",
+      "maintenance.aog",
+      `Aircraft ${proposedSchedule.aircraftId} is AOG and cannot be scheduled.`,
+      undefined,
+      "Open Aircraft and start maintenance recovery before trying to dispatch this airframe again.",
+    );
   }
 
   if (maintenanceProgram?.maintenanceStateInput === "overdue") {
-    pushMessage(messages, "blocker", "maintenance.overdue", `Aircraft ${proposedSchedule.aircraftId} is past a hard maintenance threshold.`);
+    pushMessage(
+      messages,
+      "blocker",
+      "maintenance.overdue",
+      `Aircraft ${proposedSchedule.aircraftId} is past a hard maintenance threshold.`,
+      undefined,
+      "Open Aircraft and start maintenance recovery before committing more flying on this aircraft.",
+    );
   }
 
   const contractIds = validProposedLegs
@@ -715,9 +743,23 @@ export function validateProposedSchedule(
 
   if (maintenanceProgram) {
     if (maintenanceProgram.hoursToService <= totalBlockHours) {
-      pushMessage(messages, "blocker", "maintenance.window", "The planned schedule would exhaust the remaining maintenance window.");
+      pushMessage(
+        messages,
+        "blocker",
+        "maintenance.window",
+        "The planned schedule would exhaust the remaining maintenance window.",
+        undefined,
+        "Open Aircraft and start maintenance now, or shorten the draft so it stays inside the remaining service window.",
+      );
     } else if (maintenanceProgram.hoursToService <= totalBlockHours + 5) {
-      pushMessage(messages, "warning", "maintenance.tight_window", "The planned schedule leaves very little maintenance margin.");
+      pushMessage(
+        messages,
+        "warning",
+        "maintenance.tight_window",
+        "The planned schedule leaves very little maintenance margin.",
+        undefined,
+        "Consider sending the aircraft to service from Aircraft before adding more flying, or keep this draft very short.",
+      );
     }
   }
 

@@ -379,7 +379,7 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
       </section>
       <section class="panel aircraft-detail-panel">
         <div class="panel-head"><h3>${escapeHtml(selectedAircraftTitle)}</h3></div>
-        <div class="panel-body aircraft-detail-body">${renderAircraftDetail(viewState.selectedAircraft)}</div>
+        <div class="panel-body aircraft-detail-body">${renderAircraftDetail(payload.saveId, viewState.selectedAircraft)}</div>
       </section>
     </div>
   `;
@@ -556,7 +556,7 @@ function renderMarketRow(offer: AircraftMarketOfferView, selectedOfferId: string
 }
 
 // Expands one owned aircraft into an operational brief that answers "what can this airframe do right now?"
-function renderAircraftDetail(aircraft: AircraftTabAircraftView | null): string {
+function renderAircraftDetail(saveId: string, aircraft: AircraftTabAircraftView | null): string {
   if (!aircraft) {
     return `<div class="empty-state">No aircraft are visible with the current filters.</div>`;
   }
@@ -633,10 +633,48 @@ function renderAircraftDetail(aircraft: AircraftTabAircraftView | null): string 
             `${formatPercent(aircraft.conditionValue)} condition | ${formatHours(aircraft.hoursToService)} to service`,
             `${formatNumber(aircraft.airframeHoursTotal)} hrs | ${formatNumber(aircraft.airframeCyclesTotal)} cycles | ${formatHours(aircraft.hoursSinceInspection)} since inspection`,
           )}
+          ${renderMaintenanceRecoveryPanel(saveId, aircraft)}
           ${renderFactListRow("Why it matters", aircraft.whyItMatters)}
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderMaintenanceRecoveryPanel(saveId: string, aircraft: AircraftTabAircraftView): string {
+  if (!aircraft.maintenanceRecovery) {
+    return "";
+  }
+
+  const recovery = aircraft.maintenanceRecovery;
+
+  return `
+    <section class="aircraft-maintenance-recovery">
+      <div class="eyebrow">Maintenance recovery</div>
+      <div class="aircraft-facts-list">
+        ${renderFactRow(
+          "Service type",
+          recovery.maintenanceTypeLabel,
+          recovery.summary,
+        )}
+        ${renderFactRow(
+          "Estimated downtime",
+          `${formatHours(recovery.estimatedDowntimeHours)}`,
+          `Ready again around ${formatDate(recovery.readyAtUtc)}.`,
+        )}
+        ${renderFactRow(
+          "Upfront cost",
+          formatMoney(recovery.estimatedCostAmount),
+          "Collected immediately when service starts.",
+        )}
+      </div>
+      <form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/schedule-maintenance" class="actions" data-api-form>
+        <input type="hidden" name="tab" value="aircraft" />
+        <input type="hidden" name="saveId" value="${escapeHtml(saveId)}" />
+        <input type="hidden" name="aircraftId" value="${escapeHtml(aircraft.aircraftId)}" />
+        <button type="submit" data-pending-label="Starting maintenance...">Start maintenance</button>
+      </form>
+    </section>
   `;
 }
 

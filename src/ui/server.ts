@@ -40,6 +40,7 @@ const openSaveClientAssetUrl = new URL("./public/open-save-client.js", import.me
 const saveShellClientAssetUrl = new URL("./public/save-shell-client.js", import.meta.url);
 const pilotCertificationsModuleAssetUrl = new URL("../domain/staffing/pilot-certifications.js", import.meta.url);
 const dispatchPilotAssignmentModuleAssetUrl = new URL("../domain/dispatch/named-pilot-assignment.js", import.meta.url);
+const maintenanceRecoveryModuleAssetUrl = new URL("../domain/maintenance/maintenance-recovery.js", import.meta.url);
 const uiBrowserModuleAssetUrls = new Map<string, URL>([
     ["aircraft-image-sources", new URL("./aircraft-image-sources.js", import.meta.url)],
     ["aircraft-tab-model", new URL("./aircraft-tab-model.js", import.meta.url)],
@@ -3171,6 +3172,15 @@ async function handleRequest(request, response) {
         response.end(assetSource);
         return;
     }
+    if (request.method === "GET" && pathname === "/domain/maintenance/maintenance-recovery.js") {
+        const assetSource = await readFile(maintenanceRecoveryModuleAssetUrl, "utf8");
+        response.writeHead(200, {
+            "content-type": "text/javascript; charset=utf-8",
+            "cache-control": "no-store",
+        });
+        response.end(assetSource);
+        return;
+    }
     if (request.method === "GET" && aircraftModelImageMatch) {
         const modelId = decodeURIComponent(aircraftModelImageMatch[1] ?? "");
         const resolved = await resolveAircraftImageAsset(modelId, aircraftReference.findModel(modelId));
@@ -3293,6 +3303,9 @@ async function handleRequest(request, response) {
                 return;
             case "add-staffing":
                 await withUiTiming(`action save=${saveId} name=add-staffing`, () => handleAddStaffingApi(response, saveId, form));
+                return;
+            case "schedule-maintenance":
+                await withUiTiming(`action save=${saveId} name=schedule-maintenance`, () => handleScheduleMaintenanceApi(response, saveId, form));
                 return;
             case "hire-pilot-candidate":
                 await withUiTiming(`action save=${saveId} name=hire-pilot-candidate`, () => handleHirePilotCandidateApi(response, saveId, form));
@@ -3726,6 +3739,23 @@ async function handleAddStaffingApi(response, saveId, form) {
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: `Activated ${preset.label}.`, notificationLevel: "routine" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not add staffing." });
+}
+async function handleScheduleMaintenanceApi(response, saveId, form) {
+    const tab = normalizeShellTab(form.get("tab"));
+    const aircraftId = form.get("aircraftId") ?? "";
+    const result = await backend.dispatch({
+        commandId: commandId("cmd_schedule_maintenance_api"),
+        saveId,
+        commandName: "ScheduleMaintenance",
+        issuedAtUtc: new Date().toISOString(),
+        actorType: "player",
+        payload: {
+            aircraftId,
+        },
+    });
+    await sendShellActionResponse(response, saveId, tab, result.success
+        ? { success: true, message: result.validationMessages[0] ?? "Started maintenance recovery.", notificationLevel: "important" }
+        : { success: false, error: result.hardBlockers[0] ?? "Could not start maintenance recovery." });
 }
 async function handleHirePilotCandidateApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
