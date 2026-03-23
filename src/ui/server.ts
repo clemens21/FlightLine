@@ -465,6 +465,9 @@ function saveRoute(saveId, options = {}) {
     if (options.tab && options.tab !== "dashboard") {
         search.set("tab", options.tab);
     }
+    if (options.contractsView) {
+        search.set("contractsView", options.contractsView);
+    }
     if (options.flash?.notice) {
         search.set("notice", options.flash.notice);
     }
@@ -2386,6 +2389,7 @@ function renderSavePage(model, saveIds, flash, activeTab, contractsPayload = nul
         activity: `${model.eventLog?.entries.length ?? 0}`,
     };
     const contractsLink = `<a class="button-link button-secondary" href="${saveRoute(model.saveId, { tab: "contracts" })}">Open contract board</a>`;
+    const riskyContractsLink = `<a class="button-link button-secondary" href="${saveRoute(model.saveId, { tab: "contracts", contractsView: "my_contracts" })}">Open risky contracts</a>`;
     const advanceTimeForm = `<form method="post" action="/actions/advance-time" class="actions">
     ${hiddenContext}
     <div class="action-group">
@@ -2434,7 +2438,7 @@ function renderSavePage(model, saveIds, flash, activeTab, contractsPayload = nul
         ? `<div class="empty-state">No event log entries yet.</div>`
         : `<div class="event-list">${model.eventLog.entries.map((entry) => `<div class="event-item"><div class="meta-stack"><div>${entry.severity ? renderBadge(entry.severity) : ""} <strong>${escapeHtml(entry.message)}</strong></div><div class="muted">${escapeHtml(formatDate(entry.eventTimeUtc))} | ${escapeHtml(entry.eventType)}</div></div></div>`).join("")}</div>`;
     const quickActionsPanel = renderPanel("Control Tower", `<div class="actions">
-    <div class="action-group tight">${contractsLink}</div>
+    <div class="action-group tight">${contractsLink}${riskyContractsLink}</div>
     ${advanceTimeForm}
   </div>`, {
         actionHtml: `<div class="pill-row"><span class="pill">${offersAvailableCount} live offers</span><span class="pill">${upcomingContracts.length} active contracts</span></div>`,
@@ -3469,7 +3473,13 @@ const saveShellRenderers = {
         const contracts = source.companyContracts?.contracts ?? [];
         const schedules = source.schedules.filter((schedule) => schedule.scheduleState !== "completed");
         const idleCount = fleet.filter((aircraft) => aircraft.dispatchAvailable).length;
-        return `<div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Control Tower</h3></div><div class="panel-body"><div class="summary-list"><div class="summary-item"><div class="eyebrow">Company</div><strong>${escapeHtml(company.displayName)}</strong><div class="muted">${escapeHtml(company.companyPhase.replaceAll("_", " "))} | Tier ${company.progressionTier}</div></div><div class="summary-item"><div class="eyebrow">Fleet posture</div><strong>${idleCount}/${fleet.length}</strong><div class="muted">Dispatch-ready aircraft.</div></div><div class="summary-item"><div class="eyebrow">Schedule load</div><strong>${schedules.length}</strong><div class="muted">Draft and committed schedules currently visible.</div></div></div></div></section><section class="panel"><div class="panel-head"><h3>Execution Queue</h3></div><div class="panel-body">${contracts.length === 0 ? `<div class="empty-state">No accepted company contracts yet.</div>` : `<div class="summary-list">${contracts.slice(0, 6).map((contract) => `<div class="summary-item compact"><div class="meta-stack"><div class="pill-row">${renderBadge(contract.contractState)}</div><strong>${renderRouteDisplay(contract.originAirportId, contract.destinationAirportId)}</strong><span class="muted">${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | due ${formatDate(contract.deadlineUtc)}</span></div></div>`).join("")}</div>`}</div></section></div>`;
+        const contractsLink = `<a class="button-link button-secondary" href="${saveRoute(saveId, { tab: "contracts" })}">Open contract board</a>`;
+        const riskyContractsLink = `<a class="button-link button-secondary" href="${saveRoute(saveId, { tab: "contracts", contractsView: "my_contracts" })}">Open risky contracts</a>`;
+        const riskyContracts = contracts.filter((contract) => {
+            const hoursRemaining = (new Date(contract.deadlineUtc).getTime() - new Date(company.currentTimeUtc).getTime()) / 3_600_000;
+            return ["accepted", "assigned", "active"].includes(contract.contractState) && hoursRemaining <= 24;
+        }).length;
+        return `<div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Control Tower</h3></div><div class="panel-body"><div class="summary-list"><div class="summary-item"><div class="eyebrow">Company</div><strong>${escapeHtml(company.displayName)}</strong><div class="muted">${escapeHtml(company.companyPhase.replaceAll("_", " "))} | Tier ${company.progressionTier}</div></div><div class="summary-item"><div class="eyebrow">Fleet posture</div><strong>${idleCount}/${fleet.length}</strong><div class="muted">Dispatch-ready aircraft.</div></div><div class="summary-item"><div class="eyebrow">Schedule load</div><strong>${schedules.length}</strong><div class="muted">Draft and committed schedules currently visible.</div></div><div class="summary-item"><div class="eyebrow">Risky contracts</div><strong>${riskyContracts}</strong><div class="muted">Accepted work due in the next 24 hours.</div></div></div><div class="actions"><div class="action-group tight"><a class="button-link button-secondary" href="${saveRoute(saveId, { tab: "contracts" })}">Open contract board</a>${riskyContractsLink}</div></div></div></section><section class="panel"><div class="panel-head"><h3>Execution Queue</h3></div><div class="panel-body">${contracts.length === 0 ? `<div class="empty-state">No accepted company contracts yet.</div>` : `<div class="summary-list">${contracts.slice(0, 6).map((contract) => `<div class="summary-item compact"><div class="meta-stack"><div class="pill-row">${renderBadge(contract.contractState)}</div><strong>${renderRouteDisplay(contract.originAirportId, contract.destinationAirportId)}</strong><span class="muted">${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | due ${formatDate(contract.deadlineUtc)}</span></div></div>`).join("")}</div>`}</div></section></div>`;
     },
     renderAircraft(saveId, tabId, source, airportRepo) {
         void tabId;

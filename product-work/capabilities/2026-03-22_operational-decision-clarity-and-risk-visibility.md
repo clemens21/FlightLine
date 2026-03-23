@@ -5,13 +5,13 @@
 - Status:
   Active capability
 - Workflow state:
-  needs_eli_fix
+  ready_for_eli
 - Current owner:
   Implementation Engineer (Eli Mercer)
 - Current active slice:
-  Stream A fix pass
+  Stream C - Overview finance visibility
 - Next routing target:
-  Implementation Engineer (contracts clarity fix)
+  Implementation Engineer (overview finance visibility)
 - Last updated:
   2026-03-22
 
@@ -205,7 +205,7 @@
   4. broader pilot-market QoL and embedded hire-table controls
   5. dispatch readability follow-up
 - Approved next slice:
-  - Stream A fix pass
+  - Stream C - Overview finance visibility
 - Deferred slices:
   - deeper finance analysis tooling
   - stronger market-need weighting for pilot generation
@@ -223,10 +223,11 @@
   - finance visibility and risk signaling are explicit enough that Mara does not need to guess graph confidence, badge behavior, or risky-row action style
   - completed capability artifacts remain authoritative for their own underlying systems and are not rewritten by this dossier
 - Related GitHub issues:
-  - #59
+  - none currently tied to the active slice
 - Notes from Mara, Nadia, or Owen:
   - Stream B landed cleanly into the umbrella capability branch at `4dc0f62` after Nadia cleared `codex/aircraft-comparison-workspace`.
-  - Stream A returned one bounded QA finding in `#59`; later streams remain sequential to avoid shared shell/render overlap.
+  - Stream A landed cleanly into the umbrella capability branch at `0617eb7` after the direct-dispatch handoff fix for `#59` passed Nadia revalidation on `codex/contracts-clarity`.
+  - Later streams remain sequential to avoid shared shell/render overlap.
 
 ## Notes
 

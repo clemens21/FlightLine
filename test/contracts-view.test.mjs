@@ -49,6 +49,9 @@ try {
   assert.equal(plannedOffer.routePlanItemId, addResult.routePlanItemId);
   assert.equal(plannedOffer.routePlanItemStatus, "candidate_available");
   assert.equal(plannedPayload.plannerEndpointAirportId, plannedPayload.routePlan.items[0].destination.airportId);
+  assert.equal(typeof plannedOffer.directDispatchEligible, "boolean");
+  assert.equal(typeof plannedOffer.directDispatchReason, "string");
+  assert.ok("nearestRelevantAircraft" in plannedOffer);
 
   const acceptResult = await backend.dispatch({
     commandId: `cmd_${saveId}_accept`,
@@ -73,10 +76,18 @@ try {
   assert.equal(acceptedContract.routePlanItemId, addResult.routePlanItemId);
   assert.equal(acceptedContract.routePlanItemStatus, "accepted_ready");
   assert.equal(acceptedPayload.companyContracts.some((contract) => contract.companyContractId === acceptedContract.companyContractId), true);
+  assert.equal(typeof acceptedContract.hoursRemaining, "number");
+  assert.equal(acceptedContract.urgencyBand === "stable" || acceptedContract.urgencyBand === "at_risk" || acceptedContract.urgencyBand === "overdue", true);
+  assert.equal(acceptedContract.workState === "in_route_plan" || acceptedContract.workState === "ready_for_dispatch" || acceptedContract.workState === "assigned_elsewhere", true);
+  assert.equal(acceptedContract.primaryActionKind === "send_to_route_plan" || acceptedContract.primaryActionKind === "open_route_plan" || acceptedContract.primaryActionKind === "open_dispatch", true);
+  assert.equal(typeof acceptedContract.primaryActionLabel, "string");
+  assert.equal(typeof acceptedContract.assignedAircraftReady, "boolean");
 
   const acceptedOffer = acceptedPayload.offers.find((offer) => offer.contractOfferId === selectedOffer.contractOfferId);
   assert.ok(acceptedOffer);
   assert.equal(acceptedOffer.offerStatus, "accepted");
+  assert.equal(typeof acceptedOffer.directDispatchEligible, "boolean");
+  assert.equal(typeof acceptedOffer.directDispatchReason, "string");
 }
 finally {
   await harness.cleanup();

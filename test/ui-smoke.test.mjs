@@ -347,11 +347,13 @@ try {
   assert.ok((await page.locator(".contracts-board-table tbody tr").count()) > 0);
 
   await clickUi(page.locator("[data-accept-offer]").first());
-  await page.waitForFunction(() => document.body.innerText.includes("Open Route Planning"));
+  await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
+  assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").count(), 1);
+  assert.equal((await page.locator(".contracts-next-step").textContent())?.includes("Accept and dispatch"), true);
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
   assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
-  await clickUi(page.locator(".contracts-next-step [data-workspace-tab='planning']"));
+  await clickUi(page.locator(".contracts-next-step [data-open-route-plan]"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
   await page.waitForFunction(() => document.body.innerText.includes("Route Planning"));
   assert.equal(await page.locator(".contracts-planner-panel").count(), 1);
@@ -360,7 +362,11 @@ try {
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
   await clickUi(page.locator("[data-board-tab='active']"));
   await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
-  assert.ok((await page.locator("[data-plan-add-contract]").count()) >= 1);
+  await page.goto(`${server.baseUrl}/save/${encodeURIComponent(saveId)}?tab=contracts&contractsView=my_contracts`, { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => document.querySelector(".contracts-board-tab[data-board-scope='my_contracts'][aria-selected='true']"));
+  assert.equal(await page.locator(".contracts-board-tab[data-board-scope='my_contracts']").getAttribute("aria-selected"), "true");
+  assert.equal((await page.locator(".contracts-toolbar").textContent())?.includes("at-risk / overdue contracts"), true);
+  assert.equal((await page.locator(".contracts-board-tabs.compact").textContent())?.includes("My Contracts"), true);
 
   await clickUi(page.locator("[data-shell-tab='dispatch']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);

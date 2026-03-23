@@ -414,11 +414,19 @@ try {
   assert.equal(contractsTab.contentHtml.includes("data-contracts-host"), true);
   assert.ok(contractsTab.contractsPayload);
 
+  const dashboardTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/tab/dashboard`);
+  assert.equal(dashboardTab.tabId, "dashboard");
+  assert.equal(dashboardTab.contentHtml.includes("Open risky contracts"), true);
+  assert.equal(dashboardTab.contentHtml.includes("contractsView=my_contracts"), true);
+
   const contractsView = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/view`);
   assert.ok(contractsView.payload);
   assert.ok(contractsView.payload.offers.length > 0);
   const selectedOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId === flyableOfferId);
   assert.ok(selectedOffer);
+  assert.equal(typeof selectedOffer.directDispatchEligible, "boolean");
+  assert.equal(typeof selectedOffer.directDispatchReason, "string");
+  assert.ok("nearestRelevantAircraft" in selectedOffer);
 
   const acceptResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/accept`, {
     contractOfferId: selectedOffer.contractOfferId,
@@ -431,6 +439,10 @@ try {
   const activeContract = acceptResult.payload.payload.companyContracts.find((contract) => contract.contractState === "accepted" || contract.contractState === "assigned" || contract.contractState === "active")
     ?? acceptResult.payload.payload.companyContracts[0];
   assert.ok(activeContract);
+  assert.equal(activeContract.workState === "in_route_plan" || activeContract.workState === "ready_for_dispatch" || activeContract.workState === "assigned_elsewhere", true);
+  assert.equal(typeof activeContract.primaryActionLabel, "string");
+  assert.equal(typeof activeContract.assignedAircraftReady, "boolean");
+  assert.equal(typeof activeContract.hoursRemaining, "number");
 
   const sendToPlanResult = await postFormJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/planner/add`, {
     sourceType: "accepted_contract",
