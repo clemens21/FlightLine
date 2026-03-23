@@ -9,9 +9,9 @@
 - Current owner:
   Implementation Engineer (Eli Mercer)
 - Current active slice:
-  Stream C - Overview finance visibility
+  Stream D - Staffing market QoL
 - Next routing target:
-  Implementation Engineer (overview finance visibility)
+  Implementation Engineer (staffing market QoL)
 - Last updated:
   2026-03-22
 
@@ -205,7 +205,7 @@
   4. broader pilot-market QoL and embedded hire-table controls
   5. dispatch readability follow-up
 - Approved next slice:
-  - Stream C - Overview finance visibility
+  - Stream D - Staffing market QoL
 - Deferred slices:
   - deeper finance analysis tooling
   - stronger market-need weighting for pilot generation
@@ -227,6 +227,7 @@
 - Notes from Mara, Nadia, or Owen:
   - Stream B landed cleanly into the umbrella capability branch at `4dc0f62` after Nadia cleared `codex/aircraft-comparison-workspace`.
   - Stream A landed cleanly into the umbrella capability branch at `0617eb7` after the direct-dispatch handoff fix for `#59` passed Nadia revalidation on `codex/contracts-clarity`.
+  - Stream C landed cleanly into the umbrella capability branch at `dd84a06` after the focused finance graph persistence repro passed and no remaining Nadia findings were raised on `codex/overview-finance-visibility`.
   - Later streams remain sequential to avoid shared shell/render overlap.
 
 ## Notes
