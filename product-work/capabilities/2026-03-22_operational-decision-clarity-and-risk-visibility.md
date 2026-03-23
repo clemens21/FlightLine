@@ -5,13 +5,13 @@
 - Status:
   Active capability
 - Workflow state:
-  eli_in_progress
+  needs_eli_fix
 - Current owner:
   Implementation Engineer (Eli Mercer)
 - Current active slice:
-  Stream A and Stream B
+  Stream A fix pass
 - Next routing target:
-  Implementation Engineer (parallel Eli streams)
+  Implementation Engineer (contracts clarity fix)
 - Last updated:
   2026-03-22
 
@@ -205,7 +205,7 @@
   4. broader pilot-market QoL and embedded hire-table controls
   5. dispatch readability follow-up
 - Approved next slice:
-  - Stream A and Stream B in parallel
+  - Stream A fix pass
 - Deferred slices:
   - deeper finance analysis tooling
   - stronger market-need weighting for pilot generation
@@ -223,9 +223,10 @@
   - finance visibility and risk signaling are explicit enough that Mara does not need to guess graph confidence, badge behavior, or risky-row action style
   - completed capability artifacts remain authoritative for their own underlying systems and are not rewritten by this dossier
 - Related GitHub issues:
-  - none yet
+  - #59
 - Notes from Mara, Nadia, or Owen:
-  - Stream A and Stream B are authorized in parallel; later streams remain sequential to avoid shared shell/render overlap.
+  - Stream B landed cleanly into the umbrella capability branch at `4dc0f62` after Nadia cleared `codex/aircraft-comparison-workspace`.
+  - Stream A returned one bounded QA finding in `#59`; later streams remain sequential to avoid shared shell/render overlap.
 
 ## Notes
 
