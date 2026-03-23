@@ -105,7 +105,7 @@ try {
     assert.equal(aircraftTab.contentHtml.includes("data-aircraft-tab-host"), true);
     assert.ok(aircraftTab.aircraftPayload);
     assert.equal(aircraftTab.aircraftPayload.aircraft.length, 1);
-    assert.equal(aircraftTab.aircraftPayload.summaryCards.length, 4);
+    assert.equal(aircraftTab.aircraftPayload.summaryCards.length, 5);
 
     const contractsTab = await buildTabPayload(backend, saveId, "contracts", renderers);
     assert.ok(contractsTab);

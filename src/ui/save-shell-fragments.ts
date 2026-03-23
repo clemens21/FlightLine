@@ -13,12 +13,14 @@ import { loadRecentEventLog, type EventLogView } from "../application/queries/ev
 import { loadFleetState, type FleetStateView } from "../application/queries/fleet-state.js";
 import { loadMaintenanceTasks, type MaintenanceTaskView } from "../application/queries/maintenance-tasks.js";
 import { loadPilotLaborHistoryCollection, type PilotLaborHistoryView } from "../application/queries/pilot-labor-history.js";
+import { loadRecurringObligations } from "../application/queries/recurring-obligations.js";
 import { loadAircraftSchedules, type AircraftScheduleView } from "../application/queries/schedule-state.js";
 import { loadActiveStaffingMarket, type StaffingMarketView } from "../application/queries/staffing-market.js";
 import { loadStaffingState, type StaffingStateView } from "../application/queries/staffing-state.js";
 import type { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import { buildAircraftTabPayload } from "./aircraft-tab-model.js";
 import { buildDispatchTabPayload } from "./dispatch-tab-model.js";
+import { buildOverviewFinanceView, type OverviewFinanceView } from "./overview-finance-model.js";
 import { ensureActiveAircraftMarket } from "./aircraft-market-lifecycle.js";
 import { ensureActiveStaffingMarket } from "./staffing-market-lifecycle.js";
 import { ensureStaffPortraitAssetsForStaffing } from "./staff-portrait-cache.js";
@@ -43,6 +45,7 @@ interface ShellSummarySource {
   fleetState: FleetStateView | null;
   staffingState: StaffingStateView | null;
   staffingMarket: StaffingMarketView | null;
+  financeOverview: OverviewFinanceView | null;
   pilotLaborHistoryByPilotId: Map<string, PilotLaborHistoryView> | null;
   maintenanceTasks: MaintenanceTaskView[];
   schedules: AircraftScheduleView[];
@@ -144,6 +147,7 @@ export async function buildTabPayload(
       fleetState: staffingSource.fleetState,
       staffingState: staffingSource.staffingState,
       staffingMarket: staffingSource.staffingMarket,
+      financeOverview: staffingSource.financeOverview,
       pilotLaborHistoryByPilotId: loadPilotLaborHistoryCollection(
         context.saveDatabase,
         saveId,
@@ -182,11 +186,22 @@ async function loadShellSummarySource(
     const fleetState = loadFleetState(context.saveDatabase, backend.getAircraftReference(), saveId);
     const staffingState = loadStaffingState(context.saveDatabase, saveId);
     const staffingMarket = loadActiveStaffingMarket(context.saveDatabase, saveId);
+    const recurringObligations = loadRecurringObligations(context.saveDatabase, saveId);
     const maintenanceTasks = loadMaintenanceTasks(context.saveDatabase, saveId);
     const schedules = loadAircraftSchedules(context.saveDatabase, saveId);
     const eventLog = loadRecentEventLog(context.saveDatabase, saveId, 8);
     const contractBoard = includeContractBoard ? loadActiveContractBoard(context.saveDatabase, saveId) : null;
     const routePlan = loadRoutePlanState(context.saveDatabase, saveId);
+    const financeOverview = companyContext
+      ? buildOverviewFinanceView({
+        companyContext,
+        companyContracts,
+        fleetState,
+        staffingState,
+        recurringObligations,
+        routePlan,
+      })
+      : null;
 
     return {
       companyContext,
@@ -195,6 +210,7 @@ async function loadShellSummarySource(
       fleetState,
       staffingState,
       staffingMarket,
+      financeOverview,
       pilotLaborHistoryByPilotId: null,
       maintenanceTasks,
       schedules,

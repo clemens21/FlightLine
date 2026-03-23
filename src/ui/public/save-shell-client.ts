@@ -46,6 +46,28 @@ interface ShellConfig {
   initialTab: SavePageTab;
 }
 
+interface OverviewFinanceProjectionPointPayload {
+  pointId: string;
+  label: string;
+  daysFromNow: number;
+  atUtc: string;
+  baseCashAmount: number;
+  upliftCashAmount: number;
+  upliftAmount: number;
+  upliftSourceCount: number;
+  confidenceBand: string;
+}
+
+interface OverviewFinanceProjectionPayload {
+  defaultHorizonId: "2w" | "4w" | "8w";
+  horizons: Array<{
+    horizonId: "2w" | "4w" | "8w";
+    label: string;
+    pointCount: number;
+  }>;
+  points: OverviewFinanceProjectionPointPayload[];
+}
+
 type ActivityPopupMode = "all" | "important_only";
 type ThemeName = "light" | "dark" | "forest";
 type HelpCenterSection = "home" | "next" | "blocked" | "concepts";
@@ -199,6 +221,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   let activityPopupMode: ActivityPopupMode = restoreActivityPopupMode();
   let helpCenterOpen = false;
   let activeHelpSection: HelpCenterSection = "home";
+  let pendingOverviewFinanceFocus = false;
   const activeHelpTopics: Record<Exclude<HelpCenterSection, "home">, string | null> = {
     next: firstHelpTopicId("next"),
     blocked: firstHelpTopicId("blocked"),
@@ -380,7 +403,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       cashCardNode.innerHTML = "";
     } else {
       cashCardNode.hidden = false;
-      cashCardNode.innerHTML = `<div class="eyebrow">Cash</div><strong>${escapeHtml(formatMoney(summary.currentCashAmount))}</strong><span class="muted">${escapeHtml((summary.financialPressureBand ?? "stable").replaceAll("_", " "))}</span>`;
+      cashCardNode.innerHTML = `<button type="button" class="shell-cash-button" data-shell-open-finance><div class="eyebrow">Cash</div><strong>${escapeHtml(formatMoney(summary.currentCashAmount))}</strong><span class="muted">${escapeHtml((summary.financialPressureBand ?? "stable").replaceAll("_", " "))}</span></button>`;
     }
     tabsNode.innerHTML = tabLabels
       .map(([tabId, label]) => `<a href="#" class="tab-link ${activeTab === tabId ? "current" : ""}" data-shell-tab="${tabId}"><span>${escapeHtml(label)}</span><span class="tab-count">${escapeHtml(summary.tabCounts[tabId])}</span></a>`)
@@ -675,6 +698,14 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
         staffingController = mountStaffingTab(host);
       }
     }
+
+    if (payload.tabId === "dashboard") {
+      enhanceOverviewFinance(tabPanelNode, config.saveId);
+      if (pendingOverviewFinanceFocus) {
+        focusOverviewFinanceSection(tabPanelNode);
+        pendingOverviewFinanceFocus = false;
+      }
+    }
   }
 
   function applyPrefetchedPayload(prefetched: PrefetchedOpenPayload): void {
@@ -784,6 +815,29 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     if (helpCloseButton) {
       event.preventDefault();
       closeHelpCenter();
+      return;
+    }
+
+    const openFinanceButton = target.closest<HTMLElement>("[data-shell-open-finance]");
+    if (openFinanceButton) {
+      event.preventDefault();
+      settingsMenu.open = false;
+      clockMenu.open = false;
+      clockDateActionOpen = false;
+      pendingOverviewFinanceFocus = true;
+      if (activeTab === "dashboard") {
+        focusOverviewFinanceSection(tabPanelNode);
+        pendingOverviewFinanceFocus = false;
+        return;
+      }
+
+      void loadTab("dashboard").catch((error) => {
+        pendingOverviewFinanceFocus = false;
+        showFlash({
+          tone: "error",
+          text: error instanceof Error ? error.message : "Could not open the finance overview.",
+        });
+      });
       return;
     }
 
@@ -1077,6 +1131,154 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
 }
 
 // The remaining helpers isolate URL construction, local storage, and small formatting concerns from the main controller body.
+function enhanceOverviewFinance(container: HTMLElement, saveId: string): void {
+  const host = container.querySelector<HTMLElement>("[data-overview-finance-graph]");
+  if (!host) {
+    return;
+  }
+
+  const payloadScript = host.querySelector<HTMLScriptElement>("[data-overview-finance-graph-payload]");
+  const svgNode = host.querySelector<SVGSVGElement>("[data-finance-graph-svg]");
+  const scrubNode = host.querySelector<HTMLInputElement>("[data-finance-scrub]");
+  const summaryNode = host.querySelector<HTMLElement>("[data-finance-point-summary]");
+  if (!payloadScript?.textContent || !svgNode || !scrubNode || !summaryNode) {
+    return;
+  }
+
+  const svg: SVGSVGElement = svgNode;
+  const scrub: HTMLInputElement = scrubNode;
+  const summary: HTMLElement = summaryNode;
+  const payload = JSON.parse(payloadScript.textContent) as OverviewFinanceProjectionPayload;
+  const horizonButtons = Array.from(host.querySelectorAll<HTMLButtonElement>("[data-finance-horizon]"));
+  const resetButton = host.querySelector<HTMLButtonElement>("[data-finance-reset]");
+  const persisted = restoreOverviewFinanceState(saveId, payload.defaultHorizonId);
+  let currentHorizonId = persisted.horizonId;
+  let currentIndex = persisted.scrubIndex;
+
+  function visiblePoints(): OverviewFinanceProjectionPointPayload[] {
+    const horizon = payload.horizons.find((entry) => entry.horizonId === currentHorizonId) ?? payload.horizons[0];
+    return payload.points.slice(0, Math.max(1, horizon?.pointCount ?? payload.points.length));
+  }
+
+  function render(): void {
+    const points = visiblePoints();
+    currentIndex = clamp(currentIndex, 0, Math.max(0, points.length - 1));
+    scrub.max = String(Math.max(0, points.length - 1));
+    scrub.value = String(currentIndex);
+    for (const button of horizonButtons) {
+      button.classList.toggle("current", button.dataset.financeHorizon === currentHorizonId);
+      button.classList.toggle("overview-finance-horizon-button", true);
+    }
+
+    renderOverviewFinanceGraph(svg, points, currentIndex);
+    const point = points[currentIndex] ?? points[0];
+    if (point) {
+      summary.innerHTML = `<div class="eyebrow">${escapeHtml(point.label)} projection</div><strong>${escapeHtml(formatMoney(point.baseCashAmount))} base | ${escapeHtml(formatMoney(point.upliftCashAmount))} with uplift</strong><div class="muted">${escapeHtml(formatDate(point.atUtc))} | ${escapeHtml(formatMoney(point.upliftAmount))} accepted-work uplift | ${escapeHtml(point.confidenceBand)} confidence from ${escapeHtml(String(point.upliftSourceCount))} work item${point.upliftSourceCount === 1 ? "" : "s"}.</div>`;
+    }
+
+    persistOverviewFinanceState(saveId, currentHorizonId, currentIndex);
+  }
+
+  for (const button of horizonButtons) {
+    button.addEventListener("click", () => {
+      const nextHorizonId = button.dataset.financeHorizon as OverviewFinanceProjectionPayload["defaultHorizonId"] | undefined;
+      if (!nextHorizonId) {
+        return;
+      }
+      currentHorizonId = nextHorizonId;
+      currentIndex = 0;
+      render();
+    });
+  }
+
+  scrub.addEventListener("input", () => {
+    currentIndex = Number.parseInt(scrub.value || "0", 10);
+    render();
+  });
+
+  resetButton?.addEventListener("click", () => {
+    currentHorizonId = payload.defaultHorizonId;
+    currentIndex = 0;
+    render();
+  });
+
+  render();
+}
+
+function renderOverviewFinanceGraph(
+  svg: SVGSVGElement,
+  points: OverviewFinanceProjectionPointPayload[],
+  selectedIndex: number,
+): void {
+  const width = 560;
+  const height = 220;
+  const padding = { top: 12, right: 18, bottom: 34, left: 18 };
+  const baseValues = points.map((point) => point.baseCashAmount);
+  const upliftValues = points.map((point) => point.upliftCashAmount);
+  const minValue = Math.min(...baseValues, ...upliftValues);
+  const maxValue = Math.max(...baseValues, ...upliftValues);
+  const range = Math.max(1, maxValue - minValue);
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  function x(index: number): number {
+    if (points.length <= 1) {
+      return padding.left + chartWidth / 2;
+    }
+    return padding.left + (chartWidth * index) / (points.length - 1);
+  }
+
+  function y(value: number): number {
+    return padding.top + chartHeight - ((value - minValue) / range) * chartHeight;
+  }
+
+  const baseLine = points.map((point, index) => `${x(index)},${y(point.baseCashAmount)}`).join(" ");
+  const upliftLine = points.map((point, index) => `${x(index)},${y(point.upliftCashAmount)}`).join(" ");
+  const areaPoints = [
+    `${x(0)},${y(points[0]?.baseCashAmount ?? 0)}`,
+    ...points.map((point, index) => `${x(index)},${y(point.upliftCashAmount)}`),
+    ...[...points].reverse().map((point, index) => {
+      const reverseIndex = points.length - 1 - index;
+      return `${x(reverseIndex)},${y(point.baseCashAmount)}`;
+    }),
+  ].join(" ");
+
+  const selectedPoint = points[selectedIndex] ?? points[0];
+  const selectedBaseCircle = selectedPoint ? `<circle class="overview-finance-graph-point current" cx="${x(selectedIndex)}" cy="${y(selectedPoint.baseCashAmount)}" r="5"></circle>` : "";
+  const selectedUpliftCircle = selectedPoint ? `<circle class="overview-finance-graph-point uplift current" cx="${x(selectedIndex)}" cy="${y(selectedPoint.upliftCashAmount)}" r="5"></circle>` : "";
+  const xAxisLabels = points.map((point, index) => `<text class="overview-finance-graph-axis-label" x="${x(index)}" y="${height - 10}" text-anchor="${index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"}">${escapeHtml(point.label)}</text>`).join("");
+  const minLabel = `<text class="overview-finance-graph-axis-label" x="${padding.left}" y="${height - 48}" text-anchor="start">${escapeHtml(formatMoney(minValue))}</text>`;
+  const maxLabel = `<text class="overview-finance-graph-axis-label" x="${padding.left}" y="${padding.top + 4}" dominant-baseline="hanging" text-anchor="start">${escapeHtml(formatMoney(maxValue))}</text>`;
+  const gridLines = [0, .5, 1].map((ratio) => {
+    const yValue = padding.top + chartHeight * ratio;
+    return `<line class="overview-finance-graph-grid-line" x1="${padding.left}" y1="${yValue}" x2="${width - padding.right}" y2="${yValue}"></line>`;
+  }).join("");
+
+  svg.innerHTML = `
+    <g>${gridLines}</g>
+    <polygon class="overview-finance-graph-uplift-area" points="${areaPoints}"></polygon>
+    <polyline class="overview-finance-graph-base-line" points="${baseLine}"></polyline>
+    <polyline class="overview-finance-graph-uplift-line" points="${upliftLine}"></polyline>
+    ${selectedBaseCircle}
+    ${selectedUpliftCircle}
+    ${minLabel}
+    ${maxLabel}
+    ${xAxisLabels}
+  `;
+}
+
+function focusOverviewFinanceSection(container: HTMLElement): void {
+  const section = container.querySelector<HTMLElement>("[data-overview-finance-section]");
+  if (!section) {
+    return;
+  }
+
+  section.classList.add("overview-finance-focused");
+  section.focus({ preventScroll: true });
+  section.scrollIntoView({ block: "start", behavior: "smooth" });
+  window.setTimeout(() => section.classList.remove("overview-finance-focused"), 1600);
+}
+
 function buildOpenSaveUrl(saveId: string, tabId: SavePageTab): string {
   return `/open-save/${encodeURIComponent(saveId)}${tabId === "dashboard" ? "" : `?tab=${tabId}`}`;
 }
@@ -1182,6 +1384,39 @@ function persistActivityPopupMode(mode: ActivityPopupMode): void {
   localStorage.setItem("flightline-activity-popups", mode);
 }
 
+function restoreOverviewFinanceState(
+  saveId: string,
+  fallbackHorizonId: OverviewFinanceProjectionPayload["defaultHorizonId"],
+): { horizonId: OverviewFinanceProjectionPayload["defaultHorizonId"]; scrubIndex: number } {
+  try {
+    const raw = localStorage.getItem(`flightline-overview-finance:${encodeURIComponent(saveId)}`);
+    if (!raw) {
+      return { horizonId: fallbackHorizonId, scrubIndex: 0 };
+    }
+
+    const parsed = JSON.parse(raw) as { horizonId?: OverviewFinanceProjectionPayload["defaultHorizonId"]; scrubIndex?: number };
+    return {
+      horizonId: parsed.horizonId === "2w" || parsed.horizonId === "4w" || parsed.horizonId === "8w"
+        ? parsed.horizonId
+        : fallbackHorizonId,
+      scrubIndex: Number.isFinite(parsed.scrubIndex) ? Math.max(0, Math.floor(parsed.scrubIndex ?? 0)) : 0,
+    };
+  } catch {
+    return { horizonId: fallbackHorizonId, scrubIndex: 0 };
+  }
+}
+
+function persistOverviewFinanceState(
+  saveId: string,
+  horizonId: OverviewFinanceProjectionPayload["defaultHorizonId"],
+  scrubIndex: number,
+): void {
+  localStorage.setItem(
+    `flightline-overview-finance:${encodeURIComponent(saveId)}`,
+    JSON.stringify({ horizonId, scrubIndex }),
+  );
+}
+
 function normalizeThemeName(rawTheme: string | undefined): ThemeName {
   return rawTheme === "forest" || rawTheme === "dark" ? rawTheme : "light";
 }
@@ -1207,6 +1442,20 @@ function formatMoney(amount: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).format(new Date(value));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 function escapeHtml(value: string): string {

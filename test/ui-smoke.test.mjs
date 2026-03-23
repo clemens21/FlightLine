@@ -276,6 +276,31 @@ try {
   assert.equal(await page.locator("[data-shell-title]").textContent(), displayName);
   assert.equal(await page.evaluate(() => new URL(window.location.href).searchParams.get("tab")), "dispatch");
 
+  await clickUi(page.locator("[data-shell-open-finance]"));
+  await page.waitForFunction(() => new URL(window.location.href).searchParams.get("tab") === null);
+  await page.waitForFunction(() => document.querySelector("[data-overview-finance-section]")?.textContent?.includes("Finance outlook"));
+  await page.waitForFunction(() => document.activeElement?.hasAttribute("data-overview-finance-section"));
+  assert.equal(await page.locator("[data-overview-finance-section]").isVisible(), true);
+  assert.equal(await page.locator("[data-overview-finance-graph]").isVisible(), true);
+  await clickUi(page.locator("[data-finance-horizon='8w']").first());
+  await page.waitForFunction(() => document.querySelector("[data-finance-horizon='8w']")?.classList.contains("current"));
+  assert.equal(await page.evaluate((save) => {
+    const raw = localStorage.getItem(`flightline-overview-finance:${encodeURIComponent(save)}`);
+    return raw ? JSON.parse(raw).horizonId : null;
+  }, saveId), "8w");
+
+  await clickUi(page.locator("[data-shell-tab='dispatch']"));
+  await page.waitForFunction(() => new URL(window.location.href).searchParams.get("tab") === "dispatch");
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
+  await clickUi(page.locator("[data-shell-tab='dashboard']"));
+  await page.waitForFunction(() => document.querySelector("[data-overview-finance-section]")?.textContent?.includes("Finance outlook"));
+  await page.waitForFunction(() => document.querySelector("[data-finance-horizon='8w']")?.classList.contains("current"));
+  await clickUi(page.locator("[data-finance-reset='1']").first());
+  await page.waitForFunction(() => document.querySelector("[data-finance-horizon='4w']")?.classList.contains("current"));
+  await clickUi(page.locator("[data-shell-tab='dispatch']"));
+  await page.waitForFunction(() => new URL(window.location.href).searchParams.get("tab") === "dispatch");
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
+
   await clickUi(page.locator("[data-settings-menu] summary"));
   await page.waitForFunction(() => {
     const settings = document.querySelector("[data-settings-menu]");

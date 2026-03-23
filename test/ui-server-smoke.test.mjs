@@ -418,6 +418,12 @@ try {
   assert.equal(dashboardTab.tabId, "dashboard");
   assert.equal(dashboardTab.contentHtml.includes("Open risky contracts"), true);
   assert.equal(dashboardTab.contentHtml.includes("contractsView=my_contracts"), true);
+  assert.equal(dashboardTab.contentHtml.includes("Finance outlook"), true);
+  assert.equal(dashboardTab.contentHtml.includes("Current cash"), true);
+  assert.equal(dashboardTab.contentHtml.includes("Recurring total"), true);
+  assert.equal(dashboardTab.contentHtml.includes("Recurring categories"), true);
+  assert.equal(dashboardTab.contentHtml.includes("Obligation peek"), true);
+  assert.equal(dashboardTab.contentHtml.includes("data-overview-finance-graph"), true);
 
   const contractsView = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/view`);
   assert.ok(contractsView.payload);
