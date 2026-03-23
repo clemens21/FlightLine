@@ -9,7 +9,13 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../dist/index.js";
-import { applyAircraftMarketViewState, applyAircraftTabViewState, buildAircraftTabPayload } from "../dist/ui/aircraft-tab-model.js";
+import {
+  applyAircraftMarketViewState,
+  applyAircraftTabViewState,
+  buildAircraftTabPayload,
+  compareKeyForRef,
+  resolveAircraftCompareItem,
+} from "../dist/ui/aircraft-tab-model.js";
 import { buildTabPayload } from "../dist/ui/save-shell-fragments.js";
 
 const saveDirectoryPath = await mkdtemp(join(tmpdir(), "flightline-aircraft-tab-"));
@@ -471,6 +477,56 @@ try {
     });
     assert.deepEqual(searchView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new"]);
     assert.equal(searchView.selectedOfferId, "offer_home_new");
+
+    const compareFleetAircraft = makeFleetAircraft({
+      aircraftId: "fleet_compare_1",
+      registration: "N111CF",
+      displayName: "Compare Fleet 1",
+      imageAssetPath: "/assets/aircraft-images/fallback.svg",
+      ownershipType: "owned",
+      activeScheduleId: undefined,
+      currentCommitment: undefined,
+    });
+    compareFleetAircraft.location = {
+      airportId: "KDEN",
+      code: "KDEN",
+      primaryLabel: "Denver International Airport",
+      secondaryLabel: "US",
+    };
+    compareFleetAircraft.operationalState = "available";
+    compareFleetAircraft.staffingSummary = "Crew covered";
+    compareFleetAircraft.staffingDetail = "Crew covered";
+    compareFleetAircraft.whyItMatters = ["Useful for local shuttle coverage.", "Keeps current dispatch posture steady."];
+    compareFleetAircraft.conditionBand = "healthy";
+    compareFleetAircraft.maintenanceState = "not_due";
+    compareFleetAircraft.nextEvent = {
+      label: "Ready now",
+      detail: "No current blocker.",
+      tone: "accent",
+      relatedTab: "aircraft",
+    };
+    compareFleetAircraft.currentCommitment = undefined;
+    compareFleetAircraft.isReadyForNewWork = true;
+
+    const comparePayload = {
+      saveId: "compare_payload",
+      currentTimeUtc: marketPayload.currentTimeUtc,
+      fleetWorkspace: {
+        aircraft: [compareFleetAircraft],
+      },
+      marketWorkspace: marketPayload,
+    };
+
+    const ownedCompare = resolveAircraftCompareItem(comparePayload, { source: "fleet", aircraftId: "fleet_compare_1" });
+    const marketCompare = resolveAircraftCompareItem(comparePayload, { source: "market", aircraftId: "offer_home_new" });
+    assert.ok(ownedCompare);
+    assert.ok(marketCompare);
+    assert.equal(ownedCompare?.compareKey, compareKeyForRef({ source: "fleet", aircraftId: "fleet_compare_1" }));
+    assert.equal(marketCompare?.compareKey, compareKeyForRef({ source: "market", aircraftId: "offer_home_new" }));
+    assert.equal(ownedCompare?.rows.specs.length, 5);
+    assert.equal(marketCompare?.rows.economics.length, 5);
+    assert.equal(ownedCompare?.rows.maintenance[0]?.label, "Condition");
+    assert.equal(marketCompare?.rows.economics[0]?.label, "Acquisition");
   }
 
   {

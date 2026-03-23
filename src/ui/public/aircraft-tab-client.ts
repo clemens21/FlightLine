@@ -9,6 +9,12 @@ import {
   applyAircraftFleetViewState,
   applyAircraftMarketViewState,
   type AircraftDealStructure,
+  type AircraftCompareSource,
+  type AircraftCompareItemView,
+  type AircraftCompareRef,
+  type AircraftCompareTab,
+  compareKeyForRef,
+  resolveAircraftCompareItem,
   type AircraftFleetViewState,
   type AircraftMarketDealOptionView,
   type AircraftMarketOfferView,
@@ -38,6 +44,26 @@ interface AcquisitionReviewState {
   selectedOptionId: string;
 }
 
+interface AircraftCompareState {
+  isOpen: boolean;
+  items: AircraftCompareRef[];
+  baselineKey: string | null;
+  focusedKey: string | null;
+  activeTab: AircraftCompareTab;
+  pendingReplacement: AircraftCompareRef | null;
+}
+
+interface StoredAircraftCompareState {
+  isOpen?: boolean;
+  items?: AircraftCompareRef[];
+  baselineKey?: string | null;
+  focusedKey?: string | null;
+  activeTab?: AircraftCompareTab;
+}
+
+const compareStoragePrefix = "flightline:aircraft-compare:";
+const compareTabs: AircraftCompareTab[] = ["specs", "maintenance", "economics"];
+
 // Mounts the aircraft workspace controller and keeps only short-lived UI state such as selected rows and filter choices.
 // All expensive fleet/market shaping is already done server-side in `aircraft-tab-model.ts`.
 export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload): AircraftTabController {
@@ -51,6 +77,14 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   let selectedOfferId = payload.marketWorkspace.defaultSelectedOfferId;
   let acquisitionReview: AcquisitionReviewState | null = null;
   let marketOverlayOpen = false;
+  let compareState = loadStoredCompareState(payload.saveId) ?? {
+    isOpen: false,
+    items: [],
+    baselineKey: null,
+    focusedKey: null,
+    activeTab: "specs",
+    pendingReplacement: null,
+  };
   let fleetListScrollTop = 0;
   let marketListScrollTop = 0;
 
@@ -68,6 +102,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   function render(): void {
     captureScrollState();
     const previousSelectedOfferId = selectedOfferId;
+    compareState = normalizeCompareState(compareState, payload);
     const fleetViewState = applyAircraftFleetViewState(payload.fleetWorkspace, {
       filters: fleetFilters,
       sort: fleetSort,
@@ -90,7 +125,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       marketOverlayOpen = false;
       acquisitionReview = null;
     }
-    host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview);
+    host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview, compareState);
     setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
     const fleetList = host.querySelector<HTMLElement>("[data-aircraft-scroll='fleet-list']");
     const marketList = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
@@ -122,6 +157,133 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   function handleClick(event: MouseEvent): void {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (!target) {
+      return;
+    }
+
+    const compareToggleButton = target.closest<HTMLElement>("[data-aircraft-compare-toggle]");
+    if (compareToggleButton) {
+      event.preventDefault();
+      const compareSource = compareToggleButton.dataset.aircraftCompareSource as AircraftCompareSource | undefined;
+      const aircraftId = compareToggleButton.dataset.aircraftCompareId;
+      if (!compareSource || !aircraftId) {
+        return;
+      }
+      toggleCompareSelection({ source: compareSource, aircraftId });
+      return;
+    }
+
+    if (target.closest("[data-aircraft-compare-open]")) {
+      event.preventDefault();
+      if (compareState.items.length > 0) {
+        compareState = {
+          ...compareState,
+          isOpen: true,
+        };
+        saveCompareState(payload.saveId, compareState);
+        render();
+      }
+      return;
+    }
+
+    if (target.closest("[data-aircraft-compare-close]")) {
+      event.preventDefault();
+      compareState = {
+        ...compareState,
+        isOpen: false,
+        pendingReplacement: null,
+      };
+      saveCompareState(payload.saveId, compareState);
+      render();
+      return;
+    }
+
+    if (target.closest("[data-aircraft-compare-clear]")) {
+      event.preventDefault();
+      compareState = {
+        isOpen: false,
+        items: [],
+        baselineKey: null,
+        focusedKey: null,
+        activeTab: "specs",
+        pendingReplacement: null,
+      };
+      saveCompareState(payload.saveId, compareState);
+      render();
+      return;
+    }
+
+    const compareBaselineButton = target.closest<HTMLElement>("[data-aircraft-compare-baseline]");
+    if (compareBaselineButton) {
+      event.preventDefault();
+      const compareSource = compareBaselineButton.dataset.aircraftCompareSource as AircraftCompareSource | undefined;
+      const aircraftId = compareBaselineButton.dataset.aircraftCompareId;
+      if (!compareSource || !aircraftId) {
+        return;
+      }
+      setCompareBaseline({ source: compareSource, aircraftId });
+      return;
+    }
+
+    const compareFocusButton = target.closest<HTMLElement>("[data-aircraft-compare-focus]");
+    if (compareFocusButton) {
+      event.preventDefault();
+      const compareSource = compareFocusButton.dataset.aircraftCompareSource as AircraftCompareSource | undefined;
+      const aircraftId = compareFocusButton.dataset.aircraftCompareId;
+      if (!compareSource || !aircraftId) {
+        return;
+      }
+      focusCompareSelection({ source: compareSource, aircraftId });
+      return;
+    }
+
+    const compareTabButton = target.closest<HTMLElement>("[data-aircraft-compare-tab]");
+    if (compareTabButton) {
+      event.preventDefault();
+      const tab = compareTabButton.dataset.aircraftCompareTab as AircraftCompareTab | undefined;
+      if (!tab) {
+        return;
+      }
+      compareState = {
+        ...compareState,
+        activeTab: tab,
+      };
+      saveCompareState(payload.saveId, compareState);
+      render();
+      return;
+    }
+
+    const compareReplaceButton = target.closest<HTMLElement>("[data-aircraft-compare-replace]");
+    if (compareReplaceButton) {
+      event.preventDefault();
+      const compareSource = compareReplaceButton.dataset.aircraftCompareSource as AircraftCompareSource | undefined;
+      const aircraftId = compareReplaceButton.dataset.aircraftCompareId;
+      if (!compareSource || !aircraftId || !compareState.pendingReplacement) {
+        return;
+      }
+      replaceCompareSelection({ source: compareSource, aircraftId });
+      return;
+    }
+
+    const compareRemoveButton = target.closest<HTMLElement>("[data-aircraft-compare-remove]");
+    if (compareRemoveButton) {
+      event.preventDefault();
+      const compareSource = compareRemoveButton.dataset.aircraftCompareSource as AircraftCompareSource | undefined;
+      const aircraftId = compareRemoveButton.dataset.aircraftCompareId;
+      if (!compareSource || !aircraftId) {
+        return;
+      }
+      removeCompareSelection({ source: compareSource, aircraftId });
+      return;
+    }
+
+    if (target.closest("[data-aircraft-compare-cancel]")) {
+      event.preventDefault();
+      compareState = {
+        ...compareState,
+        pendingReplacement: null,
+      };
+      saveCompareState(payload.saveId, compareState);
+      render();
       return;
     }
 
@@ -287,6 +449,120 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     }
   }
 
+  function saveCompareSelectionState(): void {
+    saveCompareState(payload.saveId, compareState);
+  }
+
+  function toggleCompareSelection(ref: AircraftCompareRef): void {
+    const compareKey = compareKeyForRef(ref);
+    const compareItems = resolveCompareItems(payload, compareState);
+    const existingIndex = compareItems.findIndex((item) => item.compareKey === compareKey);
+    let nextState: AircraftCompareState;
+
+    if (existingIndex >= 0) {
+      nextState = normalizeCompareState({
+        ...compareState,
+        items: compareState.items.filter((item) => compareKeyForRef(item) !== compareKey),
+        pendingReplacement: null,
+      }, payload);
+    } else if (compareItems.length >= 4) {
+      nextState = normalizeCompareState({
+        ...compareState,
+        isOpen: true,
+        pendingReplacement: ref,
+      }, payload);
+    } else {
+      const nextItems = [...compareState.items, ref];
+      nextState = normalizeCompareState({
+        ...compareState,
+        items: nextItems,
+        isOpen: nextItems.length >= 2 || compareState.isOpen,
+        focusedKey: compareKey,
+        baselineKey: compareState.baselineKey ?? compareKey,
+        pendingReplacement: null,
+      }, payload);
+    }
+
+    compareState = nextState;
+    saveCompareSelectionState();
+    render();
+  }
+
+  function removeCompareSelection(ref: AircraftCompareRef): void {
+    const compareKey = compareKeyForRef(ref);
+    compareState = normalizeCompareState({
+      ...compareState,
+      items: compareState.items.filter((item) => compareKeyForRef(item) !== compareKey),
+      pendingReplacement: null,
+    }, payload);
+    saveCompareSelectionState();
+    render();
+  }
+
+  function setCompareBaseline(ref: AircraftCompareRef): void {
+    const compareKey = compareKeyForRef(ref);
+    if (!resolveCompareItems(payload, compareState).some((item) => item.compareKey === compareKey)) {
+      return;
+    }
+
+    compareState = normalizeCompareState({
+      ...compareState,
+      baselineKey: compareKey,
+      focusedKey: compareKey,
+      isOpen: true,
+      pendingReplacement: null,
+    }, payload);
+    saveCompareSelectionState();
+    render();
+  }
+
+  function focusCompareSelection(ref: AircraftCompareRef): void {
+    const compareKey = compareKeyForRef(ref);
+    if (!resolveCompareItems(payload, compareState).some((item) => item.compareKey === compareKey)) {
+      return;
+    }
+
+    compareState = {
+      ...compareState,
+      focusedKey: compareKey,
+      isOpen: true,
+    };
+    saveCompareSelectionState();
+    render();
+  }
+
+  function replaceCompareSelection(ref: AircraftCompareRef): void {
+    if (!compareState.pendingReplacement) {
+      return;
+    }
+
+    const currentKey = compareKeyForRef(ref);
+    const pendingKey = compareKeyForRef(compareState.pendingReplacement);
+    if (currentKey === pendingKey) {
+      compareState = {
+        ...compareState,
+        pendingReplacement: null,
+      };
+      saveCompareSelectionState();
+      render();
+      return;
+    }
+
+    compareState = normalizeCompareState({
+      ...compareState,
+      items: [
+        ...compareState.items.filter((item) => compareKeyForRef(item) !== currentKey),
+        compareState.pendingReplacement,
+      ],
+      pendingReplacement: null,
+      focusedKey: pendingKey,
+      baselineKey: compareState.baselineKey === currentKey ? pendingKey : compareState.baselineKey,
+      isOpen: true,
+    }, payload);
+    saveCompareSelectionState();
+    render();
+  }
+
   host.addEventListener("click", handleClick);
   host.addEventListener("change", handleChange);
   host.addEventListener("keydown", handleKeydown);
@@ -308,39 +584,52 @@ function renderAircraftTab(
   fleetViewState: AircraftFleetViewState,
   marketViewState: ReturnType<typeof applyAircraftMarketViewState>,
   reviewState: AcquisitionReviewState | null,
+  compareState: AircraftCompareState,
 ): string {
   return `
     <section class="panel">
       <div class="panel-head">
         <h3>Aircraft Workspace</h3>
-        <div class="contracts-board-tabs" role="tablist" aria-label="Aircraft workspace">
-          <button
-            type="button"
-            class="contracts-board-tab ${workspaceTab === "fleet" ? "current" : ""}"
-            data-aircraft-workspace="fleet"
-            role="tab"
-            aria-selected="${workspaceTab === "fleet" ? "true" : "false"}"
-          >Fleet</button>
-          <button
-            type="button"
-            class="contracts-board-tab ${workspaceTab === "market" ? "current" : ""}"
-            data-aircraft-workspace="market"
-            role="tab"
-            aria-selected="${workspaceTab === "market" ? "true" : "false"}"
-          >Market</button>
+        <div class="panel-head-actions">
+          <div class="contracts-board-tabs" role="tablist" aria-label="Aircraft workspace">
+            <button
+              type="button"
+              class="contracts-board-tab ${workspaceTab === "fleet" ? "current" : ""}"
+              data-aircraft-workspace="fleet"
+              role="tab"
+              aria-selected="${workspaceTab === "fleet" ? "true" : "false"}"
+            >Fleet</button>
+            <button
+              type="button"
+              class="contracts-board-tab ${workspaceTab === "market" ? "current" : ""}"
+              data-aircraft-workspace="market"
+              role="tab"
+              aria-selected="${workspaceTab === "market" ? "true" : "false"}"
+            >Market</button>
+          </div>
+          ${compareState.items.length > 0
+            ? `<button type="button" class="pill aircraft-compare-pill" data-aircraft-compare-open>Compare ${compareState.items.length}</button>`
+            : ""}
         </div>
       </div>
       <div class="panel-body aircraft-workspace-body">
-        ${workspaceTab === "fleet"
-          ? renderFleetWorkspace(payload, fleetViewState)
-          : renderMarketWorkspace(payload, marketViewState, reviewState)}
+        <div class="aircraft-workspace-shell" data-aircraft-workspace-shell>
+          ${workspaceTab === "fleet"
+            ? renderFleetWorkspace(payload, fleetViewState, compareState)
+            : renderMarketWorkspace(payload, marketViewState, reviewState, compareState)}
+          ${renderAircraftCompareOverlay(payload, compareState)}
+        </div>
       </div>
     </section>
   `;
 }
 
 // Fleet workspace emphasizes triage: filters, sortable table, and a single selected-aircraft detail rail.
-function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFleetViewState): string {
+function renderFleetWorkspace(
+  payload: AircraftTabPayload,
+  viewState: AircraftFleetViewState,
+  compareState: AircraftCompareState,
+): string {
   if (payload.fleetWorkspace.aircraft.length === 0) {
     return `<div class="empty-state">No aircraft in the fleet yet. Switch to <strong>Market</strong> to acquire the first airframe.</div>`;
   }
@@ -374,12 +663,12 @@ function renderFleetWorkspace(payload: AircraftTabPayload, viewState: AircraftFl
               ["critical", "Critical"],
             ])}</select></label>
           </div>
-          ${renderFleetTable(viewState)}
+          ${renderFleetTable(viewState, compareState)}
         </div>
       </section>
       <section class="panel aircraft-detail-panel">
         <div class="panel-head"><h3>${escapeHtml(selectedAircraftTitle)}</h3></div>
-        <div class="panel-body aircraft-detail-body">${renderAircraftDetail(payload.saveId, viewState.selectedAircraft)}</div>
+        <div class="panel-body aircraft-detail-body">${renderAircraftDetail(payload.saveId, viewState.selectedAircraft, compareState)}</div>
       </section>
     </div>
   `;
@@ -390,6 +679,7 @@ function renderMarketWorkspace(
   payload: AircraftTabPayload,
   viewState: ReturnType<typeof applyAircraftMarketViewState>,
   reviewState: AcquisitionReviewState | null,
+  compareState: AircraftCompareState,
 ): string {
   return `
     <div class="aircraft-market-stage" data-aircraft-market-stage>
@@ -414,7 +704,7 @@ function renderMarketWorkspace(
               </div>
             </div>
           </div>
-          ${renderMarketTable(viewState)}
+          ${renderMarketTable(viewState, compareState)}
         </div>
       </section>
       <div class="aircraft-market-overlay" data-aircraft-market-overlay hidden>
@@ -427,7 +717,7 @@ function renderMarketWorkspace(
         <section class="panel aircraft-market-overlay-card" role="dialog" aria-modal="true" aria-label="Aircraft listing detail">
           <button type="button" class="ghost-button aircraft-market-overlay-close" data-aircraft-market-close>Close</button>
           <div class="panel-body aircraft-detail-body" data-aircraft-market-detail-body>
-            ${renderMarketDetail(payload.saveId, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState)}
+            ${renderMarketDetail(payload, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState, compareState)}
           </div>
         </section>
       </div>
@@ -436,7 +726,10 @@ function renderMarketWorkspace(
 }
 
 // Renders the fleet table view, leaving selection and sorting to the lightweight browser controller.
-function renderFleetTable(viewState: AircraftFleetViewState): string {
+function renderFleetTable(
+  viewState: AircraftFleetViewState,
+  compareState: AircraftCompareState,
+): string {
   if (viewState.visibleAircraft.length === 0) {
     return `<div class="empty-state">No aircraft match the current filters. <button type="button" class="button-link button-secondary" data-aircraft-clear-filters="1">Clear filters</button></div>`;
   }
@@ -452,10 +745,11 @@ function renderFleetTable(viewState: AircraftFleetViewState): string {
             <th class="sortable">${renderFleetSortButton(viewState.sort, "condition", "Condition")}</th>
             <th class="sortable">${renderFleetSortButton(viewState.sort, "payload", "Mission Profile")}</th>
             <th class="sortable">${renderFleetSortButton(viewState.sort, "attention", "Next Milestone")}</th>
+            <th>Compare</th>
           </tr>
         </thead>
         <tbody>
-          ${viewState.visibleAircraft.map((aircraft) => renderAircraftRow(aircraft, viewState.selectedAircraftId)).join("")}
+          ${viewState.visibleAircraft.map((aircraft) => renderAircraftRow(aircraft, viewState.selectedAircraftId, compareState)).join("")}
         </tbody>
       </table>
     </div>
@@ -463,7 +757,10 @@ function renderFleetTable(viewState: AircraftFleetViewState): string {
 }
 
 // Renders the aircraft market table while keeping rows simple enough for cheap full rerenders on every interaction.
-function renderMarketTable(viewState: ReturnType<typeof applyAircraftMarketViewState>): string {
+function renderMarketTable(
+  viewState: ReturnType<typeof applyAircraftMarketViewState>,
+  compareState: AircraftCompareState,
+): string {
   if (viewState.visibleOffers.length === 0) {
     return `<div class="empty-state">No aircraft listings match the current market filters. <button type="button" class="button-link button-secondary" data-market-clear-filters="1">Clear filters</button></div>`;
   }
@@ -479,10 +776,11 @@ function renderMarketTable(viewState: ReturnType<typeof applyAircraftMarketViewS
             <th class="sortable">${renderMarketSortButton(viewState.sort, "range", "Capability")}</th>
             <th class="sortable">${renderMarketSortButton(viewState.sort, "asking_price", "Ask")}</th>
             <th class="sortable">${renderMarketSortButton(viewState.sort, "distance", "Distance")}</th>
+            <th>Compare</th>
           </tr>
         </thead>
         <tbody>
-          ${viewState.visibleOffers.map((offer) => renderMarketRow(offer, viewState.selectedOfferId)).join("")}
+          ${viewState.visibleOffers.map((offer) => renderMarketRow(offer, viewState.selectedOfferId, compareState)).join("")}
         </tbody>
       </table>
     </div>
@@ -501,8 +799,15 @@ function renderMarketSortButton(sort: AircraftMarketSort, key: AircraftMarketSor
   return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-market-sort-key="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="table-sort-direction">${direction === "asc" ? "Asc" : "Desc"}</span></button>`;
 }
 
-function renderAircraftRow(aircraft: AircraftTabAircraftView, selectedAircraftId: string | undefined): string {
+function renderAircraftRow(
+  aircraft: AircraftTabAircraftView,
+  selectedAircraftId: string | undefined,
+  compareState: AircraftCompareState,
+): string {
   const isSelected = aircraft.aircraftId === selectedAircraftId;
+  const compareRef: AircraftCompareRef = { source: "fleet", aircraftId: aircraft.aircraftId };
+  const isCompared = compareState.items.some((entry) => compareKeyForRef(entry) === compareKeyForRef(compareRef));
+  const compareLabel = isCompared ? "Remove" : compareState.items.length >= 4 ? "Swap in" : "Compare";
   return `
     <tr
       class="aircraft-row ${isSelected ? "selected" : ""}"
@@ -522,12 +827,22 @@ function renderAircraftRow(aircraft: AircraftTabAircraftView, selectedAircraftId
       <td><div class="meta-stack"><div class="pill-row">${renderBadge(aircraft.conditionBand)}${renderCriticalMaintenanceBadge(aircraft.maintenanceState)}</div><span class="muted">${formatPercent(aircraft.conditionValue)} condition | ${formatHours(aircraft.hoursToService)} to service</span></div></td>
       <td><div class="meta-stack"><span>${escapeHtml(envelopeLabel(aircraft.maxPassengers, aircraft.maxCargoLb, aircraft.rangeNm))}</span><span class="muted">${escapeHtml(accessLabel(aircraft.minimumRunwayFt, aircraft.minimumAirportSize))}</span></div></td>
       <td><div class="meta-stack"><span>${escapeHtml(aircraft.nextEvent.label)}</span><span class="muted">${escapeHtml(aircraft.nextEvent.detail)}</span></div></td>
+      <td>
+        <button type="button" class="button-secondary compare-toggle-button ${isCompared ? "current" : ""}" data-aircraft-compare-toggle data-aircraft-compare-source="fleet" data-aircraft-compare-id="${escapeHtml(aircraft.aircraftId)}">${escapeHtml(compareLabel)}</button>
+      </td>
     </tr>
   `;
 }
 
-function renderMarketRow(offer: AircraftMarketOfferView, selectedOfferId: string | undefined): string {
+function renderMarketRow(
+  offer: AircraftMarketOfferView,
+  selectedOfferId: string | undefined,
+  compareState: AircraftCompareState,
+): string {
   const isSelected = offer.aircraftOfferId === selectedOfferId;
+  const compareRef: AircraftCompareRef = { source: "market", aircraftId: offer.aircraftOfferId };
+  const isCompared = compareState.items.some((entry) => compareKeyForRef(entry) === compareKeyForRef(compareRef));
+  const compareLabel = isCompared ? "Remove" : compareState.items.length >= 4 ? "Swap in" : "Compare";
   return `
     <tr class="aircraft-row ${isSelected ? "selected" : ""}" data-market-select="${escapeHtml(offer.aircraftOfferId)}">
       <td>
@@ -551,12 +866,19 @@ function renderMarketRow(offer: AircraftMarketOfferView, selectedOfferId: string
       <td><div class="meta-stack"><span>${escapeHtml(envelopeLabel(offer.maxPassengers, offer.maxCargoLb, offer.rangeNm))}</span><span class="muted">${escapeHtml(accessLabel(offer.minimumRunwayFt, offer.minimumAirportSize))}</span></div></td>
       <td>${escapeHtml(formatMoney(offer.askingPurchasePriceAmount))}</td>
       <td>${escapeHtml(formatNumber(offer.distanceFromHomeBaseNm))} nm</td>
+      <td>
+        <button type="button" class="button-secondary compare-toggle-button ${isCompared ? "current" : ""}" data-aircraft-compare-toggle data-aircraft-compare-source="market" data-aircraft-compare-id="${escapeHtml(offer.aircraftOfferId)}">${escapeHtml(compareLabel)}</button>
+      </td>
     </tr>
   `;
 }
 
 // Expands one owned aircraft into an operational brief that answers "what can this airframe do right now?"
-function renderAircraftDetail(saveId: string, aircraft: AircraftTabAircraftView | null): string {
+function renderAircraftDetail(
+  saveId: string,
+  aircraft: AircraftTabAircraftView | null,
+  compareState: AircraftCompareState,
+): string {
   if (!aircraft) {
     return `<div class="empty-state">No aircraft are visible with the current filters.</div>`;
   }
@@ -633,6 +955,9 @@ function renderAircraftDetail(saveId: string, aircraft: AircraftTabAircraftView 
             `${formatPercent(aircraft.conditionValue)} condition | ${formatHours(aircraft.hoursToService)} to service`,
             `${formatNumber(aircraft.airframeHoursTotal)} hrs | ${formatNumber(aircraft.airframeCyclesTotal)} cycles | ${formatHours(aircraft.hoursSinceInspection)} since inspection`,
           )}
+          <div class="aircraft-detail-actions">
+            ${renderCompareAction({ source: "fleet", aircraftId: aircraft.aircraftId }, compareState)}
+          </div>
           ${renderMaintenanceRecoveryPanel(saveId, aircraft)}
           ${renderFactListRow("Why it matters", aircraft.whyItMatters)}
         </div>
@@ -682,10 +1007,11 @@ function renderMaintenanceRecoveryPanel(saveId: string, aircraft: AircraftTabAir
 
 // Expands one market listing into acquisition details, terms, and risk/fit context.
 function renderMarketDetail(
-  saveId: string,
+  payload: AircraftTabPayload,
   currentCashAmount: number,
   offer: AircraftMarketOfferView | null,
   reviewState: AcquisitionReviewState | null,
+  compareState: AircraftCompareState,
 ): string {
   if (!offer) {
     return `<div class="empty-state">No aircraft listings match the current filters.</div>`;
@@ -700,6 +1026,9 @@ function renderMarketDetail(
           <div class="eyebrow">${escapeHtml(offer.roleLabel)}</div>
           <strong>${escapeHtml(offer.modelDisplayName)} | ${escapeHtml(offer.registration)}</strong>
           <span class="muted">${escapeHtml(offer.location.code)} | ${escapeHtml(offer.location.primaryLabel)} | ${escapeHtml(offer.displayName)}</span>
+          <div class="aircraft-detail-actions">
+            ${renderCompareAction({ source: "market", aircraftId: offer.aircraftOfferId }, compareState)}
+          </div>
         </div>
         <figure class="aircraft-hero-image">
           <img
@@ -711,7 +1040,7 @@ function renderMarketDetail(
         </figure>
       </section>
       ${activeReview
-        ? renderDealReview(saveId, currentCashAmount, offer, activeReview)
+        ? renderDealReview(payload.saveId, currentCashAmount, offer, activeReview)
         : `<section class="summary-list market-deals">
             ${renderDealCard(offer, offer.buyOption, "Buy")}
             ${renderDealCard(offer, cheapestOption(offer.financeOptions), "Finance")}
@@ -756,6 +1085,328 @@ function renderMarketDetail(
       </section>
     </div>
   `;
+}
+
+function renderAircraftCompareOverlay(
+  payload: AircraftTabPayload,
+  compareState: AircraftCompareState,
+): string {
+  const compareItems = resolveCompareItems(payload, compareState);
+  if (compareItems.length === 0) {
+    return "";
+  }
+
+  if (!compareState.isOpen) {
+    return `
+      <div class="aircraft-compare-dock panel" data-aircraft-compare-dock>
+        <div class="panel-head">
+          <h3>Aircraft Compare</h3>
+          <div class="panel-head-actions">
+            <div class="pill-row">
+              <span class="pill">${compareItems.length} pinned</span>
+              <span class="pill">${compareState.activeTab}</span>
+            </div>
+            <button type="button" class="button-secondary" data-aircraft-compare-open>Open compare</button>
+            <button type="button" class="button-secondary" data-aircraft-compare-clear>Clear</button>
+          </div>
+        </div>
+        <div class="panel-body aircraft-compare-dock-body">
+          ${renderCompareRail(compareItems, compareState, true)}
+        </div>
+      </div>
+    `;
+  }
+
+  const focusedItem = compareItems.find((item) => item.compareKey === compareState.focusedKey) ?? compareItems[0]!;
+  const baselineKey = compareState.baselineKey ?? compareItems[0]!.compareKey;
+
+  return `
+    <div class="aircraft-compare-overlay" data-aircraft-compare-overlay>
+      <button
+        type="button"
+        class="aircraft-compare-backdrop"
+        data-aircraft-compare-close
+        aria-label="Close aircraft compare"
+      ></button>
+      <section class="panel aircraft-compare-card" role="dialog" aria-modal="true" aria-label="Aircraft compare">
+        <div class="panel-head">
+          <h3>Aircraft Compare</h3>
+          <div class="panel-head-actions">
+            <div class="pill-row">
+              <span class="pill">${compareItems.length} pinned</span>
+              <span class="pill">${escapeHtml(compareState.activeTab)}</span>
+              ${compareState.pendingReplacement ? `<span class="pill">Replace one to add another</span>` : ""}
+            </div>
+            <button type="button" class="button-secondary" data-aircraft-compare-close>Close</button>
+            <button type="button" class="button-secondary" data-aircraft-compare-clear>Clear</button>
+          </div>
+        </div>
+        <div class="panel-body aircraft-compare-body">
+          ${compareState.pendingReplacement ? renderCompareReplacementBanner(payload, compareState, compareItems) : ""}
+          <div class="aircraft-compare-layout">
+            <aside class="aircraft-compare-rail">
+              ${renderCompareRail(compareItems, compareState, false)}
+            </aside>
+            <section class="aircraft-compare-content">
+              ${renderCompareFocusPeek(focusedItem)}
+              <div class="compare-tabbar" role="tablist" aria-label="Aircraft compare tabs">
+                ${compareTabs.map((tab) => `
+                  <button
+                    type="button"
+                    class="contracts-board-tab ${compareState.activeTab === tab ? "current" : ""}"
+                    data-aircraft-compare-tab="${escapeHtml(tab)}"
+                    role="tab"
+                    aria-selected="${compareState.activeTab === tab ? "true" : "false"}"
+                  >${escapeHtml(compareTabLabel(tab))}</button>
+                `).join("")}
+              </div>
+              ${renderCompareMatrix(compareItems, compareState.activeTab, baselineKey)}
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderCompareRail(
+  items: AircraftCompareItemView[],
+  compareState: AircraftCompareState,
+  compact: boolean,
+): string {
+  return `
+    <div class="aircraft-compare-rail-list ${compact ? "compact" : ""}">
+      ${items.map((item) => renderCompareRailCard(item, compareState)).join("")}
+    </div>
+  `;
+}
+
+function renderCompareRailCard(
+  item: AircraftCompareItemView,
+  compareState: AircraftCompareState,
+): string {
+  const isBaseline = item.compareKey === compareState.baselineKey;
+  const isFocused = item.compareKey === compareState.focusedKey;
+  const isPendingTarget = compareState.pendingReplacement?.aircraftId === item.ref.aircraftId
+    && compareState.pendingReplacement?.source === item.ref.source;
+  return `
+    <article
+      class="aircraft-compare-card-item ${isBaseline ? "baseline" : ""} ${isFocused ? "focused" : ""}"
+      data-aircraft-compare-focus="${escapeHtml(item.compareKey)}"
+      data-aircraft-compare-source="${escapeHtml(item.ref.source)}"
+      data-aircraft-compare-id="${escapeHtml(item.ref.aircraftId)}"
+    >
+      <div class="meta-stack">
+        <div class="eyebrow">${escapeHtml(item.sourceLabel)}</div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span class="muted">${escapeHtml(item.subtitle)}</span>
+        <span class="muted">${escapeHtml(item.summary)}</span>
+      </div>
+      <div class="pill-row aircraft-compare-card-actions">
+        <button type="button" class="button-secondary" data-aircraft-compare-baseline data-aircraft-compare-source="${escapeHtml(item.ref.source)}" data-aircraft-compare-id="${escapeHtml(item.ref.aircraftId)}">${isBaseline ? "Baseline" : "Set baseline"}</button>
+        <button type="button" class="button-secondary" data-aircraft-compare-remove data-aircraft-compare-source="${escapeHtml(item.ref.source)}" data-aircraft-compare-id="${escapeHtml(item.ref.aircraftId)}">Remove</button>
+        ${compareState.pendingReplacement ? `<button type="button" class="button-secondary" data-aircraft-compare-replace data-aircraft-compare-source="${escapeHtml(item.ref.source)}" data-aircraft-compare-id="${escapeHtml(item.ref.aircraftId)}">Replace</button>` : ""}
+        ${isPendingTarget ? `<span class="pill">Pending target</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderCompareReplacementBanner(
+  payload: AircraftTabPayload,
+  compareState: AircraftCompareState,
+  items: AircraftCompareItemView[],
+): string {
+  const pending = resolveAircraftCompareItem(payload, compareState.pendingReplacement!);
+  if (!pending) {
+    return "";
+  }
+
+  return `
+    <section class="aircraft-compare-replacement">
+      <div class="meta-stack">
+        <div class="eyebrow">Compare full</div>
+        <strong>Choose one aircraft to replace</strong>
+        <span class="muted">${escapeHtml(pending.title)} will join the compare set when you pick a card below.</span>
+      </div>
+      <button type="button" class="button-secondary" data-aircraft-compare-cancel>Cancel</button>
+      <div class="muted">Current set: ${items.map((item) => escapeHtml(item.title)).join(" | ")}</div>
+    </section>
+  `;
+}
+
+function renderCompareFocusPeek(item: AircraftCompareItemView): string {
+  return `
+    <section class="aircraft-compare-focus">
+      <figure class="aircraft-compare-focus-image">
+        <img
+          src="${escapeHtml(item.imageAssetPath)}"
+          alt="${escapeHtml(item.title)}"
+          loading="lazy"
+          onerror="this.onerror=null;this.src='/assets/aircraft-images/fallback.svg';"
+        />
+      </figure>
+      <div class="meta-stack">
+        <div class="eyebrow">${escapeHtml(item.sourceLabel)}</div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span class="muted">${escapeHtml(item.subtitle)}</span>
+        <span class="muted">${escapeHtml(item.summary)}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderCompareMatrix(
+  items: AircraftCompareItemView[],
+  activeTab: AircraftCompareTab,
+  baselineKey: string,
+): string {
+  const rows = items[0]?.rows[activeTab] ?? [];
+  const baselineItem = items.find((item) => item.compareKey === baselineKey) ?? items[0]!;
+  return `
+    <div class="aircraft-compare-matrix">
+      <table>
+        <thead>
+          <tr>
+            <th>${escapeHtml(compareTabLabel(activeTab))}</th>
+            ${items.map((item) => `<th class="${item.compareKey === baselineItem.compareKey ? "baseline" : ""}">${escapeHtml(item.title)}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row, rowIndex) => `
+            <tr>
+              <th>${escapeHtml(row.label)}</th>
+              ${items.map((item) => {
+                const cell = item.rows[activeTab][rowIndex] ?? row;
+                const baselineCell = baselineItem.rows[activeTab][rowIndex] ?? row;
+                const isDelta = item.compareKey !== baselineItem.compareKey && cell.value !== baselineCell.value;
+                return `<td class="${item.compareKey === baselineItem.compareKey ? "baseline" : ""} ${isDelta ? "delta" : ""}"><div class="meta-stack"><strong>${escapeHtml(cell.value)}</strong><span class="muted">${escapeHtml(cell.detail)}</span></div></td>`;
+              }).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderCompareAction(ref: AircraftCompareRef, compareState: AircraftCompareState): string {
+  const isSelected = compareState.items.some((item) => compareKeyForRef(item) === compareKeyForRef(ref));
+  const isFullAndAvailable = !isSelected && compareState.items.length >= 4;
+  return `
+    <button
+      type="button"
+      class="button-secondary compare-action-button ${isSelected ? "current" : ""}"
+      data-aircraft-compare-toggle
+      data-aircraft-compare-source="${escapeHtml(ref.source)}"
+      data-aircraft-compare-id="${escapeHtml(ref.aircraftId)}"
+    >${isSelected ? "Remove from compare" : isFullAndAvailable ? "Swap in" : "Compare"}</button>
+  `;
+}
+
+function resolveCompareItems(payload: AircraftTabPayload, compareState: AircraftCompareState): AircraftCompareItemView[] {
+  const seen = new Set<string>();
+  const items: AircraftCompareItemView[] = [];
+  for (const ref of compareState.items) {
+    const compareKey = compareKeyForRef(ref);
+    if (seen.has(compareKey)) {
+      continue;
+    }
+    const item = resolveAircraftCompareItem(payload, ref);
+    if (!item) {
+      continue;
+    }
+    seen.add(compareKey);
+    items.push(item);
+    if (items.length === 4) {
+      break;
+    }
+  }
+  return items;
+}
+
+function normalizeCompareState(
+  compareState: AircraftCompareState,
+  payload: AircraftTabPayload,
+): AircraftCompareState {
+  const items = resolveCompareItems(payload, compareState);
+  if (items.length === 0) {
+    return {
+      isOpen: false,
+      items: [],
+      baselineKey: null,
+      focusedKey: null,
+      activeTab: compareTabs.includes(compareState.activeTab) ? compareState.activeTab : "specs",
+      pendingReplacement: null,
+    };
+  }
+
+  const itemKeys = new Set(items.map((item) => item.compareKey));
+  const baselineKey = compareState.baselineKey && itemKeys.has(compareState.baselineKey)
+    ? compareState.baselineKey
+    : items[0]!.compareKey;
+  const focusedKey = compareState.focusedKey && itemKeys.has(compareState.focusedKey)
+    ? compareState.focusedKey
+    : baselineKey;
+
+  return {
+    ...compareState,
+    items: items.map((item) => item.ref),
+    baselineKey,
+    focusedKey,
+    activeTab: compareTabs.includes(compareState.activeTab) ? compareState.activeTab : "specs",
+    pendingReplacement: compareState.pendingReplacement && resolveAircraftCompareItem(payload, compareState.pendingReplacement)
+      ? compareState.pendingReplacement
+      : null,
+  };
+}
+
+function loadStoredCompareState(saveId: string): AircraftCompareState | null {
+  try {
+    const value = window.localStorage.getItem(`${compareStoragePrefix}${saveId}`);
+    if (!value) {
+      return null;
+    }
+    const parsed = JSON.parse(value) as StoredAircraftCompareState;
+    return {
+      isOpen: Boolean(parsed.isOpen),
+      items: Array.isArray(parsed.items)
+        ? parsed.items.filter((item): item is AircraftCompareRef => Boolean(item && typeof item.source === "string" && typeof item.aircraftId === "string"))
+        : [],
+      baselineKey: typeof parsed.baselineKey === "string" ? parsed.baselineKey : null,
+      focusedKey: typeof parsed.focusedKey === "string" ? parsed.focusedKey : null,
+      activeTab: compareTabs.includes(parsed.activeTab ?? "specs") ? parsed.activeTab ?? "specs" : "specs",
+      pendingReplacement: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveCompareState(saveId: string, compareState: AircraftCompareState): void {
+  try {
+    const stored: StoredAircraftCompareState = {
+      isOpen: compareState.isOpen,
+      items: compareState.items,
+      baselineKey: compareState.baselineKey,
+      focusedKey: compareState.focusedKey,
+      activeTab: compareState.activeTab,
+    };
+    window.localStorage.setItem(`${compareStoragePrefix}${saveId}`, JSON.stringify(stored));
+  } catch {
+    // Ignore local storage failures in local desktop mode.
+  }
+}
+
+function compareTabLabel(tab: AircraftCompareTab): string {
+  switch (tab) {
+    case "specs":
+      return "Specs";
+    case "maintenance":
+      return "Maintenance";
+    case "economics":
+      return "Economics";
+  }
 }
 
 function renderFactRow(label: string, value: string, detail: string): string {

@@ -42,6 +42,30 @@ export type AircraftMarketConditionBand = "new" | "excellent" | "fair" | "rough"
 export type AircraftMarketSortKey = "asking_price" | "monthly_burden" | "condition" | "range" | "passengers" | "cargo" | "distance";
 export type AircraftMarketSortDirection = "asc" | "desc";
 export type AircraftDealStructure = "owned" | "financed" | "leased";
+export type AircraftCompareSource = "fleet" | "market";
+export type AircraftCompareTab = "specs" | "maintenance" | "economics";
+
+export interface AircraftCompareRef {
+  source: AircraftCompareSource;
+  aircraftId: string;
+}
+
+export interface AircraftCompareRowView {
+  label: string;
+  value: string;
+  detail: string;
+}
+
+export interface AircraftCompareItemView {
+  compareKey: string;
+  ref: AircraftCompareRef;
+  sourceLabel: string;
+  title: string;
+  subtitle: string;
+  imageAssetPath: string;
+  summary: string;
+  rows: Record<AircraftCompareTab, AircraftCompareRowView[]>;
+}
 
 export interface AircraftTabSummaryCard {
   label: string;
@@ -420,6 +444,104 @@ export function applyAircraftMarketViewState(
     visibleOffers,
     selectedOffer,
     selectedOfferId: selectedOffer?.aircraftOfferId,
+  };
+}
+
+export function resolveAircraftCompareItem(
+  payload: AircraftTabPayload,
+  ref: AircraftCompareRef,
+): AircraftCompareItemView | null {
+  if (ref.source === "fleet") {
+    const aircraft = payload.fleetWorkspace.aircraft.find((entry) => entry.aircraftId === ref.aircraftId);
+    if (!aircraft) {
+      return null;
+    }
+
+    return {
+      compareKey: compareKeyForRef(ref),
+      ref,
+      sourceLabel: "Owned aircraft",
+      title: `${aircraft.registration} | ${aircraft.modelDisplayName}`,
+      subtitle: `${aircraft.displayName} | ${aircraft.location.code} | ${aircraft.location.primaryLabel}`,
+      imageAssetPath: aircraft.imageAssetPath,
+      summary: `${labelForUi(aircraft.operationalState)} | ${labelForUi(aircraft.maintenanceState)} | ${aircraft.staffingSummary}`,
+      rows: {
+        specs: [
+          row("Registration", aircraft.registration, aircraft.displayName),
+          row("Location", `${aircraft.location.code} | ${aircraft.location.primaryLabel}`, aircraft.location.secondaryLabel ?? "Current operating base"),
+          row("Mission profile", envelopeLabel(aircraft.maxPassengers, aircraft.maxCargoLb, aircraft.rangeNm), accessLabel(aircraft.minimumRunwayFt, aircraft.minimumAirportSize)),
+          row("Role", aircraft.roleLabel, humanize(aircraft.pilotQualificationGroup)),
+          row("Support", humanize(aircraft.mechanicSkillGroup), aircraft.msfs2024Status.replaceAll("_", " ")),
+        ],
+        maintenance: [
+          row("Condition", `${formatPercent(aircraft.conditionValue)} condition`, `${labelForUi(aircraft.conditionBand)} | ${labelForUi(aircraft.maintenanceState)}`),
+          row("Hours to service", formatHours(aircraft.hoursToService), `${formatHours(aircraft.hoursSinceInspection)} since inspection`),
+          row("Airframe", `${formatNumber(aircraft.airframeHoursTotal)} hrs`, `${formatNumber(aircraft.airframeCyclesTotal)} cycles`),
+          row("Current commitment", aircraft.currentCommitment?.label ?? "No active assignment", aircraft.currentCommitment?.detail ?? "No schedule or maintenance booking is holding this aircraft right now."),
+          row("Operational state", labelForUi(aircraft.operationalState), aircraft.isReadyForNewWork ? "Ready for new work" : aircraft.nextEvent.detail),
+        ],
+        economics: [
+          row("Ownership", labelForUi(aircraft.ownershipType), paymentWindowLabel(aircraft)),
+          row("Recurring burden", aircraft.recurringPaymentAmount !== undefined ? formatMoney(aircraft.recurringPaymentAmount) : "No recurring obligation", aircraft.paymentCadence ? `${humanize(aircraft.paymentCadence)} payment` : "No payment cadence visible"),
+          row("Carrying cost", aircraft.recurringPaymentAmount !== undefined ? formatMoney(aircraft.recurringPaymentAmount) : "No current carrying cost", aircraft.agreementEndAtUtc ? `Agreement ends ${formatDate(aircraft.agreementEndAtUtc)}` : "No agreement end is visible"),
+          row("Acquisition", "Already owned", "No acquisition terms to compare."),
+          row("Carrier note", aircraft.whyItMatters[0] ?? "No special economics signal visible", aircraft.whyItMatters[1] ?? "Open the detail rail for the full operating brief."),
+        ],
+      },
+    };
+  }
+
+  const offer = payload.marketWorkspace.offers.find((entry) => entry.aircraftOfferId === ref.aircraftId);
+  if (!offer) {
+    return null;
+  }
+
+  const financeOption = cheapestOption(offer.financeOptions);
+  const leaseOption = cheapestOption(offer.leaseOptions);
+
+  return {
+    compareKey: compareKeyForRef(ref),
+    ref,
+    sourceLabel: "Market listing",
+    title: `${offer.modelDisplayName} | ${offer.registration}`,
+    subtitle: `${offer.location.code} | ${offer.location.primaryLabel} | ${offer.displayName}`,
+    imageAssetPath: offer.imageAssetPath,
+    summary: `${labelForUi(offer.conditionBand)} | ${labelForUi(offer.maintenanceState)} | ${formatMoney(offer.askingPurchasePriceAmount)}`,
+    rows: {
+      specs: [
+        row("Registration", offer.registration, offer.roleLabel),
+        row("Location", `${offer.location.code} | ${offer.location.primaryLabel}`, offer.location.secondaryLabel ?? "Listing airport"),
+        row("Capability", envelopeLabel(offer.maxPassengers, offer.maxCargoLb, offer.rangeNm), accessLabel(offer.minimumRunwayFt, offer.minimumAirportSize)),
+        row("Support", humanize(offer.requiredGroundServiceLevel), `${humanize(offer.gateRequirement)} | ${humanize(offer.cargoLoadingType)}`),
+        row("Fit", offer.fitReasons[0] ?? "No fit reason available", offer.fitReasons[1] ?? offer.msfs2024UserNote ?? "Market-specific fit details"),
+      ],
+      maintenance: [
+        row("Condition", `${formatPercent(offer.conditionValue)} condition`, `${labelForUi(offer.conditionBand)} | ${labelForUi(offer.maintenanceState)}`),
+        row("Hours to service", formatHours(offer.hoursToService), `${formatHours(offer.hoursSinceInspection)} since inspection`),
+        row("Airframe", `${formatNumber(offer.airframeHoursTotal)} hrs`, `${formatNumber(offer.airframeCyclesTotal)} cycles`),
+        row("Availability", labelForUi(offer.offerStatus), offer.msfs2024UserNote ?? "Availability is tracked separately from game eligibility."),
+        row("Watchouts", offer.riskReasons[0] ?? "No major risk flagged", offer.riskReasons[1] ?? "Open the detail rail for the full listing brief."),
+      ],
+      economics: [
+        row("Acquisition", formatMoney(offer.askingPurchasePriceAmount), "Full payment today if bought outright."),
+        row("Finance", financeOption ? `${formatMoney(financeOption.upfrontPaymentAmount)} upfront` : "No finance option visible", financeOption ? `${financeOption.recurringPaymentAmount !== undefined ? formatMoney(financeOption.recurringPaymentAmount) : "No recurring"} | ${financeOption.label}` : "No finance term selected"),
+        row("Lease", leaseOption ? `${formatMoney(leaseOption.upfrontPaymentAmount)} upfront` : "No lease option visible", leaseOption ? `${leaseOption.recurringPaymentAmount !== undefined ? formatMoney(leaseOption.recurringPaymentAmount) : "No recurring"} | ${leaseOption.label}` : "No lease term selected"),
+        row("Recurring burden", formatMoney(offer.lowestRecurringBurdenAmount), "Lowest visible recurring burden."),
+        row("MSFS", humanize(offer.msfs2024Status), offer.msfs2024UserNote ?? "Availability is tracked separately from game eligibility."),
+      ],
+    },
+  };
+}
+
+export function compareKeyForRef(ref: AircraftCompareRef): string {
+  return `${ref.source}:${ref.aircraftId}`;
+}
+
+function row(label: string, value: string, detail: string): AircraftCompareRowView {
+  return {
+    label,
+    value,
+    detail,
   };
 }
 
@@ -2079,4 +2201,66 @@ function formatHours(value: number): string {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   }).format(Math.abs(value))}h`;
+}
+
+function formatPercent(value: number): string {
+  return `${new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(value * 100)}%`;
+}
+
+function humanize(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function labelForUi(value: string): string {
+  if (value === "financed") {
+    return "Financed";
+  }
+  if (value === "watch") {
+    return "Attention";
+  }
+
+  return humanize(value);
+}
+
+function envelopeLabel(maxPassengers: number, maxCargoLb: number, rangeNm: number): string {
+  return `${formatNumber(maxPassengers)} pax | ${formatNumber(maxCargoLb)} lb | ${formatNumber(rangeNm)} nm`;
+}
+
+function accessLabel(minimumRunwayFt: number, minimumAirportSize: number): string {
+  return `${formatNumber(minimumRunwayFt)} ft runway | Size ${minimumAirportSize}`;
+}
+
+function paymentWindowLabel(aircraft: {
+  activeCabinLayoutDisplayName?: string | undefined;
+  paymentCadence?: string | undefined;
+  agreementEndAtUtc?: string | undefined;
+}): string {
+  if (!aircraft.paymentCadence && !aircraft.agreementEndAtUtc) {
+    return aircraft.activeCabinLayoutDisplayName
+      ? `${aircraft.activeCabinLayoutDisplayName} layout active.`
+      : "No recurring aircraft agreement is visible.";
+  }
+
+  const cadence = aircraft.paymentCadence ? `${aircraft.paymentCadence} obligation` : "Agreement visible";
+  const endLabel = aircraft.agreementEndAtUtc ? ` through ${formatDate(aircraft.agreementEndAtUtc)}` : "";
+  return `${cadence}${endLabel}.`;
+}
+
+function cheapestOption(options: AircraftMarketDealOptionView[]): AircraftMarketDealOptionView | null {
+  if (options.length === 0) {
+    return null;
+  }
+
+  return options
+    .slice()
+    .sort((left, right) => {
+      const leftRecurring = left.recurringPaymentAmount ?? Number.POSITIVE_INFINITY;
+      const rightRecurring = right.recurringPaymentAmount ?? Number.POSITIVE_INFINITY;
+      if (leftRecurring !== rightRecurring) {
+        return leftRecurring - rightRecurring;
+      }
+      return left.upfrontPaymentAmount - right.upfrontPaymentAmount;
+    })[0] ?? null;
 }

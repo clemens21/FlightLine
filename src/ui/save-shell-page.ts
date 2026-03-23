@@ -1907,6 +1907,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       overflow: hidden;
     }
+    .aircraft-workspace-shell {
+      position: relative;
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
+    }
     .staffing-workspace-host,
     .staffing-workspace-panel,
     .staffing-workspace-shell {
@@ -1986,6 +1994,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-row.selected td:first-child {
       box-shadow: inset 3px 0 0 var(--accent);
     }
+    .compare-toggle-button {
+      width: 100%;
+      justify-content: center;
+    }
+    .compare-toggle-button.current,
+    .compare-action-button.current,
+    .aircraft-compare-pill {
+      border-color: rgba(111,201,212,.42);
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+      color: var(--text);
+    }
     .aircraft-market-listing {
       display: grid;
       grid-template-columns: 72px minmax(0, 1fr);
@@ -2028,6 +2047,178 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-detail-body {
       min-height: 0;
       overflow: auto;
+    }
+    .aircraft-detail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: -4px;
+    }
+    .aircraft-compare-dock {
+      position: absolute;
+      inset: auto 18px 18px 18px;
+      z-index: 5;
+      display: grid;
+      gap: 12px;
+      max-height: 38%;
+      overflow: auto;
+      box-shadow: var(--shadow);
+    }
+    .aircraft-compare-dock-body {
+      padding-top: 0;
+    }
+    .aircraft-compare-dock .panel-head {
+      padding-bottom: 0;
+    }
+    .aircraft-compare-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 6;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+    }
+    .aircraft-compare-backdrop {
+      appearance: none;
+      position: absolute;
+      inset: 0;
+      border: 0;
+      border-radius: inherit;
+      margin: 0;
+      padding: 0;
+      background: rgba(6, 10, 16, 0.04);
+      box-shadow: none;
+      color: transparent;
+      font-size: 0;
+      line-height: 0;
+      backdrop-filter: blur(7px) saturate(0.95);
+      -webkit-backdrop-filter: blur(7px) saturate(0.95);
+      cursor: pointer;
+    }
+    .aircraft-compare-card {
+      position: relative;
+      z-index: 1;
+      width: min(1480px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .aircraft-compare-body {
+      min-height: 0;
+      display: grid;
+      gap: 14px;
+      overflow: hidden;
+    }
+    .aircraft-compare-layout {
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(280px, .42fr) minmax(0, 1fr);
+      gap: 14px;
+      overflow: hidden;
+    }
+    .aircraft-compare-rail {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-strong);
+      padding: 12px;
+    }
+    .aircraft-compare-rail-list {
+      display: grid;
+      gap: 10px;
+    }
+    .aircraft-compare-rail-list.compact {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .aircraft-compare-card-item {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--panel) 72%, transparent);
+      cursor: pointer;
+    }
+    .aircraft-compare-card-item.baseline {
+      border-color: rgba(111,201,212,.42);
+      background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel-strong));
+    }
+    .aircraft-compare-card-item.focused {
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+    }
+    .aircraft-compare-card-actions {
+      justify-content: flex-start;
+    }
+    .aircraft-compare-content {
+      min-height: 0;
+      overflow: auto;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .aircraft-compare-focus {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-strong);
+    }
+    .aircraft-compare-focus-image {
+      margin: 0;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .aircraft-compare-focus-image img {
+      display: block;
+      width: 100%;
+      height: 118px;
+      object-fit: cover;
+    }
+    .compare-tabbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .aircraft-compare-matrix {
+      min-height: 0;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-strong);
+    }
+    .aircraft-compare-matrix table {
+      width: 100%;
+      min-width: 760px;
+    }
+    .aircraft-compare-matrix th,
+    .aircraft-compare-matrix td {
+      vertical-align: top;
+    }
+    .aircraft-compare-matrix th.baseline,
+    .aircraft-compare-matrix td.baseline {
+      background: color-mix(in srgb, var(--accent-soft) 36%, var(--panel-strong));
+    }
+    .aircraft-compare-matrix td.delta strong {
+      color: var(--accent);
+    }
+    .aircraft-compare-replacement {
+      display: grid;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid rgba(111,201,212,.22);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel-strong));
     }
     .aircraft-market-overlay {
       position: absolute;
@@ -2077,6 +2268,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-market-overlay-card .aircraft-detail-body {
       padding: 8px 18px 18px;
+    }
+    .aircraft-detail-actions .button-secondary,
+    .aircraft-compare-card-actions .button-secondary {
+      white-space: nowrap;
     }
     .aircraft-detail-stack {
       display: grid;
@@ -2236,6 +2431,55 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-empty-note {
       margin-top: 12px;
+    }
+    @media (max-width: 1200px) {
+      .aircraft-compare-card {
+        width: min(100vw - 24px, 1480px);
+        max-height: calc(100vh - 24px);
+      }
+      .aircraft-compare-layout {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .aircraft-compare-rail {
+        order: 2;
+      }
+      .aircraft-compare-content {
+        order: 1;
+      }
+      .aircraft-compare-focus {
+        grid-template-columns: 132px minmax(0, 1fr);
+      }
+      .aircraft-compare-focus-image img {
+        height: 92px;
+      }
+      .aircraft-compare-rail-list.compact {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+      .aircraft-compare-matrix table {
+        min-width: 620px;
+      }
+    }
+    @media (max-width: 900px) {
+      .aircraft-compare-dock {
+        inset: auto 12px 12px 12px;
+        max-height: 44%;
+      }
+      .aircraft-compare-card {
+        width: calc(100vw - 18px);
+        max-height: calc(100vh - 18px);
+      }
+      .aircraft-compare-focus {
+        grid-template-columns: 1fr;
+      }
+      .aircraft-compare-focus-image {
+        max-width: 240px;
+      }
+      .aircraft-compare-matrix table {
+        min-width: 540px;
+      }
+      .aircraft-detail-actions {
+        justify-content: flex-start;
+      }
     }
     .dispatch-workspace {
       min-height: 0;
