@@ -10,6 +10,8 @@ import type {
   ContractsRoutePlanItem,
   ContractsViewAirport,
   ContractsViewCompanyContract,
+  ContractsContractUrgencyBand,
+  ContractsContractWorkState,
   ContractsViewOffer,
   ContractsViewPayload,
 } from "../contracts-view-model.js";
@@ -90,9 +92,12 @@ interface ContractsUiState {
   boardTab: ContractsBoardTab;
   sortField: SortField | null;
   sortDirection: SortDirection;
+  boardScope: ContractsBoardScope;
   selectedOfferId: string | null;
   selectedCompanyContractId: string | null;
   acceptanceNextStepTab: ContractsWorkspaceTab | null;
+  acceptanceNextStepOfferId: string | null;
+  acceptanceNextStepCompanyContractId: string | null;
   message: { tone: "notice" | "error"; text: string; notificationLevel?: NotificationLevel | undefined } | null;
   map: MapState;
 }
@@ -104,6 +109,7 @@ interface FocusState {
 }
 
 type ContractsBoardTab = "available" | "active" | "closed";
+type ContractsBoardScope = "all" | "my_contracts";
 type ContractsWorkspaceTab = "board" | "planning";
 type SortField = "distanceNm" | "hoursRemaining";
 type SortDirection = "asc" | "desc";
@@ -146,6 +152,8 @@ const defaultMapState: MapState = {
   centerLongitudeNorm: 0.5,
   centerLatitudeNorm: 0.36,
 };
+const initialUrl = new URL(window.location.href);
+const initialContractsView = initialUrl.searchParams.get("contractsView");
 const activeContractStates = new Set(["accepted", "assigned", "active"]);
 const closedContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);
 
@@ -219,12 +227,15 @@ export function mountContractsTab(
       selectedRoutePlanItemIds: [],
     },
     workspaceTab: "board",
-    boardTab: "available",
+    boardTab: initialContractsView === "my_contracts" ? "active" : "available",
     sortField: null,
     sortDirection: "asc",
+    boardScope: initialContractsView === "my_contracts" ? "my_contracts" : "all",
     selectedOfferId: selectDefaultOfferId(initialPayload),
     selectedCompanyContractId: selectDefaultCompanyContractId(initialPayload, "active"),
     acceptanceNextStepTab: null,
+    acceptanceNextStepOfferId: null,
+    acceptanceNextStepCompanyContractId: null,
     message: null,
     map: { ...defaultMapState },
   };
@@ -267,6 +278,23 @@ export function mountContractsTab(
         state.boardTab = nextTab;
         if (nextTab !== "available") {
           state.acceptanceNextStepTab = null;
+          state.acceptanceNextStepOfferId = null;
+          state.acceptanceNextStepCompanyContractId = null;
+        }
+        ensureActiveTabSelection(state);
+        focusSelectedRoute(state);
+        render();
+      }
+      return;
+    }
+
+    const boardScopeButton = target.closest<HTMLElement>("[data-board-scope]");
+    if (boardScopeButton) {
+      const nextScope = boardScopeButton.dataset.boardScope as ContractsBoardScope | undefined;
+      if (nextScope) {
+        state.boardScope = nextScope;
+        if (state.boardTab !== "active") {
+          state.boardTab = "active";
         }
         ensureActiveTabSelection(state);
         focusSelectedRoute(state);
@@ -354,6 +382,58 @@ export function mountContractsTab(
       );
       return;
     }
+
+    const acceptanceDismissButton = target.closest<HTMLButtonElement>("[data-next-step-dismiss]");
+    if (acceptanceDismissButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      state.acceptanceNextStepTab = null;
+      state.acceptanceNextStepOfferId = null;
+      state.acceptanceNextStepCompanyContractId = null;
+      render();
+      return;
+    }
+
+    const acceptanceDispatchButton = target.closest<HTMLButtonElement>("[data-next-step-dispatch]");
+    if (acceptanceDispatchButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const acceptedOffer = state.payload.offers.find((offer) => offer.contractOfferId === state.acceptanceNextStepOfferId) ?? null;
+      if (!acceptedOffer?.directDispatchEligible) {
+        state.message = {
+          tone: "error",
+          text: acceptedOffer?.directDispatchReason ?? "That contract cannot dispatch directly yet.",
+        };
+        options.onMessage?.(state.message);
+        render();
+        return;
+      }
+
+      window.location.href = buildDispatchUrl(state.acceptanceNextStepCompanyContractId).toString();
+      return;
+    }
+
+    const openRoutePlanButton = target.closest<HTMLButtonElement>("[data-open-route-plan]");
+    if (openRoutePlanButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      state.workspaceTab = "planning";
+      state.acceptanceNextStepTab = null;
+      state.acceptanceNextStepOfferId = null;
+      state.acceptanceNextStepCompanyContractId = null;
+      focusPlannerChain(state);
+      render();
+      return;
+    }
+
+    const openDispatchButton = target.closest<HTMLButtonElement>("[data-open-dispatch]");
+    if (openDispatchButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.location.href = buildDispatchUrl(openDispatchButton.dataset.openDispatch ?? state.acceptanceNextStepCompanyContractId).toString();
+      return;
+    }
+
     const removePlanButton = target.closest<HTMLButtonElement>("[data-plan-remove-item]");
     if (removePlanButton) {
       event.preventDefault();
@@ -682,17 +762,22 @@ export function mountContractsTab(
 
       state.payload = result.payload;
       closePlannerReview(state);
+      const acceptedCompanyContract = result.payload.companyContracts.find((contract) => contract.originContractOfferId === contractOfferId) ?? null;
       state.message = {
         tone: "notice",
         text: result.message ?? "Contract accepted.",
         notificationLevel: result.notificationLevel,
       };
       state.acceptanceNextStepTab = "planning";
+      state.acceptanceNextStepOfferId = contractOfferId;
+      state.acceptanceNextStepCompanyContractId = acceptedCompanyContract?.companyContractId ?? null;
 
       if (!getFilteredOffers(state).some((offer) => offer.contractOfferId === state.selectedOfferId)) {
         state.selectedOfferId = selectDefaultOfferId(state.payload);
       }
 
+      state.selectedCompanyContractId = acceptedCompanyContract?.companyContractId
+        ?? state.selectedCompanyContractId;
       if (!state.payload.companyContracts.some((contract) => contract.companyContractId === state.selectedCompanyContractId)) {
         state.selectedCompanyContractId = selectDefaultCompanyContractId(state.payload, state.boardTab);
       }
@@ -858,17 +943,22 @@ export function mountContractsTab(
     const selectedRoute = resolveSelectedRoute(state, sortedOffers, sortedCompanyContracts);
     const availableCount = state.payload.offers.filter((offer) => offer.offerStatus === "available").length;
     const activeCount = getActiveContracts(state.payload).length;
+    const riskyActiveCount = getFilteredCompanyContracts({ ...state, boardTab: "active", boardScope: "my_contracts" }).length;
     const closedCount = getClosedContracts(state.payload).length;
     const routePlanCount = state.payload.routePlan?.items.length ?? 0;
     const selectedLabel = selectedRoute
-      ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
+      ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}${selectedRoute.route.nearestRelevantAircraft ? ` | nearest ${selectedRoute.route.nearestRelevantAircraft.registration}` : ""}`
       : "Select a row to focus the route map.";
     const toolbarHeadline = state.workspaceTab === "planning"
       ? renderPlannerHeadline(state.payload, plannerCandidates.length)
-      : renderHeadline(state.boardTab, availableCount, activeCount, closedCount);
+      : state.boardTab === "active" && state.boardScope === "my_contracts"
+        ? `${riskyActiveCount} at-risk / overdue contracts`
+        : renderHeadline(state.boardTab, availableCount, activeCount, closedCount);
     const toolbarSubtitle = state.workspaceTab === "planning"
       ? `Route plan endpoint ${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "-")} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
-      : `Board expires ${escapeHtml(formatDate(state.payload.board.expiresAtUtc))} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`;
+      : state.boardTab === "active" && state.boardScope === "my_contracts"
+        ? `Filtered to risky accepted work | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
+        : `Board expires ${escapeHtml(formatDate(state.payload.board.expiresAtUtc))} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`;
 
     const boardWorkspaceHtml = `
       <div class="contracts-grid">
@@ -883,6 +973,9 @@ export function mountContractsTab(
               ${renderBoardTab("active", "Accepted / Active", activeCount, state.boardTab)}
               ${renderBoardTab("closed", "Closed", closedCount, state.boardTab)}
             </div>
+            ${state.boardTab === "active"
+              ? `<div class="contracts-board-tabs compact" role="tablist" aria-label="Accepted work views">${renderBoardScopeTab("all", "All active", activeCount, state.boardScope)}${renderBoardScopeTab("my_contracts", "My Contracts", riskyActiveCount, state.boardScope)}</div>`
+              : ""}
           </div>
           <div class="panel-body contracts-main-body">
             <section class="contracts-filters">
@@ -940,7 +1033,7 @@ export function mountContractsTab(
             </section>
 
             ${state.acceptanceNextStepTab === "planning" && state.message?.tone === "notice"
-              ? `<div class="panel-inline-callout contracts-next-step"><div><strong>${escapeHtml(state.message.text)}</strong><div class="muted">Use Accepted / Active to inspect the newly accepted work, or switch to Route Planning to stage the next step.</div></div><div class="pill-row"><button type="button" class="button-secondary" data-board-tab="active">View Accepted / Active</button><button type="button" class="button-secondary" data-workspace-tab="planning">Open Route Planning</button></div></div>`
+              ? renderAcceptanceCallout(state)
               : ""}
 
             <div class="contracts-board-wrap">
@@ -1016,6 +1109,16 @@ export function mountContractsTab(
   }
 }
 
+function buildDispatchUrl(acceptedCompanyContractId: string | null | undefined): URL {
+  const dispatchUrl = new URL(window.location.href);
+  dispatchUrl.searchParams.set("tab", "dispatch");
+  if (acceptedCompanyContractId) {
+    dispatchUrl.searchParams.set("dispatchSourceMode", "accepted_contracts");
+    dispatchUrl.searchParams.set("dispatchSourceId", acceptedCompanyContractId);
+  }
+  return dispatchUrl;
+}
+
 // Focus bookkeeping preserves text inputs across full rerenders of the tab body.
 function captureFocusState(root: HTMLElement): FocusState | null {
   const activeElement = document.activeElement;
@@ -1082,6 +1185,7 @@ function renderOffersTable(offers: ContractsViewOffer[], selectedOfferId: string
           <th>Route</th>
           <th>Fit</th>
           <th>Payload</th>
+          <th>Aircraft</th>
           <th class="sortable">${renderSortButton("distanceNm", "Distance", state)}</th>
           <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
           <th>Due</th>
@@ -1104,7 +1208,12 @@ function renderCompanyContractsTable(
   state: ContractsUiState,
 ): string {
   if (contracts.length === 0) {
-    return `<div class="empty-state">No ${boardTab === "active" ? "accepted or active" : "closed"} contracts match the current filters.</div>`;
+    const emptyLabel = boardTab === "active"
+      ? state.boardScope === "my_contracts"
+        ? "risky accepted"
+        : "accepted or active"
+      : "closed";
+    return `<div class="empty-state">No ${emptyLabel} contracts match the current filters.</div>`;
   }
 
   return `
@@ -1114,6 +1223,7 @@ function renderCompanyContractsTable(
           <th>Route</th>
           <th>State</th>
           <th>Payload</th>
+          <th>Aircraft</th>
           <th class="sortable">${renderSortButton("distanceNm", "Distance", state)}</th>
           <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
           <th>Due</th>
@@ -1135,28 +1245,29 @@ function renderCompanyContractRow(
   boardTab: ContractsBoardTab,
 ): string {
   const remainingHours = routeHoursRemaining(contract, currentTimeUtc);
-  const sendPlanHtml = boardTab === "active"
-    ? contract.routePlanItemId
-      ? `<button type="button" class="button-secondary" disabled>Planned</button>`
-      : `<button type="button" class="button-secondary" data-plan-add-contract="${escapeHtml(contract.companyContractId)}">Send to route plan</button>`
-    : "";
+  const workBadgeHtml = renderContractWorkStateBadge(contract.workState);
+  const urgencyBadgeHtml = contract.urgencyBand === "stable" ? "" : renderUrgencyBadge(contract.urgencyBand);
+  const primaryActionHtml = boardTab === "active" ? renderCompanyContractPrimaryAction(contract) : "";
   const cancelHtml = boardTab === "active" && contract.contractState === "accepted"
     ? `<button type="button" class="button-secondary" data-cancel-contract="${escapeHtml(contract.companyContractId)}">Cancel (${escapeHtml(formatMoney(contract.cancellationPenaltyAmount))})</button>`
     : "";
-  const actionsHtml = [sendPlanHtml, cancelHtml].filter(Boolean).join("");
+  const actionsHtml = [primaryActionHtml, cancelHtml].filter(Boolean).join("");
 
   return `
     <tr class="contract-row ${isSelected ? "selected" : ""}" data-select-company-contract-row="${escapeHtml(contract.companyContractId)}" data-contract-board-tab="${escapeHtml(boardTab)}">
       <td>
         ${renderRouteColumn(contract.origin, contract.destination)}
+        ${renderAircraftCueLine(contract.nearestRelevantAircraft)}
       </td>
       <td>
         <div class="meta-stack">
           ${renderBadge(resolveCompanyContractBadgeState(contract, boardTab))}
-          <span class="muted">${escapeHtml(contract.archetype.replaceAll("_", " "))}</span>
+          ${workBadgeHtml}
+          ${urgencyBadgeHtml}
         </div>
       </td>
       <td>${escapeHtml(formatPayload(contract))}</td>
+      <td>${renderAircraftCueCell(contract.nearestRelevantAircraft)}</td>
       <td>${escapeHtml(formatDistance(routeDistanceNm(contract)))}</td>
       <td>${escapeHtml(formatHoursLeft(remainingHours))}</td>
       <td>${escapeHtml(formatDate(contract.deadlineUtc))}</td>
@@ -1171,6 +1282,7 @@ function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string 
     <tr class="contract-row ${isSelected ? "selected" : ""} ${offer.matchesPlannerEndpoint ? "matches-endpoint" : ""}" data-select-offer-row="${escapeHtml(offer.contractOfferId)}">
       <td>
         ${renderRouteColumn(offer.origin, offer.destination)}
+        ${renderAircraftCueLine(offer.nearestRelevantAircraft)}
       </td>
       <td>
         <div class="meta-stack">
@@ -1179,6 +1291,7 @@ function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string 
         </div>
       </td>
       <td>${escapeHtml(formatPayload(offer))}</td>
+      <td>${renderAircraftCueCell(offer.nearestRelevantAircraft)}</td>
       <td>${escapeHtml(formatDistance(routeDistanceNm(offer)))}</td>
       <td>${escapeHtml(formatHoursLeft(offer.timeRemainingHours))}</td>
       <td>${escapeHtml(formatDate(offer.latestCompletionUtc))}</td>
@@ -1433,6 +1546,75 @@ function renderRouteColumn(origin: ContractsViewAirport, destination: ContractsV
   `;
 }
 
+function renderAircraftCueLine(cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"]): string {
+  if (!cue) {
+    return `<div class="muted contract-route-detail">Nearest aircraft: none ready</div>`;
+  }
+
+  return `
+    <div class="muted contract-route-detail">
+      <strong>Nearest aircraft:</strong> ${escapeHtml(cue.registration)} | ${escapeHtml(cue.modelDisplayName)} | ${escapeHtml(cue.currentAirport.code)} ${escapeHtml(String(Math.round(cue.distanceNm)))} nm
+    </div>
+  `;
+}
+
+function renderAircraftCueCell(cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"]): string {
+  if (!cue) {
+    return `<span class="muted">No ready aircraft</span>`;
+  }
+
+  return `
+    <div class="meta-stack">
+      <strong>${escapeHtml(cue.registration)}</strong>
+      <span class="muted">${escapeHtml(cue.modelDisplayName)}</span>
+      <span class="muted">${escapeHtml(cue.currentAirport.code)} | ${escapeHtml(String(Math.round(cue.distanceNm)))} nm</span>
+    </div>
+  `;
+}
+
+function renderUrgencyBadge(urgencyBand: ContractsContractUrgencyBand): string {
+  const label = urgencyBand === "overdue" ? "Overdue" : "At risk";
+  const tone = urgencyBand === "overdue" ? "danger" : "warn";
+  return `<span class="badge ${tone}">${label}</span>`;
+}
+
+function renderContractWorkStateBadge(workState: ContractsContractWorkState): string {
+  const label = workState === "ready_for_dispatch"
+    ? "Ready for dispatch"
+    : workState === "assigned_elsewhere"
+    ? "Assigned elsewhere"
+    : "In route plan";
+  const tone = workState === "ready_for_dispatch"
+    ? "accent"
+    : workState === "assigned_elsewhere"
+    ? "danger"
+    : "neutral";
+  return `<span class="badge ${tone}">${label}</span>`;
+}
+
+function renderCompanyContractPrimaryAction(contract: ContractsViewCompanyContract): string {
+  if (contract.primaryActionKind === "open_route_plan") {
+    return `<button type="button" class="button-secondary" data-open-route-plan="${escapeHtml(contract.companyContractId)}">${escapeHtml(contract.primaryActionLabel)}</button>`;
+  }
+
+  if (contract.primaryActionKind === "open_dispatch") {
+    return contract.assignedAircraftReady
+      ? `<button type="button" data-open-dispatch="${escapeHtml(contract.companyContractId)}">${escapeHtml(contract.primaryActionLabel)}</button>`
+      : `<button type="button" class="button-secondary" disabled>${escapeHtml(contract.primaryActionLabel)}</button>`;
+  }
+
+  return `<button type="button" class="button-secondary" data-plan-add-contract="${escapeHtml(contract.companyContractId)}">${escapeHtml(contract.primaryActionLabel)}</button>`;
+}
+
+function renderBoardScopeTab(tabId: ContractsBoardScope, label: string, count: number, activeTab: ContractsBoardScope): string {
+  return `<button type="button" class="contracts-board-tab ${activeTab === tabId ? "current" : ""}" data-board-scope="${tabId}" role="tab" aria-selected="${activeTab === tabId ? "true" : "false"}"><span>${escapeHtml(label)}</span><span class="contracts-board-tab-count">${escapeHtml(String(count))}</span></button>`;
+}
+
+function renderAcceptanceCallout(state: ContractsUiState): string {
+  const acceptedOffer = state.payload.offers.find((offer) => offer.contractOfferId === state.acceptanceNextStepOfferId) ?? null;
+  return `<div class="panel-inline-callout contracts-next-step"><div><strong>${escapeHtml(state.message?.text ?? "Contract accepted.")}</strong><div class="muted">Use Accepted / Active to inspect the newly accepted work, or switch to Route Planning to stage the next step.${acceptedOffer ? ` ${escapeHtml(acceptedOffer.directDispatchReason)}` : ""}</div></div><div class="pill-row"><button type="button" class="button-secondary" data-next-step-dismiss>Keep browsing</button><button type="button" class="button-secondary" data-open-route-plan="${acceptedOffer ? escapeHtml(acceptedOffer.contractOfferId) : ""}">Send to route plan</button><button type="button" ${acceptedOffer?.directDispatchEligible ? "" : "disabled"} data-next-step-dispatch>Accept and dispatch</button></div></div>`;
+}
+
 function renderPlannerReviewSection(
   title: string,
   items: ContractsRoutePlanItem[],
@@ -1554,6 +1736,10 @@ function sortCompanyContracts(
   currentTimeUtc: string,
   state: ContractsUiState,
 ): ContractsViewCompanyContract[] {
+  if (state.boardTab === "active" && state.boardScope === "my_contracts") {
+    return [...contracts].sort((left, right) => compareMyContracts(left, right, currentTimeUtc));
+  }
+
   const sortField = state.sortField;
   if (!sortField) {
     return contracts;
@@ -1575,6 +1761,34 @@ function compareRoutes(
 
   if (delta !== 0) {
     return delta;
+  }
+
+  return (left.origin.code + left.destination.code).localeCompare(right.origin.code + right.destination.code);
+}
+
+function compareMyContracts(
+  left: ContractsViewCompanyContract,
+  right: ContractsViewCompanyContract,
+  currentTimeUtc: string,
+): number {
+  const urgencyWeight = (contract: ContractsViewCompanyContract): number => {
+    if (contract.urgencyBand === "overdue") {
+      return 0;
+    }
+    if (contract.urgencyBand === "at_risk") {
+      return 1;
+    }
+    return 2;
+  };
+
+  const urgencyDelta = urgencyWeight(left) - urgencyWeight(right);
+  if (urgencyDelta !== 0) {
+    return urgencyDelta;
+  }
+
+  const hoursDelta = routeHoursRemaining(left, currentTimeUtc) - routeHoursRemaining(right, currentTimeUtc);
+  if (hoursDelta !== 0) {
+    return hoursDelta;
   }
 
   return (left.origin.code + left.destination.code).localeCompare(right.origin.code + right.destination.code);
@@ -1780,7 +1994,9 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
   const searchText = state.appliedTextFilters.searchText.trim().toLowerCase();
 
   return source.filter((contract) => {
-    const remainingHours = Math.max(0, (new Date(contract.deadlineUtc).getTime() - new Date(state.payload.currentTimeUtc).getTime()) / 3_600_000);
+    if (state.boardTab === "active" && state.boardScope === "my_contracts" && contract.urgencyBand === "stable") {
+      return false;
+    }
 
     if (searchText && !buildAirportSearchHaystack(contract).includes(searchText)) {
       return false;
@@ -1891,6 +2107,9 @@ function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidate
         routePlanItemId: item.routePlanItemId,
         routePlanItemStatus: item.plannerItemStatus,
         matchesPlannerEndpoint: hasEndpoint && item.origin.airportId === state.payload.routePlan?.endpointAirportId,
+        directDispatchEligible: false,
+        directDispatchReason: "This planned candidate is no longer actionable.",
+        nearestRelevantAircraft: null,
       },
       state: "stale",
       detail: "This planned offer is no longer present on the live board.",
@@ -2055,7 +2274,8 @@ function focusSelectedRoute(state: ContractsUiState): void {
   const points = [
     selectedRoute.route.origin,
     selectedRoute.route.destination,
-  ].map(toMercatorPoint);
+    selectedRoute.route.nearestRelevantAircraft?.currentAirport,
+  ].filter((airport): airport is ContractsViewAirport => Boolean(airport)).map(toMercatorPoint);
 
   const minLongitudeNorm = Math.min(...points.map((point) => point.longitudeNorm));
   const maxLongitudeNorm = Math.max(...points.map((point) => point.longitudeNorm));
@@ -2348,8 +2568,15 @@ function renderSelectedOverlay(
 ): string {
   const origin = projectAirportToViewport(selectedRoute.route.origin, viewportLeftPx, viewportTopPx, worldSizePx);
   const destination = projectAirportToViewport(selectedRoute.route.destination, viewportLeftPx, viewportTopPx, worldSizePx);
+  const nearestAircraft = selectedRoute.route.nearestRelevantAircraft;
+  const aircraftPoint = nearestAircraft ? projectAirportToViewport(nearestAircraft.currentAirport, viewportLeftPx, viewportTopPx, worldSizePx) : null;
 
   return `
+    ${aircraftPoint
+      ? `<line x1="${aircraftPoint.x}" y1="${aircraftPoint.y}" x2="${origin.x}" y2="${origin.y}" class="map-route reposition" />
+         <circle cx="${aircraftPoint.x}" cy="${aircraftPoint.y}" r="11" class="map-point aircraft" />
+         <text x="${aircraftPoint.x + 14}" y="${aircraftPoint.y - 14}" class="map-label">${escapeHtml(nearestAircraft?.registration ?? "")}</text>`
+      : ""}
     <circle cx="${origin.x}" cy="${origin.y}" r="28" class="map-range-ring origin" />
     <circle cx="${destination.x}" cy="${destination.y}" r="28" class="map-range-ring destination" />
     <line x1="${origin.x}" y1="${origin.y}" x2="${destination.x}" y2="${destination.y}" class="map-route selected" />

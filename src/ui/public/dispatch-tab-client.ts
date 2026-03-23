@@ -86,10 +86,11 @@ const commitmentConflictMessageCodes = new Set([
 
 export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload): DispatchTabController {
   const storedSelection = loadStoredSelection(payload.saveId);
+  const navigationSelection = loadNavigationSelection();
   let selectedAircraftId = storedSelection?.aircraftId ?? payload.defaultSelectedAircraftId;
   let selectedLegId = storedSelection?.legId;
-  let selectedSourceMode: DispatchSourceMode | undefined = storedSelection?.sourceMode;
-  let selectedSourceId = storedSelection?.sourceId;
+  let selectedSourceMode: DispatchSourceMode | undefined = navigationSelection?.sourceMode ?? storedSelection?.sourceMode;
+  let selectedSourceId = navigationSelection?.sourceId ?? storedSelection?.sourceId;
   const selectedPilotOverrideIdsByScheduleId = new Map<string, string[]>();
 
   function render(): void {
@@ -1683,6 +1684,24 @@ function loadStoredSelection(saveId: string): DispatchStoredSelection | null {
     }
 
     return JSON.parse(raw) as DispatchStoredSelection;
+  } catch {
+    return null;
+  }
+}
+
+function loadNavigationSelection(): Pick<DispatchStoredSelection, "sourceMode" | "sourceId"> | null {
+  try {
+    const url = new URL(window.location.href);
+    const sourceMode = url.searchParams.get("dispatchSourceMode") as DispatchSourceMode | null;
+    if (sourceMode !== "accepted_contracts" && sourceMode !== "planned_routes") {
+      return null;
+    }
+
+    const sourceId = url.searchParams.get("dispatchSourceId") ?? undefined;
+    return {
+      sourceMode,
+      ...(sourceId ? { sourceId } : {}),
+    };
   } catch {
     return null;
   }

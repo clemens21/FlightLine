@@ -16,6 +16,18 @@ export interface ContractsViewAirport {
 
 export type ContractsRoutePlanItemStatus = "candidate_available" | "candidate_stale" | "accepted_ready" | "scheduled" | "closed";
 export type ContractsRoutePlanItemSourceType = "candidate_offer" | "accepted_contract";
+export type ContractsContractUrgencyBand = "stable" | "at_risk" | "overdue";
+export type ContractsContractWorkState = "in_route_plan" | "ready_for_dispatch" | "assigned_elsewhere";
+export type ContractsContractPrimaryActionKind = "send_to_route_plan" | "open_route_plan" | "open_dispatch";
+
+export interface ContractsViewAircraftCue {
+  aircraftId: string;
+  registration: string;
+  modelDisplayName: string;
+  currentAirport: ContractsViewAirport;
+  distanceNm: number;
+  dispatchAvailable: boolean;
+}
 
 export interface ContractsViewOffer {
   contractOfferId: string;
@@ -36,10 +48,14 @@ export interface ContractsViewOffer {
   routePlanItemId: string | undefined;
   routePlanItemStatus: ContractsRoutePlanItemStatus | undefined;
   matchesPlannerEndpoint: boolean;
+  directDispatchEligible: boolean;
+  directDispatchReason: string;
+  nearestRelevantAircraft: ContractsViewAircraftCue | null;
 }
 
 export interface ContractsViewAcceptedContract {
   companyContractId: string;
+  originContractOfferId: string | undefined;
   contractState: string;
   archetype: string;
   volumeType: "passenger" | "cargo";
@@ -54,10 +70,18 @@ export interface ContractsViewAcceptedContract {
   destination: ContractsViewAirport;
   routePlanItemId: string | undefined;
   routePlanItemStatus: ContractsRoutePlanItemStatus | undefined;
+  hoursRemaining: number;
+  urgencyBand: ContractsContractUrgencyBand;
+  workState: ContractsContractWorkState;
+  primaryActionKind: ContractsContractPrimaryActionKind;
+  primaryActionLabel: string;
+  nearestRelevantAircraft: ContractsViewAircraftCue | null;
+  assignedAircraftReady: boolean;
 }
 
 export interface ContractsViewCompanyContract {
   companyContractId: string;
+  originContractOfferId: string | undefined;
   contractState: string;
   archetype: string;
   volumeType: "passenger" | "cargo";
@@ -72,6 +96,13 @@ export interface ContractsViewCompanyContract {
   destination: ContractsViewAirport;
   routePlanItemId: string | undefined;
   routePlanItemStatus: ContractsRoutePlanItemStatus | undefined;
+  hoursRemaining: number;
+  urgencyBand: ContractsContractUrgencyBand;
+  workState: ContractsContractWorkState;
+  primaryActionKind: ContractsContractPrimaryActionKind;
+  primaryActionLabel: string;
+  nearestRelevantAircraft: ContractsViewAircraftCue | null;
+  assignedAircraftReady: boolean;
 }
 
 export interface ContractsRoutePlanItem {

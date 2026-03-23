@@ -24,7 +24,12 @@ import {
   type RoutePlanState,
 } from "./route-plan-state.js";
 import type {
+  ContractsContractPrimaryActionKind,
+  ContractsContractUrgencyBand,
+  ContractsContractWorkState,
+  ContractsViewAircraftCue,
   ContractsRoutePlanItem,
+  ContractsRoutePlanItemStatus,
   ContractsViewAcceptedContract,
   ContractsViewAirport,
   ContractsViewCompanyContract,
@@ -197,6 +202,239 @@ function hasCurrentCrewReadiness(
   return true;
 }
 
+interface RouteCapacityRequirements {
+  volumeType: "passenger" | "cargo";
+  passengerCount: number | undefined;
+  cargoWeightLb: number | undefined;
+}
+
+interface RouteScheduleRequirements {
+  originAirportId: string;
+  destinationAirportId: string;
+  earliestStartUtc: string | undefined;
+  deadlineUtc: string;
+}
+
+function canAircraftOperateRoute(
+  aircraft: FleetAircraftView,
+  aircraftReference: AircraftReferenceRepository,
+  routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
+  originAirport: AirportRecord,
+  destinationAirport: AirportRecord,
+  distanceNm: number,
+): boolean {
+  const originAirportSize = originAirport.airportSize ?? 0;
+  const destinationAirportSize = destinationAirport.airportSize ?? 0;
+  const originRunwayFt = originAirport.longestHardRunwayFt ?? 0;
+  const destinationRunwayFt = destinationAirport.longestHardRunwayFt ?? 0;
+
+  if (!["available", "delivered"].includes(aircraft.deliveryState)) {
+    return false;
+  }
+
+  if (originAirportSize > 0 && originAirportSize < aircraft.minimumAirportSize) {
+    return false;
+  }
+
+  if (destinationAirportSize > 0 && destinationAirportSize < aircraft.minimumAirportSize) {
+    return false;
+  }
+
+  if (originRunwayFt > 0 && originRunwayFt < aircraft.minimumRunwayFt) {
+    return false;
+  }
+
+  if (destinationRunwayFt > 0 && destinationRunwayFt < aircraft.minimumRunwayFt) {
+    return false;
+  }
+
+  if (distanceNm > aircraft.rangeNm * 0.9) {
+    return false;
+  }
+
+  const aircraftModel = aircraftReference.findModel(aircraft.aircraftModelId);
+  if (!aircraftModel) {
+    return false;
+  }
+
+  if (routeRequirements.volumeType === "passenger") {
+    const seatCapacity = Math.min(aircraft.activeCabinSeats ?? aircraft.maxPassengers, aircraft.maxPassengers);
+    return (routeRequirements.passengerCount ?? 0) <= seatCapacity;
+  }
+
+  const cargoCapacity = Math.min(aircraft.activeCabinCargoCapacityLb ?? aircraft.maxCargoLb, aircraft.maxCargoLb);
+  return (routeRequirements.cargoWeightLb ?? 0) <= cargoCapacity && (routeRequirements.cargoWeightLb ?? 0) <= aircraftModel.maxPayloadLb;
+}
+
+function canAircraftCoverRoute(
+  aircraft: FleetAircraftView,
+  aircraftReference: AircraftReferenceRepository,
+  routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
+  originAirport: AirportRecord,
+  destinationAirport: AirportRecord,
+  distanceNm: number,
+  staffingState: StaffingStateView | null,
+  airportReference: AirportReferenceRepository,
+): boolean {
+  if (!canAircraftOperateRoute(aircraft, aircraftReference, routeRequirements, originAirport, destinationAirport, distanceNm)) {
+    return false;
+  }
+
+  const aircraftModel = aircraftReference.findModel(aircraft.aircraftModelId);
+  if (!aircraftModel) {
+    return false;
+  }
+
+  const routeOffer = {
+    volumeType: routeRequirements.volumeType,
+    passengerCount: routeRequirements.passengerCount,
+    cargoWeightLb: routeRequirements.cargoWeightLb,
+    originAirportId: routeRequirements.originAirportId,
+    destinationAirportId: routeRequirements.destinationAirportId,
+    earliestStartUtc: routeRequirements.earliestStartUtc ?? routeRequirements.deadlineUtc,
+    latestCompletionUtc: routeRequirements.deadlineUtc,
+  } satisfies Pick<ContractBoardView["offers"][number], "volumeType" | "passengerCount" | "cargoWeightLb" | "originAirportId" | "destinationAirportId" | "earliestStartUtc" | "latestCompletionUtc">;
+
+    return hasNominalCrewCoverage(aircraft, routeOffer as ContractBoardView["offers"][number], staffingState)
+      && hasCurrentCrewReadiness(aircraft, routeOffer as ContractBoardView["offers"][number], staffingState)
+      && planDispatchContractWork(
+      routeRequirements.earliestStartUtc ?? routeRequirements.deadlineUtc,
+      aircraft.currentAirportId,
+      aircraftModel,
+      {
+        originAirportId: routeRequirements.originAirportId,
+        destinationAirportId: routeRequirements.destinationAirportId,
+        earliestStartUtc: routeRequirements.earliestStartUtc ?? routeRequirements.deadlineUtc,
+        deadlineUtc: routeRequirements.deadlineUtc,
+      },
+      airportReference,
+    ).success;
+}
+
+function buildAircraftCue(
+  aircraft: FleetAircraftView,
+  airportMap: Map<string, AirportRecord>,
+  routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
+  aircraftReference: AircraftReferenceRepository,
+  staffingState: StaffingStateView | null,
+  airportReference: AirportReferenceRepository,
+): ContractsViewAircraftCue | null {
+  const currentAirport = airportMap.get(aircraft.currentAirportId.toUpperCase()) ?? null;
+  const originAirport = airportMap.get(routeRequirements.originAirportId.toUpperCase()) ?? null;
+  const destinationAirport = airportMap.get(routeRequirements.destinationAirportId.toUpperCase()) ?? null;
+
+  if (!currentAirport || !originAirport || !destinationAirport) {
+    return null;
+  }
+
+  const distanceNm = haversineDistanceNm(currentAirport, originAirport);
+  if (!canAircraftCoverRoute(
+    aircraft,
+    aircraftReference,
+    routeRequirements,
+    originAirport,
+    destinationAirport,
+    distanceNm,
+    staffingState,
+    airportReference,
+  )) {
+    return null;
+  }
+
+  return {
+    aircraftId: aircraft.aircraftId,
+    registration: aircraft.registration,
+    modelDisplayName: aircraft.modelDisplayName,
+    currentAirport: mapAirport(currentAirport, aircraft.currentAirportId),
+    distanceNm,
+    dispatchAvailable: aircraft.dispatchAvailable,
+  };
+}
+
+function buildBestAircraftCue(
+  airportMap: Map<string, AirportRecord>,
+  routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
+  fleetState: FleetStateView | null,
+  staffingState: StaffingStateView | null,
+  aircraftReference: AircraftReferenceRepository,
+  airportReference: AirportReferenceRepository,
+): ContractsViewAircraftCue | null {
+  const cues = (fleetState?.aircraft ?? [])
+    .map((aircraft) => buildAircraftCue(
+      aircraft,
+      airportMap,
+      routeRequirements,
+      aircraftReference,
+      staffingState,
+      airportReference,
+    ))
+    .filter((cue): cue is ContractsViewAircraftCue => Boolean(cue));
+
+  cues.sort((left, right) => left.distanceNm - right.distanceNm || left.registration.localeCompare(right.registration));
+  return cues[0] ?? null;
+}
+
+function buildUrgencyBand(hoursRemaining: number): ContractsContractUrgencyBand {
+  if (hoursRemaining <= 0) {
+    return "overdue";
+  }
+
+  if (hoursRemaining <= 24) {
+    return "at_risk";
+  }
+
+  return "stable";
+}
+
+function buildContractWorkState(
+  routePlanItemId: string | undefined,
+  routePlanItemStatus: ContractsRoutePlanItemStatus | undefined,
+  assignedAircraftId: string | undefined,
+  assignedAircraftReady: boolean,
+): ContractsContractWorkState {
+  if (routePlanItemId) {
+    return routePlanItemStatus === "accepted_ready" || routePlanItemStatus === "scheduled"
+      ? "ready_for_dispatch"
+      : "in_route_plan";
+  }
+
+  if (assignedAircraftId) {
+    return assignedAircraftReady ? "ready_for_dispatch" : "assigned_elsewhere";
+  }
+
+  return "assigned_elsewhere";
+}
+
+function buildContractPrimaryActionKind(
+  routePlanItemId: string | undefined,
+  workState: ContractsContractWorkState,
+): ContractsContractPrimaryActionKind {
+  if (routePlanItemId && workState === "ready_for_dispatch") {
+    return "open_route_plan";
+  }
+
+  if (routePlanItemId) {
+    return "open_route_plan";
+  }
+
+  if (workState === "ready_for_dispatch") {
+    return "open_dispatch";
+  }
+
+  return "send_to_route_plan";
+}
+
+function buildContractPrimaryActionLabel(
+  routePlanItemId: string | undefined,
+  workState: ContractsContractWorkState,
+): string {
+  if (routePlanItemId) {
+    return workState === "ready_for_dispatch" ? "Open dispatch" : "Open route plan";
+  }
+
+  return workState === "ready_for_dispatch" ? "Open dispatch" : "Send to route plan";
+}
+
 function deriveOfferFitBucket(
   currentTimeUtc: string,
   offer: ContractBoardView["offers"][number],
@@ -337,11 +575,29 @@ function buildOfferView(
   fleetState: FleetStateView | null,
   staffingState: StaffingStateView | null,
   aircraftReference: AircraftReferenceRepository,
+  airportReference: AirportReferenceRepository,
 ): ContractsViewOffer[] {
   const { plannedOfferIds } = buildRoutePlanIndexes(routePlan);
 
   return board.offers.map((offer) => {
     const plannedItem = plannedOfferIds.get(offer.contractOfferId);
+    const routeRequirements = {
+      volumeType: offer.volumeType,
+      passengerCount: offer.passengerCount,
+      cargoWeightLb: offer.cargoWeightLb,
+      originAirportId: offer.originAirportId,
+      destinationAirportId: offer.destinationAirportId,
+      earliestStartUtc: offer.earliestStartUtc,
+      deadlineUtc: offer.latestCompletionUtc,
+    } satisfies RouteCapacityRequirements & RouteScheduleRequirements;
+    const nearestRelevantAircraft = buildBestAircraftCue(
+      airportMap,
+      routeRequirements,
+      fleetState,
+      staffingState,
+      aircraftReference,
+      airportReference,
+    );
 
     return {
       contractOfferId: offer.contractOfferId,
@@ -365,6 +621,11 @@ function buildOfferView(
       routePlanItemId: plannedItem?.routePlanItemId,
       routePlanItemStatus: plannedItem?.plannerItemStatus,
       matchesPlannerEndpoint: Boolean(routePlan?.endpointAirportId) && offer.originAirportId === routePlan?.endpointAirportId,
+      directDispatchEligible: Boolean(nearestRelevantAircraft),
+      directDispatchReason: nearestRelevantAircraft
+        ? `Nearest dispatch-ready aircraft: ${nearestRelevantAircraft.registration} at ${nearestRelevantAircraft.currentAirport.code}.`
+        : "No dispatch-ready aircraft can plausibly cover this route right now.",
+      nearestRelevantAircraft,
     } satisfies ContractsViewOffer;
   });
 }
@@ -373,15 +634,52 @@ function buildCompanyContractsView(
   companyContracts: CompanyContractsView | null,
   airportMap: Map<string, AirportRecord>,
   routePlan: RoutePlanState | null,
+  fleetState: FleetStateView | null,
+  staffingState: StaffingStateView | null,
+  aircraftReference: AircraftReferenceRepository,
+  airportReference: AirportReferenceRepository,
+  currentTimeUtc: string,
 ): ContractsViewCompanyContract[] {
   const { plannedCompanyContractIds } = buildRoutePlanIndexes(routePlan);
+  const assignedAircraftById = new Map((fleetState?.aircraft ?? []).map((aircraft) => [aircraft.aircraftId, aircraft]));
 
   return (companyContracts?.contracts ?? [])
     .map((contract) => {
       const plannedItem = plannedCompanyContractIds.get(contract.companyContractId);
+      const assignedAircraft = contract.assignedAircraftId ? assignedAircraftById.get(contract.assignedAircraftId) ?? null : null;
+      const routeRequirements = {
+        volumeType: contract.volumeType,
+        passengerCount: contract.passengerCount,
+        cargoWeightLb: contract.cargoWeightLb,
+        originAirportId: contract.originAirportId,
+        destinationAirportId: contract.destinationAirportId,
+        earliestStartUtc: contract.earliestStartUtc,
+        deadlineUtc: contract.deadlineUtc,
+      } satisfies RouteCapacityRequirements & RouteScheduleRequirements;
+      const hoursRemaining = Math.max(0, (new Date(contract.deadlineUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000);
+      const nearestRelevantAircraft = buildBestAircraftCue(
+        airportMap,
+        routeRequirements,
+        fleetState,
+        staffingState,
+        aircraftReference,
+        airportReference,
+      );
+      const assignedAircraftReady = Boolean(
+        plannedItem?.plannerItemStatus === "accepted_ready"
+        || plannedItem?.plannerItemStatus === "scheduled"
+        || assignedAircraft?.dispatchAvailable,
+      );
+      const workState = buildContractWorkState(
+        plannedItem?.routePlanItemId,
+        plannedItem?.plannerItemStatus,
+        contract.assignedAircraftId,
+        assignedAircraftReady,
+      );
 
       return {
         companyContractId: contract.companyContractId,
+        originContractOfferId: contract.originContractOfferId,
         contractState: contract.contractState,
         archetype: contract.archetype,
         volumeType: contract.volumeType,
@@ -396,6 +694,13 @@ function buildCompanyContractsView(
         destination: mapAirport(airportMap.get(contract.destinationAirportId.toUpperCase()) ?? null, contract.destinationAirportId),
         routePlanItemId: plannedItem?.routePlanItemId,
         routePlanItemStatus: plannedItem?.plannerItemStatus,
+        hoursRemaining,
+        urgencyBand: buildUrgencyBand(hoursRemaining),
+        workState,
+        primaryActionKind: buildContractPrimaryActionKind(plannedItem?.routePlanItemId, workState),
+        primaryActionLabel: buildContractPrimaryActionLabel(plannedItem?.routePlanItemId, workState),
+        nearestRelevantAircraft,
+        assignedAircraftReady,
       } satisfies ContractsViewCompanyContract;
     });
 }
@@ -455,8 +760,18 @@ export function buildContractsViewPayload(
     fleetState,
     staffingState,
     aircraftReference,
+    airportReference,
   );
-  const companyContractsView = buildCompanyContractsView(companyContracts, airportMap, visibleRoutePlan);
+  const companyContractsView = buildCompanyContractsView(
+    companyContracts,
+    airportMap,
+    visibleRoutePlan,
+    fleetState,
+    staffingState,
+    aircraftReference,
+    airportReference,
+    companyContext.currentTimeUtc,
+  );
   const acceptedContracts = companyContractsView.filter((contract) => activeCompanyContractStates.has(contract.contractState));
 
   return {
