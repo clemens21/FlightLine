@@ -5,7 +5,7 @@
 - Status:
   Active capability
 - Workflow state:
-  ready_for_eli
+  eli_in_progress
 - Current owner:
   Implementation Engineer (Eli Mercer)
 - Current active slice:
