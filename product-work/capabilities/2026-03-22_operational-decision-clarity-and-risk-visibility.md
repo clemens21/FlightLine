@@ -5,15 +5,15 @@
 - Status:
   Active capability
 - Workflow state:
-  ready_for_eli
+  paused_at_stream_boundary
 - Current owner:
-  Implementation Engineer (Eli Mercer)
+  Technical Lead (Mara Sterling)
 - Current active slice:
-  Stream D - Staffing market QoL
+  Stream E - Dispatch readability follow-up
 - Next routing target:
-  Implementation Engineer (staffing market QoL)
+  Implementation Engineer (dispatch readability follow-up)
 - Last updated:
-  2026-03-22
+  2026-03-23
 
 ## Capability Brief
 
@@ -205,7 +205,7 @@
   4. broader pilot-market QoL and embedded hire-table controls
   5. dispatch readability follow-up
 - Approved next slice:
-  - Stream D - Staffing market QoL
+  - Stream E - Dispatch readability follow-up
 - Deferred slices:
   - deeper finance analysis tooling
   - stronger market-need weighting for pilot generation
@@ -228,6 +228,7 @@
   - Stream B landed cleanly into the umbrella capability branch at `4dc0f62` after Nadia cleared `codex/aircraft-comparison-workspace`.
   - Stream A landed cleanly into the umbrella capability branch at `0617eb7` after the direct-dispatch handoff fix for `#59` passed Nadia revalidation on `codex/contracts-clarity`.
   - Stream C landed cleanly into the umbrella capability branch at `dd84a06` after the focused finance graph persistence repro passed and no remaining Nadia findings were raised on `codex/overview-finance-visibility`.
+  - Stream D landed cleanly into the umbrella capability branch at `6b8749a` after staffing market validation passed across build, focused staffing checks, server smoke, browser smoke, and a focused Nadia-style browser/server revalidation.
   - Later streams remain sequential to avoid shared shell/render overlap.
 
 ## Notes
