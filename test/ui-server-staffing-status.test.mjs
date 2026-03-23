@@ -507,6 +507,14 @@ try {
 
   const contractStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(contractSaveId)}/tab/staffing`);
   assert.equal(contractStaffingTab.tabId, "staffing");
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-search/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-fit/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-more-toggle/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-path-filter/);
+  assert.equal(contractStaffingTab.contentHtml.includes('data-staffing-candidate-path="both"'), true);
+  assert.equal(contractStaffingTab.contentHtml.includes('data-staffing-candidate-path="direct"'), true);
+  assert.equal(contractStaffingTab.contentHtml.includes('data-staffing-candidate-path="contract"'), true);
   const contractRow = extractFirstPilotRow(contractStaffingTab.contentHtml);
   const contractDetail = extractEmployeeDetail(contractStaffingTab.contentHtml);
   assert.match(contractRow.rowHtml, /contract hire/i);

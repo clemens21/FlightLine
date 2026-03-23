@@ -586,10 +586,37 @@ try {
   assert.ok((await page.locator("[data-pilot-candidate-market]").count()) >= 1);
   await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]").length >= 8);
   assert.equal(await page.locator("[data-staffing-hire-overlay]").isVisible(), false);
+  assert.equal(await page.locator("[data-staffing-hire-search]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-hire-fit]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-hire-sort]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-hire-more-toggle]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-hire-more]").isVisible(), false);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Reliability" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Stress" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Procedure" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Training" }).count(), 1);
+  const baselineVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
+  const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
+  await page.locator("[data-staffing-hire-search]").fill(firstCandidateName);
+  await page.waitForFunction((expectedName) => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.length < (document.querySelectorAll("[data-pilot-candidate-row]").length || 0)
+      && visibleRows.some((row) => row.textContent?.includes(expectedName));
+  }, firstCandidateName);
+  const searchVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
+  assert.equal(searchVisibleCandidates > 0, true);
+  assert.equal(searchVisibleCandidates < baselineVisibleCandidates, true);
+  await page.locator("[data-staffing-hire-search]").fill("");
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-search]")?.value === "");
+  await clickUi(page.locator("[data-staffing-hire-more-toggle]"));
+  await page.waitForFunction(() => !document.querySelector("[data-staffing-hire-more]")?.hasAttribute("hidden"));
+  await page.locator("[data-staffing-hire-path-filter]").selectOption("direct");
+  await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length > 0);
+  assert.equal(await page.locator("[data-pilot-candidate-row]:not([hidden])").count() < baselineVisibleCandidates, true);
+  await clickUi(page.locator("[data-staffing-hire-reset]"));
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-search]")?.value === "");
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-path-filter]")?.value === "all");
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
   });
@@ -634,7 +661,7 @@ try {
   assert.ok(hireRowPortraitBox.width >= 20 && hireRowPortraitBox.width <= 28);
   assert.ok(hireRowPortraitBox.height >= 20 && hireRowPortraitBox.height <= 28);
   await page.setViewportSize({ width: 1440, height: 900 });
-  const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
+  const firstVisibleCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
   const firstCandidatePortrait = await page.locator("[data-pilot-candidate-row]").first().locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
   assert.ok(firstCandidatePortrait);
   assert.equal(firstCandidatePortrait.startsWith("/assets/staff-portraits/"), true);
@@ -654,7 +681,7 @@ try {
       && detail.includes("Availability")
       && detail.includes("Direct hire")
       && detail.includes("Contract hire");
-  }, firstCandidateName);
+  }, firstVisibleCandidateName);
   const hireDetailText = (await page.locator("[data-staffing-detail-body='hire']").textContent()) ?? "";
   assert.equal(hireDetailText.includes("Pilot snapshot"), true);
   assert.equal(hireDetailText.includes("Pricing summary"), false);
@@ -673,10 +700,10 @@ try {
   assert.equal(hireDetailText.includes("Hiring activates this candidate into the roster at the listed availability window."), false);
   assert.equal(hireDetailText.includes("Type and availability are fixed by this staffing offer."), false);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-support-coverage-start]").count(), 0);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='direct_hire']").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='contract_hire']").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='direct_hire'] [data-pilot-candidate-hire]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-path='contract_hire'] [data-pilot-candidate-hire]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire']").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire']").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire'] [data-pilot-candidate-hire]").count(), 1);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire'] [data-pilot-candidate-hire]").count(), 1);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-pilot-candidate-hire]").count(), 2);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-cert-hours]").count(), 1);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-strengths-weaknesses] li").count(), 3);

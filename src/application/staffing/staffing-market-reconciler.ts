@@ -128,6 +128,21 @@ const LAST_NAMES = [
 ] as const;
 
 const CONTRACT_DURATION_DAYS = [90, 120, 180] as const;
+const QUALIFICATION_LANE_ORDER = [
+  "single_turboprop_utility",
+  "single_turboprop_premium",
+  "regional_turboprop",
+  "twin_turboprop_utility",
+  "twin_turboprop_commuter",
+  "light_business_jet",
+  "super_midsize_business_jet",
+  "classic_regional_jet",
+  "regional_jet",
+  "narrowbody_airline",
+  "widebody_airline",
+] as const;
+
+type MarketFitTier = "core" | "adjacent" | "broader";
 
 interface GeneratedPilotCandidateProfile extends PilotVisibleProfile {
   displayName: string;
@@ -135,6 +150,11 @@ interface GeneratedPilotCandidateProfile extends PilotVisibleProfile {
   certifications: PilotCertificationCode[];
   currentAirportId: string;
   generatedSeed: string;
+}
+
+interface GeneratedMarketLane extends QualificationDemand {
+  marketFitTier: MarketFitTier;
+  anchorQualificationGroup: string;
 }
 
 function addHoursIso(utcIsoString: string, hours: number): string {
@@ -161,6 +181,26 @@ function roundToNearest(value: number, increment: number): number {
 
 function humanizeQualificationGroup(qualificationGroup: string): string {
   return qualificationGroup.replaceAll("_", " ");
+}
+
+function qualificationLaneRank(qualificationGroup: string): number {
+  const rank = QUALIFICATION_LANE_ORDER.indexOf(qualificationGroup as typeof QUALIFICATION_LANE_ORDER[number]);
+  return rank >= 0 ? rank : QUALIFICATION_LANE_ORDER.length;
+}
+
+function neighboringQualificationGroups(qualificationGroup: string): string[] {
+  const rank = qualificationLaneRank(qualificationGroup);
+  const neighbors: string[] = [];
+
+  if (rank > 0) {
+    neighbors.push(QUALIFICATION_LANE_ORDER[rank - 1]!);
+  }
+
+  if (rank >= 0 && rank < QUALIFICATION_LANE_ORDER.length - 1) {
+    neighbors.push(QUALIFICATION_LANE_ORDER[rank + 1]!);
+  }
+
+  return neighbors.filter((neighbor) => neighbor !== qualificationGroup);
 }
 
 function qualificationComplexityIndex(qualificationGroup: string): number {
@@ -677,16 +717,169 @@ function buildOfferExplanationMetadata(
   };
 }
 
-function desiredCandidateCounts(demand: QualificationDemand[]): number[] {
-  if (demand.length <= 1) {
-    return [8];
+function bucketTimeToSixHours(utcIsoString: string): string {
+  const date = new Date(utcIsoString);
+  const bucketHour = Math.floor(date.getUTCHours() / 6) * 6;
+  date.setUTCHours(bucketHour, 0, 0, 0);
+  return date.toISOString();
+}
+
+function expandMarketDemand(
+  demand: QualificationDemand[],
+  windowSeed: string,
+): GeneratedMarketLane[] {
+  const exactDemand = [...demand].sort((left, right) => {
+    const leftRank = qualificationLaneRank(left.qualificationGroup);
+    const rightRank = qualificationLaneRank(right.qualificationGroup);
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return right.pilotsRequired - left.pilotsRequired || left.qualificationGroup.localeCompare(right.qualificationGroup);
+  });
+  const expanded = new Map<string, GeneratedMarketLane>();
+
+  const addLane = (
+    laneDemand: QualificationDemand,
+    marketFitTier: MarketFitTier,
+    anchorQualificationGroup: string,
+  ): void => {
+    const existing = expanded.get(laneDemand.qualificationGroup);
+    if (existing) {
+      if (existing.marketFitTier === "broader" && marketFitTier !== "broader") {
+        expanded.set(laneDemand.qualificationGroup, {
+          ...laneDemand,
+          marketFitTier,
+          anchorQualificationGroup,
+        });
+      }
+
+      return;
+    }
+
+    expanded.set(laneDemand.qualificationGroup, {
+      ...laneDemand,
+      marketFitTier,
+      anchorQualificationGroup,
+    });
+  };
+
+  for (const lane of exactDemand) {
+    addLane(lane, "core", lane.qualificationGroup);
   }
 
-  if (demand.length === 2) {
-    return [5, 4];
+  for (const lane of exactDemand) {
+    const neighbors = neighboringQualificationGroups(lane.qualificationGroup);
+    for (const neighbor of neighbors) {
+      if (expanded.has(neighbor)) {
+        continue;
+      }
+
+      addLane({
+        qualificationGroup: neighbor,
+        aircraftCount: lane.aircraftCount,
+        pilotsRequired: lane.pilotsRequired,
+        coverageUnits: lane.coverageUnits,
+        ...(lane.sampleModelName ? { sampleModelName: `Adjacent to ${lane.sampleModelName}` } : {}),
+      }, "adjacent", lane.qualificationGroup);
+    }
   }
 
-  return [4, 3, 3];
+  const broadCandidates = QUALIFICATION_LANE_ORDER.filter((qualificationGroup) => !expanded.has(qualificationGroup));
+  if (broadCandidates.length > 0) {
+    const broadIndex = hashString(`${windowSeed}:broader-market`) % broadCandidates.length;
+    const broadQualificationGroup = broadCandidates[broadIndex]!;
+    const broadAnchor = exactDemand[0]?.qualificationGroup ?? broadQualificationGroup;
+    const broadAnchorDemand = exactDemand[0] ?? {
+      qualificationGroup: broadQualificationGroup,
+      aircraftCount: 0,
+      pilotsRequired: 1,
+      coverageUnits: 0,
+      sampleModelName: "broader market",
+    };
+    addLane({
+      qualificationGroup: broadQualificationGroup,
+      aircraftCount: Math.max(1, broadAnchorDemand.aircraftCount),
+      pilotsRequired: Math.max(1, broadAnchorDemand.pilotsRequired),
+      coverageUnits: broadAnchorDemand.coverageUnits,
+      ...(broadAnchorDemand.sampleModelName
+        ? { sampleModelName: `Broader than ${broadAnchorDemand.sampleModelName}` }
+        : { sampleModelName: "broader market" }),
+    }, "broader", broadAnchor);
+  }
+
+  return [...expanded.values()].sort((left, right) => {
+    const leftTierRank = left.marketFitTier === "core" ? 0 : left.marketFitTier === "adjacent" ? 1 : 2;
+    const rightTierRank = right.marketFitTier === "core" ? 0 : right.marketFitTier === "adjacent" ? 1 : 2;
+    if (leftTierRank !== rightTierRank) {
+      return leftTierRank - rightTierRank;
+    }
+
+    const leftRank = qualificationLaneRank(left.qualificationGroup);
+    const rightRank = qualificationLaneRank(right.qualificationGroup);
+    if (leftRank !== rightRank) {
+      return leftRank - rightRank;
+    }
+
+    return right.pilotsRequired - left.pilotsRequired || left.qualificationGroup.localeCompare(right.qualificationGroup);
+  });
+}
+
+function chooseAvailabilityMix(seed: string, marketFitTier: MarketFitTier, candidateIndex: number): { directHire: boolean; contractHire: boolean } {
+  if (candidateIndex % 4 === 0) {
+    return { directHire: true, contractHire: true };
+  }
+
+  if (candidateIndex % 4 === 1) {
+    return { directHire: true, contractHire: false };
+  }
+
+  if (candidateIndex % 4 === 2) {
+    return { directHire: false, contractHire: true };
+  }
+
+  const roll = hashString(`${seed}:availability`) % 100;
+
+  if (marketFitTier === "core") {
+    if (roll < 18) {
+      return { directHire: true, contractHire: false };
+    }
+
+    if (roll < 36) {
+      return { directHire: false, contractHire: true };
+    }
+
+    return { directHire: true, contractHire: true };
+  }
+
+  if (marketFitTier === "adjacent") {
+    if (roll < 32) {
+      return { directHire: true, contractHire: false };
+    }
+
+    if (roll < 64) {
+      return { directHire: false, contractHire: true };
+    }
+
+    return { directHire: true, contractHire: true };
+  }
+
+  if (roll < 38) {
+    return { directHire: true, contractHire: false };
+  }
+
+  if (roll < 76) {
+    return { directHire: false, contractHire: true };
+  }
+
+  return { directHire: true, contractHire: true };
+}
+
+function desiredCandidateCountForLane(lane: GeneratedMarketLane, windowSeed: string): number {
+  const tierBase = lane.marketFitTier === "core" ? 4 : lane.marketFitTier === "adjacent" ? 3 : 2;
+  const pressureBias = Math.min(2, Math.max(0, lane.pilotsRequired - lane.coverageUnits));
+  const varietyBias = hashString(`${windowSeed}:${lane.qualificationGroup}:count`) % 2;
+  return Math.max(2, tierBase + pressureBias + varietyBias - (lane.marketFitTier === "broader" ? 1 : 0));
 }
 
 function chooseContractEndUtc(startsAtUtc: string, generatedSeed: string): string {
@@ -800,22 +993,26 @@ export function generateStaffingMarket(
   aircraftReference: AircraftReferenceRepository,
   refreshReason: "scheduled" | "manual" | "bootstrap",
 ): GeneratedStaffingMarket {
-  const demand = loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, 3);
-  const windowSeed = `staffing:${companyContext.worldSeed}:${companyContext.currentTimeUtc}:${refreshReason}`;
+  const demand = expandMarketDemand(
+    loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, 4),
+    companyContext.currentTimeUtc,
+  );
+  const windowSeed = `staffing:${companyContext.worldSeed}:${bucketTimeToSixHours(companyContext.currentTimeUtc)}`;
   const generationContextHash = JSON.stringify(
     demand.map((entry) => ({
       qualificationGroup: entry.qualificationGroup,
       aircraftCount: entry.aircraftCount,
       pilotsRequired: entry.pilotsRequired,
       coverageUnits: entry.coverageUnits,
+      marketFitTier: entry.marketFitTier,
+      anchorQualificationGroup: entry.anchorQualificationGroup,
     })),
   );
   const offers: GeneratedPilotCandidateOffer[] = [];
   const usedNames = new Set<string>();
-  const candidateCounts = desiredCandidateCounts(demand);
 
   demand.forEach((entry, demandIndex) => {
-    const desiredCount = candidateCounts[demandIndex] ?? 2;
+    const desiredCount = desiredCandidateCountForLane(entry, `${windowSeed}:${demandIndex}`);
 
     for (let candidateIndex = 0; candidateIndex < desiredCount; candidateIndex += 1) {
       const startsAtUtc = companyContext.currentTimeUtc;
@@ -832,34 +1029,39 @@ export function generateStaffingMarket(
       const directPricingExplanation = buildPricingExplanation(candidateProfile, "direct_hire", undefined);
       const contractHourlyRate = estimateContractHourlyRate(candidateProfile);
       const contractPricingExplanation = buildPricingExplanation(candidateProfile, "contract_hire", contractHourlyRate);
+      const availabilityMix = chooseAvailabilityMix(candidateSeed, entry.marketFitTier, candidateIndex);
 
-      offers.push({
-        candidateProfileId,
-        displayName,
-        employmentModel: "direct_hire",
-        qualificationGroup: entry.qualificationGroup,
-        certifications: candidateProfile.certifications,
-        fixedCostAmount: estimateDirectSalary(candidateProfile),
-        startsAtUtc,
-        currentAirportId: companyContext.homeBaseAirportId,
-        explanationMetadata: buildOfferExplanationMetadata(candidateProfile, directPricingExplanation),
-        generatedSeed: candidateSeed,
-      });
+      if (availabilityMix.directHire) {
+        offers.push({
+          candidateProfileId,
+          displayName,
+          employmentModel: "direct_hire",
+          qualificationGroup: entry.qualificationGroup,
+          certifications: candidateProfile.certifications,
+          fixedCostAmount: estimateDirectSalary(candidateProfile),
+          startsAtUtc,
+          currentAirportId: companyContext.homeBaseAirportId,
+          explanationMetadata: buildOfferExplanationMetadata(candidateProfile, directPricingExplanation),
+          generatedSeed: candidateSeed,
+        });
+      }
 
-      offers.push({
-        candidateProfileId,
-        displayName,
-        employmentModel: "contract_hire",
-        qualificationGroup: entry.qualificationGroup,
-        certifications: candidateProfile.certifications,
-        fixedCostAmount: estimateContractEngagementFee(candidateProfile),
-        variableCostRate: contractHourlyRate,
-        startsAtUtc,
-        endsAtUtc: chooseContractEndUtc(startsAtUtc, candidateSeed),
-        currentAirportId: companyContext.homeBaseAirportId,
-        explanationMetadata: buildOfferExplanationMetadata(candidateProfile, contractPricingExplanation),
-        generatedSeed: candidateSeed,
-      });
+      if (availabilityMix.contractHire) {
+        offers.push({
+          candidateProfileId,
+          displayName,
+          employmentModel: "contract_hire",
+          qualificationGroup: entry.qualificationGroup,
+          certifications: candidateProfile.certifications,
+          fixedCostAmount: estimateContractEngagementFee(candidateProfile),
+          variableCostRate: contractHourlyRate,
+          startsAtUtc,
+          endsAtUtc: chooseContractEndUtc(startsAtUtc, candidateSeed),
+          currentAirportId: companyContext.homeBaseAirportId,
+          explanationMetadata: buildOfferExplanationMetadata(candidateProfile, contractPricingExplanation),
+          generatedSeed: candidateSeed,
+        });
+      }
     }
   });
 

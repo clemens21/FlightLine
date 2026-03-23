@@ -70,7 +70,7 @@ try {
 
   const directMarket = await backend.loadActiveStaffingMarket(directSaveId);
   assert.ok(directMarket);
-  assert.ok(directMarket.offers.length >= 16);
+  assert.ok(directMarket.offers.length >= 12);
   assert.equal(directMarket.offers.every((offer) => offer.laborCategory === "pilot"), true);
   assert.equal(directMarket.offers.every((offer) => typeof offer.displayName === "string" && offer.displayName.length > 0), true);
   assert.equal(directMarket.offers.every((offer) => offer.candidateState === "available_now"), true);
@@ -126,18 +126,25 @@ try {
     directMarket.offers.some((offer) => offer.certifications.length > 1),
     true,
   );
+  const directCandidatePairs = findCandidatePairs(directMarket);
+  assert.ok(directCandidatePairs.length >= 8);
+  assert.equal(directCandidatePairs.every((pair) => pair.directOffer || pair.contractOffer), true);
+  assert.equal(directCandidatePairs.some((pair) => pair.directOffer && pair.contractOffer), true);
+  assert.equal(directCandidatePairs.some((pair) => pair.directOffer && !pair.contractOffer), true);
+  assert.equal(directCandidatePairs.some((pair) => pair.contractOffer && !pair.directOffer), true);
   assert.equal(
-    findCandidatePairs(directMarket).some((pair) => pair.directOffer.certifications.length === 1),
+    directCandidatePairs.some((pair) => pair.directOffer?.certifications.length === 1 || pair.contractOffer?.certifications.length === 1),
     true,
   );
   assert.equal(
-    findCandidatePairs(directMarket).some((pair) => pair.directOffer.certifications.length >= 2),
+    directCandidatePairs.some((pair) => pair.directOffer?.certifications.length >= 2 || pair.contractOffer?.certifications.length >= 2),
     true,
   );
   assert.equal(
-    findCandidatePairs(directMarket).every((pair) => {
-      const totalCareerHours = pair.directOffer.candidateProfile.totalCareerHours;
-      const certificationCount = pair.directOffer.certifications.length;
+    directCandidatePairs.every((pair) => {
+      const offer = pair.directOffer ?? pair.contractOffer;
+      const totalCareerHours = offer.candidateProfile.totalCareerHours;
+      const certificationCount = offer.certifications.length;
 
       if (totalCareerHours <= 1_500) {
         return certificationCount <= 2;
@@ -152,14 +159,7 @@ try {
     true,
   );
 
-  const directCandidatePairs = findCandidatePairs(directMarket);
-  assert.ok(directCandidatePairs.length >= 8);
-  assert.equal(
-    directCandidatePairs.every((pair) => pair.directOffer && pair.contractOffer),
-    true,
-  );
-
-  const selectedDirectPair = directCandidatePairs[0];
+  const selectedDirectPair = directCandidatePairs.find((pair) => pair.directOffer && pair.contractOffer);
   assert.ok(selectedDirectPair?.directOffer);
   assert.ok(selectedDirectPair?.contractOffer);
   const selectedDirectOffer = selectedDirectPair.directOffer;
