@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { FlightLineBackend, } from "../index.js";
 import { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
-import { deleteSaveFile, isValidSaveId, listSaveIds as listSaveSlotIds, resolveRequestedSaveId } from "./save-slot-files.js";
+import { deleteSaveFile, listSaveIds as listSaveSlotIds, resolveRequestedSaveId } from "./save-slot-files.js";
 import { loadContractsViewPayload } from "./contracts-view.js";
 import { buildBootstrapPayload, buildTabPayload, normalizeTab as normalizeShellTab } from "./save-shell-fragments.js";
 import { loadClockPanelPayload, resolveCalendarAnchorUtc } from "./clock-calendar.js";
@@ -26,6 +26,10 @@ import { ensureStaffPortraitAsset, isValidStaffPortraitAssetId, readStaffPortrai
 import { validateProposedSchedule } from "../application/dispatch/schedule-validation.js";
 import { availableCertificationTrainingTargets, formatPilotCertificationList } from "../domain/staffing/pilot-certifications.js";
 import { planDispatchContractWork } from "./dispatch-contract-planning.js";
+import { launcherRoute, openSaveRoute, readConfirmDeleteSaveId, readFlashState, readForm, redirect, saveRoute, sendHtml, sendJson, withUiTiming } from "./server-http.js";
+import { createServerPageHandlers } from "./server-page-routes.js";
+import { renderOverviewFinanceSection } from "./server-overview-finance-render.js";
+import { createShellApiHandlers } from "./server-shell-api.js";
 // Process-wide resources are initialized once because every request shares the same backend and the same reference catalogs.
 const port = Number.parseInt(process.env.PORT ?? "4321", 10);
 const turnaroundMinutes = 45;
@@ -589,55 +593,9 @@ function parseOptionalCadenceFormValue(rawValue) {
     return rawValue === "weekly" || rawValue === "monthly" ? rawValue : undefined;
 }
 // Route helpers centralize URL building so links, redirects, and client fallbacks stay aligned.
-function saveRoute(saveId, options = {}) {
-    const search = new URLSearchParams();
-    if (options.tab && options.tab !== "dashboard") {
-        search.set("tab", options.tab);
-    }
-    if (options.contractsView) {
-        search.set("contractsView", options.contractsView);
-    }
-    if (options.flash?.notice) {
-        search.set("notice", options.flash.notice);
-    }
-    if (options.flash?.error) {
-        search.set("error", options.flash.error);
-    }
-    const query = search.toString();
-    return `/save/${encodeURIComponent(saveId)}${query ? `?${query}` : ""}`;
-}
-function openSaveRoute(saveId, options = {}) {
-    const search = new URLSearchParams();
-    if (options.tab && options.tab !== "dashboard") {
-        search.set("tab", options.tab);
-    }
-    const query = search.toString();
-    return `/open-save/${encodeURIComponent(saveId)}${query ? `?${query}` : ""}`;
-}
-function launcherRoute(options = {}) {
-    const search = new URLSearchParams();
-    if (options.confirmDeleteSaveId) {
-        search.set("confirmDelete", options.confirmDeleteSaveId);
-    }
-    if (options.flash?.notice) {
-        search.set("notice", options.flash.notice);
-    }
-    if (options.flash?.error) {
-        search.set("error", options.flash.error);
-    }
-    const query = search.toString();
-    return query ? `/?${query}` : "/";
-}
 // Request parsing and response helpers bridge raw Node HTTP primitives to the render and action handlers.
 async function listSaveIds() {
     return listSaveSlotIds(saveDirectoryPath);
-}
-function readConfirmDeleteSaveId(url, saveIds) {
-    const confirmDeleteSaveId = url.searchParams.get("confirmDelete") ?? undefined;
-    if (!confirmDeleteSaveId || !isValidSaveId(confirmDeleteSaveId) || !saveIds.includes(confirmDeleteSaveId)) {
-        return undefined;
-    }
-    return confirmDeleteSaveId;
 }
 async function loadSavePageModel(saveId) {
     const [companyContext, companyContracts, contractBoard, fleetState, staffingState, schedules, eventLog] = await Promise.all([
@@ -660,34 +618,12 @@ async function loadSavePageModel(saveId) {
         eventLog,
     };
 }
-async function readForm(request) {
-    const chunks = [];
-    for await (const chunk of request) {
-        chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
-    }
-    return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
-}
 function resolveSelectedNamedPilotIdsFromForm(form) {
     return [...new Set(
         [...form.getAll("selectedNamedPilotIds"), ...form.getAll("selectedNamedPilotId")]
             .map((entry) => typeof entry === "string" ? entry.trim() : "")
             .filter((entry) => entry.length > 0),
     )];
-}
-function sendHtml(response, html) {
-    response.writeHead(200, {
-        "content-type": "text/html; charset=utf-8",
-        "cache-control": "no-store",
-    });
-    response.end(html);
-}
-function sendJson(response, statusCode, payload) {
-    response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
-    response.end(JSON.stringify(payload));
-}
-function redirect(response, location) {
-    response.writeHead(303, { location });
-    response.end();
 }
 // Server-rendered page helpers still support the launcher and the non-hydrated shell paths.
 function renderPanel(title, body, options = {}) {
@@ -1170,25 +1106,6 @@ function renderStaffingDetailTemplate(view, detailId, title, body, options = {})
         ? ` data-staffing-detail-portrait-src="${escapeHtml(options.portraitSrc)}"`
         : "";
     return `<template data-staffing-detail-template="${escapeHtml(view)}" data-staffing-detail-id="${escapeHtml(detailId)}" data-staffing-detail-title="${escapeHtml(title)}"${portraitSrcAttribute}>${body}</template>`;
-}
-function renderOverviewFinanceSection(financeOverview) {
-    if (!financeOverview) {
-        return `<section class="panel overview-finance-panel" data-overview-finance-section><div class="panel-head"><h3>Finance outlook</h3></div><div class="panel-body"><div class="empty-state">Finance visibility appears after the company exists.</div></div></section>`;
-    }
-    const summaryCards = financeOverview.summaryCards
-        .map((card) => `<article class="summary-item overview-finance-summary-card"><div class="eyebrow">${escapeHtml(card.label)}</div><strong>${escapeHtml(card.value)}</strong><div class="muted">${escapeHtml(card.detail)}</div></article>`)
-        .join("");
-    const categoryCards = financeOverview.categoryTotals
-        .map((category) => `<article class="summary-item overview-finance-category-card"><div class="eyebrow">${escapeHtml(category.category)}</div><strong>${formatMoney(category.monthlyEquivalentAmount)}/mo</strong><div class="muted">${escapeHtml(category.detail)}</div></article>`)
-        .join("");
-    const visibleObligations = financeOverview.obligations.slice(0, 6);
-    const hiddenObligationCount = Math.max(0, financeOverview.obligations.length - visibleObligations.length);
-    const obligationList = visibleObligations.length === 0
-        ? `<div class="empty-state compact">No active recurring obligations are visible.</div>`
-        : `<div class="overview-finance-obligation-list">${visibleObligations
-            .map((obligation) => `<article class="overview-finance-obligation ${escapeHtml(obligation.severity)}"><div class="meta-stack"><div class="overview-finance-obligation-head"><strong>${escapeHtml(obligation.label)}</strong><span>${formatMoney(obligation.amount)} ${escapeHtml(obligation.cadence)}</span></div><div class="muted">${escapeHtml(obligation.detail)}</div></div><div class="meta-stack"><span>${renderBadge(obligation.category)}</span><span class="muted">Due ${escapeHtml(formatDate(obligation.nextDueAtUtc))}</span></div></article>`).join("")}</div>`;
-    const graphPayload = serializeJsonForScript(financeOverview.projection);
-    return `<section class="panel overview-finance-panel" data-overview-finance-section tabindex="-1"><div class="panel-head"><h3>Finance outlook</h3><div class="pill-row"><span class="pill">${escapeHtml(String(financeOverview.obligations.length))} active obligations</span><span class="pill">${escapeHtml(String(financeOverview.projection.points.length))} projection points</span></div></div><div class="panel-body overview-finance-body"><div class="summary-list overview-finance-summary-strip">${summaryCards}</div><div class="view-grid two-up overview-finance-main-grid"><section class="aircraft-facts-card overview-finance-graph-panel"><div class="eyebrow">Projection</div><div class="overview-finance-graph-shell" data-overview-finance-graph><script type="application/json" data-overview-finance-graph-payload>${graphPayload}</script><div class="overview-finance-graph-toolbar"><div class="pill-row">${financeOverview.projection.horizons.map((horizon) => `<button type="button" class="ghost-button compact" data-finance-horizon="${escapeHtml(horizon.horizonId)}">${escapeHtml(horizon.label)}</button>`).join("")}</div><button type="button" class="ghost-button compact" data-finance-reset="1">Reset</button></div><div class="overview-finance-graph-frame"><svg viewBox="0 0 560 220" preserveAspectRatio="none" data-finance-graph-svg aria-label="Finance projection graph"></svg></div><div class="overview-finance-scrub-row"><input type="range" min="0" max="0" value="0" data-finance-scrub /><div class="summary-item compact overview-finance-scrub-summary" data-finance-point-summary><div class="eyebrow">Projection point</div><strong>Loading...</strong><div class="muted">Finance projection details appear here.</div></div></div></div></section><section class="aircraft-facts-card overview-finance-category-panel"><div class="eyebrow">Recurring categories</div><div class="summary-list overview-finance-category-grid">${categoryCards}</div><div class="muted overview-finance-category-note">Totals stay bounded to visible recurring obligations and accepted-work confidence layers only.</div></section></div><section class="aircraft-facts-card overview-finance-obligation-panel"><div class="panel-head"><h3>Obligation peek</h3>${hiddenObligationCount > 0 ? `<span class="muted">${escapeHtml(String(hiddenObligationCount))} more obligation${hiddenObligationCount === 1 ? "" : "s"} remain outside this peek.</span>` : ""}</div><div class="panel-body">${obligationList}</div></section></div></section>`;
 }
 function renderMetricStrip(model) {
     const company = model.companyContext;
@@ -3298,27 +3215,9 @@ const actionHandlers = {
     "/actions/commit-schedule": handleCommitSchedule,
     "/actions/advance-time": handleAdvanceTime,
 };
-function readFlashState(url) {
-    const notice = url.searchParams.get("notice") ?? undefined;
-    const error = url.searchParams.get("error") ?? undefined;
-    return { notice, error };
-}
 function sendNotFound(response, saveIds, message) {
     response.writeHead(404, { "content-type": "text/html; charset=utf-8" });
     response.end(renderShell("Not Found", saveIds, undefined, { error: message }, `<div class="empty-state">${escapeHtml(message)}</div>`));
-}
-function logUiTiming(label, startedAtMs) {
-    const durationMs = Date.now() - startedAtMs;
-    console.log(`[ui:timing] ${label} ${durationMs}ms`);
-}
-async function withUiTiming(label, operation) {
-    const startedAtMs = Date.now();
-    try {
-        return await operation();
-    }
-    finally {
-        logUiTiming(label, startedAtMs);
-    }
 }
 // The request router fans the raw Node request into assets, HTML pages, and incremental JSON shell endpoints.
 async function handleRequest(request, response) {
@@ -3485,9 +3384,7 @@ async function handleRequest(request, response) {
         }
     }
     if (request.method === "GET" && pathname === "/") {
-        const saveIds = await listSaveIds();
-        const confirmDeleteSaveId = readConfirmDeleteSaveId(requestUrl, saveIds);
-        sendHtml(response, renderLauncherPage(saveIds, flash, confirmDeleteSaveId));
+        await pageHandlers.handleLauncherPageRequest(response, requestUrl, flash);
         return;
     }
     if (request.method === "GET" && bootstrapMatch) {
@@ -3622,25 +3519,11 @@ async function handleRequest(request, response) {
         }
     }
     if (request.method === "GET" && openSaveMatch) {
-        const saveIds = await listSaveIds();
-        const saveId = decodeURIComponent(openSaveMatch[1] ?? "");
-        if (!saveId || !saveIds.includes(saveId)) {
-            sendNotFound(response, saveIds, `Save ${saveId || "(missing)"} was not found.`);
-            return;
-        }
-        const activeTab = normalizeShellTab(requestUrl.searchParams.get("tab"));
-        const destinationUrl = `${saveRoute(saveId, { tab: activeTab })}${activeTab === "dashboard" ? "?opened=1" : "&opened=1"}`;
-        sendHtml(response, renderSaveOpeningPage(saveId, activeTab, destinationUrl, openSaveClientAssetPath));
+        await pageHandlers.handleOpenSavePageRequest(response, requestUrl, openSaveMatch);
         return;
     }
     if (request.method === "GET" && pathname.startsWith("/save/")) {
-        const saveIds = await listSaveIds();
-        const saveId = decodeURIComponent(pathname.slice("/save/".length));
-        if (!saveId || !saveIds.includes(saveId)) {
-            sendNotFound(response, saveIds, `Save ${saveId || "(missing)"} was not found.`);
-            return;
-        }
-        sendHtml(response, renderIncrementalSavePage(saveId, normalizeShellTab(requestUrl.searchParams.get("tab")), saveShellClientAssetPath));
+        await pageHandlers.handleSavePageRequest(response, requestUrl, pathname);
         return;
     }
     if (request.method === "POST") {
@@ -3712,7 +3595,13 @@ const saveShellRenderers = {
             const hoursRemaining = (new Date(contract.deadlineUtc).getTime() - new Date(company.currentTimeUtc).getTime()) / 3_600_000;
             return ["accepted", "assigned", "active"].includes(contract.contractState) && hoursRemaining <= 24;
         }).length;
-        return `<div class="stack-column"><div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Control Tower</h3></div><div class="panel-body"><div class="summary-list"><div class="summary-item"><div class="eyebrow">Company</div><strong>${escapeHtml(company.displayName)}</strong><div class="muted">${escapeHtml(company.companyPhase.replaceAll("_", " "))} | Tier ${company.progressionTier}</div></div><div class="summary-item"><div class="eyebrow">Fleet posture</div><strong>${idleCount}/${fleet.length}</strong><div class="muted">Dispatch-ready aircraft.</div></div><div class="summary-item"><div class="eyebrow">Schedule load</div><strong>${schedules.length}</strong><div class="muted">Draft and committed schedules currently visible.</div></div><div class="summary-item"><div class="eyebrow">Risky contracts</div><strong>${riskyContracts}</strong><div class="muted">Accepted work due in the next 24 hours.</div></div></div><div class="actions"><div class="action-group tight">${contractsLink}${riskyContractsLink}</div></div></div></section><section class="panel"><div class="panel-head"><h3>Execution Queue</h3></div><div class="panel-body">${contracts.length === 0 ? `<div class="empty-state">No accepted company contracts yet.</div>` : `<div class="summary-list">${contracts.slice(0, 6).map((contract) => `<div class="summary-item compact"><div class="meta-stack"><div class="pill-row">${renderBadge(contract.contractState)}</div><strong>${renderRouteDisplay(contract.originAirportId, contract.destinationAirportId)}</strong><span class="muted">${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | due ${formatDate(contract.deadlineUtc)}</span></div></div>`).join("")}</div>`}</div></section></div>${renderOverviewFinanceSection(source.financeOverview)}</div>`;
+        return `<div class="stack-column"><div class="view-grid two-up"><section class="panel"><div class="panel-head"><h3>Control Tower</h3></div><div class="panel-body"><div class="summary-list"><div class="summary-item"><div class="eyebrow">Company</div><strong>${escapeHtml(company.displayName)}</strong><div class="muted">${escapeHtml(company.companyPhase.replaceAll("_", " "))} | Tier ${company.progressionTier}</div></div><div class="summary-item"><div class="eyebrow">Fleet posture</div><strong>${idleCount}/${fleet.length}</strong><div class="muted">Dispatch-ready aircraft.</div></div><div class="summary-item"><div class="eyebrow">Schedule load</div><strong>${schedules.length}</strong><div class="muted">Draft and committed schedules currently visible.</div></div><div class="summary-item"><div class="eyebrow">Risky contracts</div><strong>${riskyContracts}</strong><div class="muted">Accepted work due in the next 24 hours.</div></div></div><div class="actions"><div class="action-group tight">${contractsLink}${riskyContractsLink}</div></div></div></section><section class="panel"><div class="panel-head"><h3>Execution Queue</h3></div><div class="panel-body">${contracts.length === 0 ? `<div class="empty-state">No accepted company contracts yet.</div>` : `<div class="summary-list">${contracts.slice(0, 6).map((contract) => `<div class="summary-item compact"><div class="meta-stack"><div class="pill-row">${renderBadge(contract.contractState)}</div><strong>${renderRouteDisplay(contract.originAirportId, contract.destinationAirportId)}</strong><span class="muted">${formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)} | due ${formatDate(contract.deadlineUtc)}</span></div></div>`).join("")}</div>`}</div></section></div>${renderOverviewFinanceSection(source.financeOverview, {
+            escapeHtml,
+            formatMoney,
+            formatDate,
+            renderBadge,
+            serializeJsonForScript,
+        })}</div>`;
     },
     renderAircraft(saveId, tabId, source, airportRepo) {
         void tabId;
@@ -3788,51 +3677,45 @@ const saveShellRenderers = {
         return `<div class="contracts-host" data-contracts-host><section class="panel"><div class="panel-body"><div class="empty-state compact">Loading contracts board...</div></div></section></div>`;
     },
 };
-// These JSON endpoints power the hydrated shell by reloading only the chrome, tab, and clock fragments that changed.
-async function buildBootstrapApiPayload(saveId, initialTab) {
-    return buildBootstrapPayload(backend, saveId, initialTab);
-}
-async function buildTabApiPayload(saveId, tabId) {
-    return buildTabPayload(backend, saveId, tabId, saveShellRenderers);
-}
-async function buildClockApiPayload(saveId, selectedLocalDate) {
-    return loadClockPanelPayload(backend, saveId, selectedLocalDate);
-}
-async function sendClockActionResponse(response, saveId, tab, selectedLocalDate, result, options = {}) {
-    const [bootstrapPayload, clockPayload, tabPayload] = await Promise.all([
-        buildBootstrapApiPayload(saveId, tab),
-        buildClockApiPayload(saveId, selectedLocalDate),
-        options.includeTab ? buildTabApiPayload(saveId, tab) : Promise.resolve(null),
-    ]);
-    if (!bootstrapPayload || !clockPayload) {
-        sendJson(response, 409, {
-            success: false,
-            error: result.error ?? "The clock state could not be reloaded.",
-        });
-        return;
-    }
-    if (options.includeTab && !tabPayload) {
-        sendJson(response, 409, {
-            success: false,
-            error: result.error ?? "The active tab could not be reloaded.",
-            shell: bootstrapPayload.shell,
-            clock: clockPayload,
-        });
-        return;
-    }
-    sendJson(response, result.success ? 200 : 400, {
-        success: result.success,
-        message: result.message,
-        error: result.error,
-        notificationLevel: result.notificationLevel,
-        shell: tabPayload?.shell ?? bootstrapPayload.shell,
-        tab: tabPayload ?? undefined,
-        clock: clockPayload,
-    });
-}
 function renderHiddenContext(saveId, tabId) {
     return `<input type="hidden" name="saveId" value="${escapeHtml(saveId)}" /><input type="hidden" name="tab" value="${escapeHtml(tabId)}" />`;
 }
+const pageHandlers = createServerPageHandlers({
+    listSaveIds,
+    readConfirmDeleteSaveId,
+    sendHtml,
+    sendNotFound,
+    normalizeShellTab,
+    saveRoute,
+    renderLauncherPage,
+    renderSaveOpeningPage,
+    renderIncrementalSavePage,
+    openSaveClientAssetPath,
+    saveShellClientAssetPath,
+});
+const {
+    buildBootstrapApiPayload,
+    buildTabApiPayload,
+    buildClockApiPayload,
+    sendShellActionResponse,
+    sendClockActionResponse,
+    handleBootstrapApi,
+    handleTabApi,
+    handleClockApi,
+    handleClockTickApi,
+    handleClockAdvanceToCalendarAnchorApi,
+} = createShellApiHandlers({
+    backend,
+    saveShellRenderers,
+    buildBootstrapPayload,
+    buildTabPayload,
+    loadClockPanelPayload,
+    resolveCalendarAnchorUtc,
+    normalizeShellTab,
+    sendJson,
+    addMinutesIso,
+    commandId,
+});
 async function handleBindRoutePlanApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
     const aircraftId = form.get("aircraftId") ?? "";
@@ -3846,40 +3729,6 @@ async function handleBindRoutePlanApi(response, saveId, form) {
         const message = error instanceof Error ? error.message : "Route plan binding failed.";
         await sendShellActionResponse(response, saveId, tab, { success: false, error: message });
     }
-}
-async function sendShellActionResponse(response, saveId, tab, result) {
-    const tabPayload = await buildTabApiPayload(saveId, tab);
-    if (!tabPayload) {
-        sendJson(response, 409, {
-            success: false,
-            error: result.error ?? "The save shell could not be reloaded.",
-        });
-        return;
-    }
-    sendJson(response, result.success ? 200 : 400, {
-        success: result.success,
-        message: result.message,
-        error: result.error,
-        notificationLevel: result.notificationLevel,
-        shell: tabPayload.shell,
-        tab: tabPayload,
-    });
-}
-async function handleBootstrapApi(response, saveId, requestedTab) {
-    const payload = await buildBootstrapApiPayload(saveId, requestedTab);
-    if (!payload) {
-        sendJson(response, 404, { error: `Save ${saveId} was not found.` });
-        return;
-    }
-    sendJson(response, 200, payload);
-}
-async function handleTabApi(response, saveId, tabId) {
-    const payload = await buildTabApiPayload(saveId, tabId);
-    if (!payload) {
-        sendJson(response, 404, { error: `Save ${saveId} was not found.` });
-        return;
-    }
-    sendJson(response, 200, payload);
 }
 async function handleCreateCompanyApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
@@ -4162,103 +4011,6 @@ async function handleAdvanceTimeApi(response, saveId, form) {
     await sendShellActionResponse(response, saveId, tab, result.success
         ? { success: true, message: `Advanced time to ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} (${String(result.metadata?.stoppedBecause ?? "target_time")}).`, notificationLevel: "routine" }
         : { success: false, error: result.hardBlockers[0] ?? "Could not advance time." });
-}
-async function handleClockApi(response, saveId, selectedLocalDate) {
-    const payload = await buildClockApiPayload(saveId, selectedLocalDate);
-    if (!payload) {
-        sendJson(response, 404, { error: `Clock view for save ${saveId} is not available.` });
-        return;
-    }
-    sendJson(response, 200, { payload });
-}
-async function handleClockTickApi(response, saveId, form) {
-    const tab = normalizeShellTab(form.get("tab"));
-    const selectedLocalDate = form.get("selectedLocalDate") ?? undefined;
-    const companyContext = await backend.loadCompanyContext(saveId);
-    if (!companyContext) {
-        await sendClockActionResponse(response, saveId, tab, selectedLocalDate, {
-            success: false,
-            error: "Could not load the save company context.",
-        });
-        return;
-    }
-    const requestedMinutes = Number.parseInt(form.get("minutes") ?? "0", 10);
-    const minutes = Number.isNaN(requestedMinutes) ? 0 : Math.max(0, Math.min(requestedMinutes, 24 * 60));
-    if (minutes <= 0) {
-        await sendClockActionResponse(response, saveId, tab, selectedLocalDate, {
-            success: true,
-        });
-        return;
-    }
-    const targetTimeUtc = addMinutesIso(companyContext.currentTimeUtc, minutes);
-    const result = await backend.dispatch({
-        commandId: commandId("cmd_clock_tick_api"),
-        saveId,
-        commandName: "AdvanceTime",
-        issuedAtUtc: new Date().toISOString(),
-        actorType: "player",
-        payload: {
-            targetTimeUtc,
-            stopConditions: ["target_time", "critical_alert"],
-        },
-    });
-    const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
-    const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
-    await sendClockActionResponse(response, saveId, tab, selectedLocalDate, result.success
-        ? {
-            success: true,
-            message: stoppedBecause !== "target_time" ? `Clock paused at ${String(result.metadata?.advancedToUtc ?? targetTimeUtc)} because ${stoppedBecause.replaceAll("_", " ")}.` : undefined,
-            notificationLevel: stoppedBecause !== "target_time" ? "important" : undefined,
-        }
-        : {
-            success: false,
-            error: result.hardBlockers[0] ?? "Could not advance the simulation clock.",
-        }, { includeTab });
-}
-async function handleClockAdvanceToCalendarAnchorApi(response, saveId, form) {
-    const tab = normalizeShellTab(form.get("tab"));
-    const localDate = form.get("localDate") ?? "";
-    const clockPayload = await buildClockApiPayload(saveId, localDate || undefined);
-    if (!clockPayload) {
-        await sendClockActionResponse(response, saveId, tab, localDate || undefined, {
-            success: false,
-            error: "Clock view is not available for this save.",
-        });
-        return;
-    }
-    const targetTimeUtc = resolveCalendarAnchorUtc(localDate, "06:00", clockPayload.timeZone);
-    if (Date.parse(targetTimeUtc) <= Date.parse(clockPayload.currentTimeUtc)) {
-        await sendClockActionResponse(response, saveId, tab, localDate || undefined, {
-            success: false,
-            error: "Sim to the selected morning is not available for that day.",
-        });
-        return;
-    }
-    const result = await backend.dispatch({
-        commandId: commandId("cmd_clock_anchor_api"),
-        saveId,
-        commandName: "AdvanceTime",
-        issuedAtUtc: new Date().toISOString(),
-        actorType: "player",
-        payload: {
-            targetTimeUtc,
-            stopConditions: ["target_time", "critical_alert"],
-        },
-    });
-    const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
-    const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
-    await sendClockActionResponse(response, saveId, tab, localDate, result.success
-        ? {
-            success: true,
-            message: stoppedBecause === "target_time"
-                ? `Advanced to the selected morning on ${localDate}.`
-                : `Stopped before the selected morning on ${localDate} because ${stoppedBecause.replaceAll("_", " ")}.`,
-            notificationLevel: stoppedBecause === "target_time" ? "routine" : "important",
-        }
-        : {
-            success: false,
-            error: result.hardBlockers[0] ?? "Could not advance to the selected calendar anchor.",
-        }, { includeTab });
 }
 async function handleAutoPlanContractApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
