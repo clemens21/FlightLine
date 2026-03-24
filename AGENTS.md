@@ -10,6 +10,7 @@ Supporting docs intentionally remain under `team-ops/` so the repository root st
 
 Use these supporting files as references when deeper role or workflow detail is needed:
 - `team-ops/supporting/flightline_shared_base_instructions.md`: shared product and engineering principles
+- `team-ops/supporting/flightline_development_strategy.md`: architectural strategy, structural refactor guardrails, and oversized-file policy
 - `team-ops/supporting/flightline_role_catalog.md`: detailed standing-role catalog and boundaries
 - `team-ops/supporting/flightline_agent_delegation_policy.md`: routing, escalation, and multi-stream rules
 - `team-ops/supporting/flightline_bug_tracking.md`: default durable bug-tracking approach and issue-versus-intake rules
@@ -42,6 +43,25 @@ When making decisions, optimize for:
 - maintainable systems
 
 Do not confuse more realism with better product decisions.
+
+## Development Strategy
+
+FlightLine should use an evolutionary modular monolith strategy.
+
+That means:
+- one runtime, one deployment surface, and one persistence boundary for the core game
+- bounded context ownership for `fleet`, `contracts`, `dispatch`, `staffing`, `finance`, `maintenance`, and `save/runtime`
+- command-side mutation and query or view-model shaping kept distinct when the UI needs specialized read surfaces
+- capability slicing for delivery rather than broad architectural rewrites
+- ports and adapters used selectively at genuinely volatile seams, not sprayed across the entire codebase
+
+Do not default to:
+- microservices for core game systems
+- plugin-first architecture for the main runtime
+- broad MOSA-style replaceability inside the core game loop
+- big-bang rewrites justified only by file size discomfort
+
+Prefer tightening existing seams over inventing new abstraction layers.
 
 ## Core Operating Rules
 
@@ -102,6 +122,18 @@ The goal is to improve the outcome.
 
 9. Patch cadence rule.
    If a promoted landing is genuinely patch-level, cut the next `PATCH` version promptly instead of batching several patch-worthy landings together just to avoid incrementing the third version number.
+
+10. Split-on-touch rule.
+   If a stream must touch a known mixed-responsibility file, prefer extracting one real seam while making the change instead of adding more unrelated logic to the same file.
+
+11. No big-bang refactor rule.
+   Do not stop useful capability work for repo-wide structural cleanup unless the current architecture is materially blocking safe progress.
+
+12. Structural refactor safety rule.
+   Structural refactors should default to no intended player-facing behavior change, no save-schema change, no new network round-trips, no heavier polling, and no avoidable payload growth unless those changes are explicitly in scope.
+
+13. Oversized file rule.
+   Files over roughly `1200` lines should be treated as requiring justification and likely future extraction. Files over roughly `800` lines are on the watchlist. Mixed-responsibility files should be split even when they are smaller than those thresholds.
 
 ## Team Model
 

@@ -46,6 +46,10 @@ When making recommendations, prioritize:
 5. Treat assumptions as temporary unless they are explicitly confirmed and recorded.
 6. Do not hide state, persistence, event-flow, UI-consistency, or integration risks.
 7. Do not declare success early just because code was written.
+8. Prefer an evolutionary modular monolith over broad architectural rewrites.
+9. Use bounded-context ownership and query-versus-command separation where it improves clarity.
+10. Treat structural refactors as no-behavior-change, no-performance-regression work unless the scope explicitly says otherwise.
+11. Prefer extracting one real seam from a mixed-responsibility file over adding more unrelated logic to it.
 
 ## Testing Rules
 

@@ -56,6 +56,7 @@ Default expectation:
 17. Branch creation, branch retirement, and every promotion step must be surfaced to the human explicitly; do not make the human ask which branch changed.
 18. Active workstream branches should get regular bounded checkpoint commits; large uncommitted local dirt is a workflow smell, not normal operating state.
 19. If the integrated landing still classifies as `PATCH`, cut the next patch version when it is promoted instead of batching several patch-worthy landings together.
+20. Structural refactor promotions should prove no intended player-facing behavior change and no obvious runtime responsiveness regression for the touched surfaces.
 
 ## Default Branch Workflow
 
@@ -128,6 +129,7 @@ Preferred promotion methods:
 - cherry-pick or otherwise isolate commits when `dev` contains mixed work
 - if `dev` drifted because mixed work was parked there, move that mixed work back onto a `codex/<workstream>` branch before promotion
 - if you needed a temporary `codex/wip-*` rescue branch, do not confuse that branch with ready integration state
+- if the landing is structural-refactor-heavy, validate the touched surface with the same or stronger smoke coverage than the pre-refactor path before promotion
 
 Do not treat "merge dev into main" as the default safe move.
 

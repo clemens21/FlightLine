@@ -85,6 +85,17 @@ If you are storing product-work artifacts on disk, use:
 - `product-work/workstreams/` only for exceptional standalone implementation streams
 - `product-work/completed/` for completed product-work artifacts
 
+## Structural Refactor Protocol
+
+Use structural refactor streams only when they are bounded and when they reduce real integration pain.
+
+Default rules:
+- structural cleanup should normally follow the development strategy in `flightline_development_strategy.md`
+- do not run a repo-wide cleanup wave just because a few files are large
+- when a capability or bug-fix stream must touch a known mixed-responsibility file, Mara should decide whether that stream should carry a small extraction budget
+- structural refactor streams should preserve player-facing behavior and runtime responsiveness unless the human explicitly approves broader change
+- do not parallelize builders on the same oversized integration surface just to increase throughput
+
 ## Capability To Feature Workflow
 
 Use this split by default:
