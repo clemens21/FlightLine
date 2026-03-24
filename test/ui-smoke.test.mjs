@@ -685,7 +685,7 @@ try {
   assert.ok(hireMarketScroll.scrollHeight > hireMarketScroll.clientHeight);
   assert.ok(hireMarketScroll.scrollTop > 0);
   assert.ok((await page.locator("[data-pilot-candidate-row] [data-staff-portrait-surface='hire-row']").count()) >= 1);
-  const firstCandidateRow = page.locator("[data-pilot-candidate-row]").first();
+  const firstCandidateRow = page.locator("[data-pilot-candidate-row]:not([hidden])").first();
   const firstCandidatePilotCellText = (await firstCandidateRow.locator("td").first().textContent()) ?? "";
   assert.match(firstCandidatePilotCellText, /[A-Za-z]/);
   assert.equal(firstCandidatePilotCellText.includes("Broader fit"), false);
@@ -697,11 +697,12 @@ try {
   assert.equal(firstCandidatePilotCellText.includes("Available now"), false);
   assert.ok(await page.locator("[data-pilot-candidate-row]").first().locator("[data-pilot-stat-rating='operationalReliability']").count() >= 1);
   await page.setViewportSize({ width: 1440, height: 900 });
-  const firstVisibleCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
-  const firstCandidatePortrait = await page.locator("[data-pilot-candidate-row]").first().locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
+  const firstVisibleCandidateRow = page.locator("[data-pilot-candidate-row]:not([hidden])").first();
+  const firstVisibleCandidateName = (await firstVisibleCandidateRow.locator("strong").textContent())?.trim() ?? "";
+  const firstCandidatePortrait = await firstVisibleCandidateRow.locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
   assert.ok(firstCandidatePortrait);
   assert.equal(firstCandidatePortrait.startsWith("/assets/staff-portraits/"), true);
-  await clickUi(page.locator("[data-pilot-candidate-row]").first());
+  await clickUi(firstVisibleCandidateRow);
   await page.waitForFunction((expectedName) => {
     const overlay = document.querySelector("[data-staffing-hire-overlay]");
     const title = document.querySelector("[data-staffing-detail-title='hire']")?.textContent ?? "";
