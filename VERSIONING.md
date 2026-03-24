@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.5.1`
+- `0.5.2`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -27,6 +27,7 @@ The finance-versus-lease aircraft ownership alignment advanced the release to `0
 The tracked-aircraft-image asset landing advances the release to `0.4.1`.
 The operational decision clarity and risk visibility capability advances the release to `0.5.0`.
 The development-strategy and structural-refactor roadmap policy landing advances the release to `0.5.1`.
+The UI server route-and-render extraction refactor advances the release to `0.5.2`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
