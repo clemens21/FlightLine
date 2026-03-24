@@ -422,9 +422,17 @@ try {
   assert.equal(readinessRailText.includes("Blocked"), true);
   assert.equal(readinessRailText.includes("Likely recovery"), true);
   assert.equal(readinessRailText.includes("Stage selected work on this aircraft first."), true);
+  assert.equal(readinessRailText.includes("Why It Matters"), true);
+  assert.equal(readinessRailText.includes("Next Step"), true);
+  assert.equal(
+    await page.locator("[data-dispatch-readiness-item='work-selected']").evaluate((node) => node.hasAttribute("open")),
+    true,
+  );
   const commitBarText = (await page.locator("[data-dispatch-commit-bar]").textContent()) ?? "";
   assert.equal(commitBarText.includes("Commit impact"), true);
-  assert.equal(commitBarText.includes("preview commit impact"), true);
+  assert.equal(commitBarText.includes("Aircraft impact"), true);
+  assert.equal(commitBarText.includes("Pilot impact"), true);
+  assert.equal(commitBarText.includes("Calendar impact"), true);
 
   await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']"));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Planned Routes"));

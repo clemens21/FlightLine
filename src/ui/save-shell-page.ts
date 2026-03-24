@@ -2783,12 +2783,19 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .dispatch-detail-card,
     .dispatch-message-item,
     .dispatch-readiness-item {
-      padding: 12px 14px;
       border-radius: 16px;
       border: 1px solid var(--line);
       background: var(--panel-strong);
       display: grid;
       gap: 8px;
+      overflow: hidden;
+    }
+    .dispatch-detail-card,
+    .dispatch-message-item {
+      padding: 12px 14px;
+    }
+    .dispatch-readiness-item {
+      padding: 0;
     }
     .dispatch-message-item.warning {
       border-color: rgba(239,177,95,.3);
@@ -2817,6 +2824,37 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
+    }
+    .dispatch-commit-metrics {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .dispatch-readiness-summary {
+      display: block;
+      list-style: none;
+      cursor: pointer;
+      padding: 12px 14px;
+    }
+    .dispatch-readiness-summary::-webkit-details-marker {
+      display: none;
+    }
+    .dispatch-readiness-summary::marker {
+      content: "";
+    }
+    .dispatch-readiness-detail {
+      padding: 0 14px 14px;
+    }
+    .dispatch-readiness-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .dispatch-readiness-detail-card {
+      display: grid;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--panel) 86%, transparent);
     }
     .dispatch-timeline-list {
       margin: 0;
@@ -2928,6 +2966,18 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border: 1px solid var(--line);
       background: var(--panel);
     }
+    .dispatch-commit-metric.pass {
+      border-color: rgba(13,106,119,.22);
+      background: color-mix(in srgb, var(--accent-soft) 48%, var(--panel));
+    }
+    .dispatch-commit-metric.watch {
+      border-color: rgba(239,177,95,.3);
+      background: color-mix(in srgb, var(--warn-soft) 60%, var(--panel));
+    }
+    .dispatch-commit-metric.blocked {
+      border-color: rgba(176,58,46,.24);
+      background: color-mix(in srgb, var(--danger-soft) 60%, var(--panel));
+    }
     @media (max-width: 1240px) {
       body { overflow: auto; }
       .shell-root { height: auto; min-height: 100vh; padding: 18px; }
@@ -2956,11 +3006,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .market-review-summary,
       .dispatch-board,
       .dispatch-queue-grid,
-      .dispatch-selected-aircraft-grid,
-      .dispatch-detail-grid,
-      .dispatch-validation-summary,
-      .dispatch-commit-metrics,
-      .contracts-grid,
+        .dispatch-selected-aircraft-grid,
+        .dispatch-detail-grid,
+        .dispatch-validation-summary,
+        .dispatch-commit-metrics,
+        .contracts-grid,
       .contracts-side-column,
       .planner-workbench,
       .planner-summary-grid {
@@ -2999,13 +3049,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .dispatch-time-utility .dispatch-advance-form {
         grid-template-columns: 1fr;
       }
-      .dispatch-time-utility .dispatch-advance-form button {
-        grid-column: auto;
-      }
-      .dispatch-timeline-item {
-        grid-template-columns: 1fr;
-        gap: 6px;
-      }
+        .dispatch-time-utility .dispatch-advance-form button {
+          grid-column: auto;
+        }
+        .dispatch-readiness-detail-grid {
+          grid-template-columns: 1fr;
+        }
+        .dispatch-timeline-item {
+          grid-template-columns: 1fr;
+          gap: 6px;
+        }
       .aircraft-market-overlay {
         padding: 12px;
       }

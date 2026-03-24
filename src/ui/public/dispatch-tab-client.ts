@@ -36,7 +36,9 @@ export interface DispatchReadinessChecklistItem {
   label: string;
   state: DispatchReadinessState;
   detail: string;
+  impact: string;
   recoveryAction: string;
+  openByDefault: boolean;
 }
 
 export interface DispatchReadinessSummary {
@@ -45,9 +47,18 @@ export interface DispatchReadinessSummary {
   recoveryAction: string;
 }
 
+export interface DispatchCommitImpactSection {
+  id: "aircraft" | "pilots" | "calendar";
+  label: string;
+  headline: string;
+  detail: string;
+  tone: "neutral" | DispatchReadinessState;
+}
+
 export interface DispatchCommitImpactSummary {
   headline: string;
   note: string;
+  sections: DispatchCommitImpactSection[];
 }
 
 const routeOperationalMessagePrefixes = [
@@ -1121,15 +1132,18 @@ function renderCommitBar(
         : "Resolve blockers";
 
   return `
-    <div class="dispatch-commit-copy">
-      <div class="meta-stack">
-        <div class="eyebrow">Commit impact</div>
-        <strong>${escapeHtml(commitImpact.headline)}</strong>
-        <span class="muted">${escapeHtml(commitImpact.note)}</span>
+      <div class="dispatch-commit-copy">
+        <div class="meta-stack">
+          <div class="eyebrow">Commit impact</div>
+          <strong>${escapeHtml(commitImpact.headline)}</strong>
+          <span class="muted">${escapeHtml(commitImpact.note)}</span>
+        </div>
+        <div class="dispatch-commit-metrics">
+          ${commitImpact.sections.map((section) => renderCommitImpactSection(section)).join("")}
+        </div>
       </div>
-    </div>
-    <div class="dispatch-commit-actions">
-      ${schedule?.isDraft ? `
+      <div class="dispatch-commit-actions">
+        ${schedule?.isDraft ? `
         <form
           method="post"
           action="/api/save/${encodeURIComponent(payload.saveId)}/actions/commit-schedule"
@@ -1275,7 +1289,7 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
   const timingState = determineDispatchReadinessState(timingMessages, schedule ? "pass" : "watch");
   const conflictState = determineDispatchReadinessState(conflictMessages, schedule ? "pass" : "watch");
 
-  return [
+  const checklist: DispatchReadinessChecklistItem[] = [
     {
       id: "work-selected",
       label: "Work selected",
@@ -1288,6 +1302,8 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
       recoveryAction: schedule
         ? "No action needed here."
         : "Stage selected work on this aircraft first.",
+      impact: describeChecklistImpact("work-selected", selectedAircraft, workSelectedState),
+      openByDefault: shouldOpenChecklistItem("work-selected", workSelectedState, selectedAircraft),
     },
     {
       id: "aircraft-selected",
@@ -1295,6 +1311,8 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
       state: aircraftSelectedState,
       detail: `${selectedAircraft.registration} is the active dispatch target.`,
       recoveryAction: "Choose an aircraft before staging a draft.",
+      impact: describeChecklistImpact("aircraft-selected", selectedAircraft, aircraftSelectedState),
+      openByDefault: shouldOpenChecklistItem("aircraft-selected", aircraftSelectedState, selectedAircraft),
     },
     {
       id: "route-operational-fit",
@@ -1304,6 +1322,8 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
         ? "Route and aircraft fit are clear."
         : "Select work to evaluate route and operational fit."),
       recoveryAction: chooseChecklistRecoveryAction(routeMessages, "Adjust the route, payload, or aircraft fit."),
+      impact: describeChecklistImpact("route-operational-fit", selectedAircraft, routeState),
+      openByDefault: shouldOpenChecklistItem("route-operational-fit", routeState, selectedAircraft),
     },
     {
       id: "pilot-coverage",
@@ -1311,6 +1331,8 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
       state: staffingState,
       detail: describePilotCoverageChecklistDetail(selectedAircraft, staffingMessages, validation),
       recoveryAction: chooseChecklistRecoveryAction(staffingMessages, "Free a ready pilot or stage with enough pilot coverage."),
+      impact: describeChecklistImpact("pilot-coverage", selectedAircraft, staffingState),
+      openByDefault: shouldOpenChecklistItem("pilot-coverage", staffingState, selectedAircraft),
     },
     {
       id: "timing-continuity",
@@ -1320,6 +1342,8 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
         ? `Draft timing spans ${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}.`
         : "Stage work to inspect timing and continuity."),
       recoveryAction: chooseChecklistRecoveryAction(timingMessages, "Shift the window or rearrange the route chain."),
+      impact: describeChecklistImpact("timing-continuity", selectedAircraft, timingState),
+      openByDefault: shouldOpenChecklistItem("timing-continuity", timingState, selectedAircraft),
     },
     {
       id: "commitment-conflicts",
@@ -1329,8 +1353,12 @@ function buildDispatchReadinessChecklist(selectedAircraft: DispatchAircraftView)
         ? "No aircraft or contract overlap is attached to this draft."
         : "Stage work to inspect overlapping commitments."),
       recoveryAction: chooseChecklistRecoveryAction(conflictMessages, "Clear the overlapping assignment or choose a different aircraft."),
+      impact: describeChecklistImpact("commitment-conflicts", selectedAircraft, conflictState),
+      openByDefault: shouldOpenChecklistItem("commitment-conflicts", conflictState, selectedAircraft),
     },
   ];
+
+  return checklist;
 }
 
 export function deriveDispatchReadinessSummary(selectedAircraft: DispatchAircraftView): DispatchReadinessSummary {
@@ -1344,15 +1372,29 @@ export function deriveDispatchReadinessSummary(selectedAircraft: DispatchAircraf
 
 function renderReadinessChecklistItem(item: DispatchReadinessChecklistItem): string {
   return `
-    <article class="dispatch-readiness-item ${item.state}" data-dispatch-readiness-item="${escapeHtml(item.id)}">
-      <div class="dispatch-message-head">
-        <div class="meta-stack">
-          <strong>${escapeHtml(item.label)}</strong>
-          <span class="muted">${escapeHtml(item.detail)}</span>
+    <details class="dispatch-readiness-item ${item.state}" data-dispatch-readiness-item="${escapeHtml(item.id)}" ${item.openByDefault ? "open" : ""}>
+      <summary class="dispatch-readiness-summary">
+        <div class="dispatch-message-head">
+          <div class="meta-stack">
+            <strong>${escapeHtml(item.label)}</strong>
+            <span class="muted">${escapeHtml(item.detail)}</span>
+          </div>
+          ${renderReadinessStateBadge(item.state)}
         </div>
-        ${renderReadinessStateBadge(item.state)}
+      </summary>
+      <div class="dispatch-readiness-detail">
+        <div class="dispatch-readiness-detail-grid">
+          <article class="dispatch-readiness-detail-card">
+            <div class="eyebrow">Why It Matters</div>
+            <strong>${escapeHtml(item.impact)}</strong>
+          </article>
+          <article class="dispatch-readiness-detail-card">
+            <div class="eyebrow">Next Step</div>
+            <strong>${escapeHtml(item.recoveryAction)}</strong>
+          </article>
+        </div>
       </div>
-    </article>
+    </details>
   `;
 }
 
@@ -1450,6 +1492,62 @@ function describeChecklistDetail(
   return messages[0]?.summary ?? fallback;
 }
 
+function describeChecklistImpact(
+  itemId: DispatchReadinessChecklistItem["id"],
+  selectedAircraft: DispatchAircraftView,
+  state: DispatchReadinessState,
+): string {
+  if (itemId === "work-selected") {
+    if (!selectedAircraft.schedule) {
+      return "Dispatch cannot preview pilot reservations, calendar impact, or commit consequences until work is staged on this aircraft.";
+    }
+
+    if (!selectedAircraft.schedule.isDraft) {
+      return "This aircraft already has live work attached, so Dispatch is describing the committed plan rather than a new draft.";
+    }
+
+    return "The staged draft is the source of truth for every downstream Dispatch check.";
+  }
+
+  if (itemId === "aircraft-selected") {
+    return "Every timing, staffing, and commitment check in this pane is tied to the currently selected aircraft.";
+  }
+
+  if (itemId === "route-operational-fit") {
+    return state === "pass"
+      ? "The aircraft, payload, and route are aligned well enough to keep the draft moving toward commit."
+      : "Route, payload, or operational mismatches can quickly turn into hard dispatch blockers if they stay unresolved.";
+  }
+
+  if (itemId === "pilot-coverage") {
+    return state === "pass"
+      ? "Named-pilot readiness is strong enough that this plan should have crew support when you commit."
+      : "Pilot availability decides whether the draft can actually launch once it leaves planning.";
+  }
+
+  if (itemId === "timing-continuity") {
+    return state === "pass"
+      ? "The current window fits the route chain, contract timing, and maintenance envelope."
+      : "Calendar timing controls whether the aircraft can complete the work without missing deadlines or service windows.";
+  }
+
+  return state === "pass"
+    ? "The current draft is not colliding with another contract or aircraft commitment."
+    : "Overlapping commitments can steal the aircraft or contract away from this draft even if the rest of the plan looks healthy.";
+}
+
+function shouldOpenChecklistItem(
+  itemId: DispatchReadinessChecklistItem["id"],
+  state: DispatchReadinessState,
+  selectedAircraft: DispatchAircraftView,
+): boolean {
+  if (state !== "pass") {
+    return true;
+  }
+
+  return itemId === "work-selected" && !selectedAircraft.schedule;
+}
+
 function chooseChecklistRecoveryAction(
   messages: DispatchValidationMessageView[],
   fallback: string,
@@ -1521,7 +1619,7 @@ function chooseDispatchRecoveryAction(
 }
 
 function describeReadinessContext(selectedAircraft: DispatchAircraftView): string {
-  return `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName} | The checklist below reflects the current draft and validation snapshot.`;
+  return `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName} | Open each row to see why it matters and the fastest next step.`;
 }
 
 function describeReadinessStateCount(
@@ -1560,6 +1658,7 @@ export function deriveDispatchCommitImpactSummary(
   return {
     headline: describeCommitImpactHeadline(selectedAircraft),
     note: describeCommitImpactNote(selectedAircraft),
+    sections: buildDispatchCommitImpactSections(selectedAircraft),
   };
 }
 
@@ -1584,6 +1683,145 @@ function describeCommitImpactNote(selectedAircraft: DispatchAircraftView | undef
   }
 
   return draftScope;
+}
+
+function buildDispatchCommitImpactSections(
+  selectedAircraft: DispatchAircraftView | undefined,
+): DispatchCommitImpactSection[] {
+  if (!selectedAircraft) {
+    return [
+      {
+        id: "aircraft",
+        label: "Aircraft impact",
+        headline: "No aircraft selected",
+        detail: "Pick an aircraft first to preview how commit changes its operating state.",
+        tone: "neutral",
+      },
+      {
+        id: "pilots",
+        label: "Pilot impact",
+        headline: "No pilot reservation preview",
+        detail: "Pilot consequences appear once a draft exists on a selected aircraft.",
+        tone: "neutral",
+      },
+      {
+        id: "calendar",
+        label: "Calendar impact",
+        headline: "No calendar block yet",
+        detail: "Stage work to see what commit will lock into the schedule.",
+        tone: "neutral",
+      },
+    ];
+  }
+
+  const schedule = selectedAircraft.schedule;
+  if (!schedule) {
+    return [
+      {
+        id: "aircraft",
+        label: "Aircraft impact",
+        headline: `${selectedAircraft.registration} stays available`,
+        detail: "No draft is staged yet, so this aircraft is not reserved for new work.",
+        tone: "neutral",
+      },
+      {
+        id: "pilots",
+        label: "Pilot impact",
+        headline: "Pilot availability unchanged",
+        detail: "Dispatch has not reserved or recommended pilots because no draft exists on this aircraft yet.",
+        tone: "neutral",
+      },
+      {
+        id: "calendar",
+        label: "Calendar impact",
+        headline: "No calendar hold yet",
+        detail: "Stage selected work to preview the exact window this aircraft would lock into the calendar.",
+        tone: "neutral",
+      },
+    ];
+  }
+
+  if (!schedule.isDraft) {
+    return [
+      {
+        id: "aircraft",
+        label: "Aircraft impact",
+        headline: `${selectedAircraft.registration} already committed`,
+        detail: `The live schedule already holds this aircraft from ${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}.`,
+        tone: "neutral",
+      },
+      {
+        id: "pilots",
+        label: "Pilot impact",
+        headline: `${selectedAircraft.assignedPilots.length}/${selectedAircraft.pilotReadiness.pilotsRequired} named pilots attached`,
+        detail: selectedAircraft.assignedPilots.length > 0
+          ? "Any staffing change now happens against a committed plan, not a draft recommendation."
+          : "This committed plan currently has no named pilots surfaced in the Dispatch summary.",
+        tone: selectedAircraft.assignedPilots.length > 0 ? "pass" : "watch",
+      },
+      {
+        id: "calendar",
+        label: "Calendar impact",
+        headline: "Calendar window already locked",
+        detail: `${schedule.legs.length} leg${schedule.legs.length === 1 ? "" : "s"} are already reflected in the live schedule window.`,
+        tone: "neutral",
+      },
+    ];
+  }
+
+  const validation = schedule.validation;
+  const routeMessages = getDispatchValidationMessages(validation, ownsRouteOperationalMessage);
+  const staffingMessages = getDispatchValidationMessages(validation, ["staffing."]);
+  const timingMessages = getDispatchValidationMessages(validation, ownsTimingContinuityMessage);
+  const conflictMessages = getDispatchValidationMessages(validation, ownsCommitmentConflictMessage);
+  const aircraftTone = determineDispatchReadinessState(
+    [...routeMessages, ...conflictMessages],
+    validation?.isCommittable ? "pass" : "watch",
+  );
+  const pilotTone = determineDispatchReadinessState(staffingMessages, determineStaffingFallbackState(selectedAircraft));
+  const calendarTone = determineDispatchReadinessState(timingMessages, validation?.isCommittable ? "pass" : "watch");
+  const recommendedCount = schedule.draftPilotAssignment?.recommendedPilotIds.length ?? 0;
+  const pilotsRequired = selectedAircraft.pilotReadiness.pilotsRequired;
+
+  return [
+    {
+      id: "aircraft",
+      label: "Aircraft impact",
+      headline: `Reserve ${selectedAircraft.registration} from ${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}`,
+      detail: routeMessages[0]?.summary
+        ?? conflictMessages[0]?.summary
+        ?? `${schedule.legs.length} leg${schedule.legs.length === 1 ? "" : "s"} would move this aircraft into ${humanize(validation?.aircraftOperationalStateAfterCommit ?? "reserved")} on commit.`,
+      tone: aircraftTone,
+    },
+    {
+      id: "pilots",
+      label: "Pilot impact",
+      headline: staffingMessages.some((message) => message.severity === "blocker")
+        ? "Pilot coverage still blocks commit"
+        : `${recommendedCount}/${pilotsRequired} named pilots ready to reserve`,
+      detail: staffingMessages[0]?.summary
+        ?? `${selectedAircraft.pilotReadiness.readyNowCount} ready | ${selectedAircraft.pilotReadiness.restingNowCount} resting | ${selectedAircraft.pilotReadiness.trainingNowCount} training`,
+      tone: pilotTone,
+    },
+    {
+      id: "calendar",
+      label: "Calendar impact",
+      headline: `${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)} locks into the calendar`,
+      detail: timingMessages[0]?.summary
+        ?? `${schedule.legs.length} leg${schedule.legs.length === 1 ? "" : "s"} and ${schedule.laborAllocationCount} labor allocation${schedule.laborAllocationCount === 1 ? "" : "s"} would become live schedule commitments.`,
+      tone: calendarTone,
+    },
+  ];
+}
+
+function renderCommitImpactSection(section: DispatchCommitImpactSection): string {
+  return `
+    <article class="dispatch-commit-metric ${section.tone}" data-dispatch-commit-impact="${escapeHtml(section.id)}">
+      <div class="eyebrow">${escapeHtml(section.label)}</div>
+      <strong>${escapeHtml(section.headline)}</strong>
+      <span class="muted">${escapeHtml(section.detail)}</span>
+    </article>
+  `;
 }
 
 function renderValidationCountBadge(messages: DispatchValidationMessageView[]): string {

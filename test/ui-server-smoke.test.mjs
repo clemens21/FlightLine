@@ -533,10 +533,16 @@ try {
   const commitmentConflictItem = readinessSummary.checklist.find((item) => item.id === "commitment-conflicts");
   assert.equal(routeOperationalItem?.detail, "Route and aircraft fit are clear.");
   assert.equal(routeOperationalItem?.state, "pass");
+  assert.equal(routeOperationalItem?.openByDefault, false);
+  assert.equal(routeOperationalItem?.impact.includes("Route, payload, or operational mismatches"), false);
   assert.equal(timingContinuityItem?.detail, "This route would miss the contract deadline.");
   assert.equal(timingContinuityItem?.state, "watch");
+  assert.equal(timingContinuityItem?.openByDefault, true);
+  assert.equal(timingContinuityItem?.impact.includes("Calendar timing controls"), true);
   assert.equal(commitmentConflictItem?.detail, "Contract already assigned elsewhere.");
   assert.equal(commitmentConflictItem?.state, "blocked");
+  assert.equal(commitmentConflictItem?.openByDefault, true);
+  assert.equal(commitmentConflictItem?.impact.includes("Overlapping commitments"), true);
   const committedWithoutValidationSummary = deriveDispatchReadinessSummary({
     ...committedDispatchAircraft,
     schedule: {
@@ -591,6 +597,8 @@ try {
   const thinMarginImpact = deriveDispatchCommitImpactSummary(thinMarginDraft);
   const thinMarginReadiness = deriveDispatchReadinessSummary(thinMarginDraft);
   assert.equal(thinMarginImpact.note.includes("Projected schedule profit is thin."), true);
+  assert.deepEqual(thinMarginImpact.sections.map((section) => section.id), ["aircraft", "pilots", "calendar"]);
+  assert.equal(thinMarginImpact.sections.some((section) => section.label === "Aircraft impact"), true);
   assert.equal(
     thinMarginReadiness.checklist.some((item) => item.detail.includes("Projected schedule profit is thin.")),
     false,
@@ -618,6 +626,8 @@ try {
   const negativeMarginImpact = deriveDispatchCommitImpactSummary(negativeMarginDraft);
   const negativeMarginReadiness = deriveDispatchReadinessSummary(negativeMarginDraft);
   assert.equal(negativeMarginImpact.note.includes("Projected schedule profit is negative."), true);
+  assert.equal(negativeMarginImpact.sections.some((section) => section.label === "Pilot impact"), true);
+  assert.equal(negativeMarginImpact.sections.some((section) => section.label === "Calendar impact"), true);
   assert.equal(
     negativeMarginReadiness.checklist.some((item) => item.detail.includes("Projected schedule profit is negative.")),
     false,
