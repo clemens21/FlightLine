@@ -1,6 +1,6 @@
 /*
- * Generates and persists the first-pass pilot hiring market.
- * The market is intentionally small and qualification-driven so the player chooses people, not a wall of near-duplicate offers.
+ * Generates and persists the pilot hiring market.
+ * The market stays qualification-driven, but it now refreshes on a 24-hour cadence and keeps a larger visible candidate board.
  */
 
 import { createPrefixedId } from "../commands/utils.js";
@@ -128,6 +128,8 @@ const LAST_NAMES = [
 ] as const;
 
 const CONTRACT_DURATION_DAYS = [90, 120, 180] as const;
+const STAFFING_MARKET_REFRESH_HOURS = 24;
+const STAFFING_MARKET_VISIBLE_CANDIDATE_GROUP_LIMIT = 32;
 const QUALIFICATION_LANE_ORDER = [
   "single_turboprop_utility",
   "single_turboprop_premium",
@@ -155,6 +157,11 @@ interface GeneratedPilotCandidateProfile extends PilotVisibleProfile {
 interface GeneratedMarketLane extends QualificationDemand {
   marketFitTier: MarketFitTier;
   anchorQualificationGroup: string;
+}
+
+interface GeneratedCandidateGroup {
+  candidateProfileId: string;
+  offers: GeneratedPilotCandidateOffer[];
 }
 
 function addHoursIso(utcIsoString: string, hours: number): string {
@@ -717,11 +724,12 @@ function buildOfferExplanationMetadata(
   };
 }
 
-function bucketTimeToSixHours(utcIsoString: string): string {
+function bucketTimeToTwentyFourHours(utcIsoString: string): string {
   const date = new Date(utcIsoString);
-  const bucketHour = Math.floor(date.getUTCHours() / 6) * 6;
-  date.setUTCHours(bucketHour, 0, 0, 0);
-  return date.toISOString();
+  const bucketMs = Math.floor(date.getTime() / (STAFFING_MARKET_REFRESH_HOURS * 3_600_000))
+    * STAFFING_MARKET_REFRESH_HOURS
+    * 3_600_000;
+  return new Date(bucketMs).toISOString();
 }
 
 function expandMarketDemand(
@@ -876,10 +884,14 @@ function chooseAvailabilityMix(seed: string, marketFitTier: MarketFitTier, candi
 }
 
 function desiredCandidateCountForLane(lane: GeneratedMarketLane, windowSeed: string): number {
-  const tierBase = lane.marketFitTier === "core" ? 4 : lane.marketFitTier === "adjacent" ? 3 : 2;
-  const pressureBias = Math.min(2, Math.max(0, lane.pilotsRequired - lane.coverageUnits));
+  const pressureGap = Math.max(0, lane.pilotsRequired - lane.coverageUnits);
+  const pressureBias = lane.marketFitTier === "core"
+    ? Math.min(2, pressureGap)
+    : Math.min(1, pressureGap);
   const varietyBias = hashString(`${windowSeed}:${lane.qualificationGroup}:count`) % 2;
-  return Math.max(2, tierBase + pressureBias + varietyBias - (lane.marketFitTier === "broader" ? 1 : 0));
+  const tierBase = lane.marketFitTier === "core" ? 7 : lane.marketFitTier === "adjacent" ? 5 : 3;
+  const tierMax = lane.marketFitTier === "core" ? 10 : lane.marketFitTier === "adjacent" ? 7 : 5;
+  return Math.max(tierBase, Math.min(tierMax, tierBase + pressureBias + varietyBias));
 }
 
 function chooseContractEndUtc(startsAtUtc: string, generatedSeed: string): string {
@@ -993,11 +1005,12 @@ export function generateStaffingMarket(
   aircraftReference: AircraftReferenceRepository,
   refreshReason: "scheduled" | "manual" | "bootstrap",
 ): GeneratedStaffingMarket {
+  const demandLimit = 6;
   const demand = expandMarketDemand(
-    loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, 4),
+    loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, demandLimit),
     companyContext.currentTimeUtc,
   );
-  const windowSeed = `staffing:${companyContext.worldSeed}:${bucketTimeToSixHours(companyContext.currentTimeUtc)}`;
+  const windowSeed = `staffing:${companyContext.worldSeed}:${bucketTimeToTwentyFourHours(companyContext.currentTimeUtc)}`;
   const generationContextHash = JSON.stringify(
     demand.map((entry) => ({
       qualificationGroup: entry.qualificationGroup,
@@ -1008,7 +1021,7 @@ export function generateStaffingMarket(
       anchorQualificationGroup: entry.anchorQualificationGroup,
     })),
   );
-  const offers: GeneratedPilotCandidateOffer[] = [];
+  const candidateGroups: GeneratedCandidateGroup[] = [];
   const usedNames = new Set<string>();
 
   demand.forEach((entry, demandIndex) => {
@@ -1030,9 +1043,10 @@ export function generateStaffingMarket(
       const contractHourlyRate = estimateContractHourlyRate(candidateProfile);
       const contractPricingExplanation = buildPricingExplanation(candidateProfile, "contract_hire", contractHourlyRate);
       const availabilityMix = chooseAvailabilityMix(candidateSeed, entry.marketFitTier, candidateIndex);
+      const candidateOffers: GeneratedPilotCandidateOffer[] = [];
 
       if (availabilityMix.directHire) {
-        offers.push({
+        candidateOffers.push({
           candidateProfileId,
           displayName,
           employmentModel: "direct_hire",
@@ -1047,7 +1061,7 @@ export function generateStaffingMarket(
       }
 
       if (availabilityMix.contractHire) {
-        offers.push({
+        candidateOffers.push({
           candidateProfileId,
           displayName,
           employmentModel: "contract_hire",
@@ -1062,12 +1076,20 @@ export function generateStaffingMarket(
           generatedSeed: candidateSeed,
         });
       }
+
+      candidateGroups.push({
+        candidateProfileId,
+        offers: candidateOffers,
+      });
     }
   });
 
+  const visibleCandidateGroups = candidateGroups.slice(0, STAFFING_MARKET_VISIBLE_CANDIDATE_GROUP_LIMIT);
+  const offers = visibleCandidateGroups.flatMap((candidateGroup) => candidateGroup.offers);
+
   return {
     generatedAtUtc: companyContext.currentTimeUtc,
-    expiresAtUtc: addHoursIso(companyContext.currentTimeUtc, 48),
+    expiresAtUtc: addHoursIso(companyContext.currentTimeUtc, STAFFING_MARKET_REFRESH_HOURS),
     windowSeed,
     generationContextHash,
     offers,

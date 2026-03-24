@@ -42,6 +42,7 @@ import { SqliteFileDatabase } from "../infrastructure/persistence/sqlite/sqlite-
 import { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
 import { reconcileAircraftMarket } from "./aircraft/aircraft-market-reconciler.js";
+import { reconcileStaffingMarket } from "./staffing/staffing-market-reconciler.js";
 import { reconcileNamedPilots } from "./staffing/named-pilot-roster.js";
 
 // These types capture the long-lived backend configuration and the per-save session context handed to readers and commands.
@@ -267,6 +268,15 @@ export class FlightLineBackend {
               ...(result.metadata ?? {}),
               aircraftMarketChanged: marketResult.changed,
               aircraftMarketOfferCount: marketResult.offerCount,
+            };
+          }
+
+          const staffingMarketResult = await this.reconcileStaffingMarket(command.saveId, "scheduled");
+          if (staffingMarketResult?.success) {
+            result.metadata = {
+              ...(result.metadata ?? {}),
+              staffingMarketChanged: staffingMarketResult.changed,
+              staffingMarketOfferCount: staffingMarketResult.offerCount,
             };
           }
         }

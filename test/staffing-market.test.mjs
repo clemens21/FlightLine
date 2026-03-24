@@ -58,6 +58,12 @@ function findCandidatePairs(staffingMarket) {
   return [...pairs.values()];
 }
 
+function countCandidateGroups(staffingMarket) {
+  return new Set(
+    staffingMarket.offers.map((offer) => offer.candidateProfileId ?? offer.staffingOfferId),
+  ).size;
+}
+
 try {
   const directSaveId = uniqueSaveId("staffing_market_direct");
   const directStartedAtUtc = await createCompanySave(backend, directSaveId, {
@@ -70,7 +76,9 @@ try {
 
   const directMarket = await backend.loadActiveStaffingMarket(directSaveId);
   assert.ok(directMarket);
-  assert.ok(directMarket.offers.length >= 12);
+  assert.ok(directMarket.offers.length >= 16);
+  assert.ok(countCandidateGroups(directMarket) >= 16);
+  assert.ok(countCandidateGroups(directMarket) <= 32);
   assert.equal(directMarket.offers.every((offer) => offer.laborCategory === "pilot"), true);
   assert.equal(directMarket.offers.every((offer) => typeof offer.displayName === "string" && offer.displayName.length > 0), true);
   assert.equal(directMarket.offers.every((offer) => offer.candidateState === "available_now"), true);
@@ -158,6 +166,65 @@ try {
     }),
     true,
   );
+
+  const cadenceSaveId = uniqueSaveId("staffing_market_cadence");
+  const cadenceStartedAtUtc = await createCompanySave(backend, cadenceSaveId, {
+    startedAtUtc: "2026-03-16T12:00:00.000Z",
+    startingCashAmount: 10_000_000,
+  });
+
+  const cadenceRefreshResult = await refreshStaffingMarket(backend, cadenceSaveId, cadenceStartedAtUtc, "bootstrap");
+  assert.equal(cadenceRefreshResult.success, true);
+
+  const cadenceMarketBeforeAdvance = await backend.loadActiveStaffingMarket(cadenceSaveId);
+  assert.ok(cadenceMarketBeforeAdvance);
+  const cadenceGroupsBefore = countCandidateGroups(cadenceMarketBeforeAdvance);
+  assert.ok(cadenceGroupsBefore >= 16);
+  assert.ok(cadenceGroupsBefore <= 32);
+
+  const cadenceShortAdvanceTargetUtc = addMinutes(cadenceStartedAtUtc, 6 * 60);
+  const cadenceShortAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${cadenceSaveId}_advance_before_staffing_refresh`,
+    saveId: cadenceSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: cadenceStartedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: cadenceShortAdvanceTargetUtc,
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(cadenceShortAdvanceResult.success, true, cadenceShortAdvanceResult.hardBlockers?.[0] ?? "Expected short advance to succeed.");
+  assert.equal(cadenceShortAdvanceResult.metadata?.staffingMarketChanged, false);
+
+  const cadenceMarketAfterShortAdvance = await backend.loadActiveStaffingMarket(cadenceSaveId);
+  assert.ok(cadenceMarketAfterShortAdvance);
+  assert.equal(cadenceMarketAfterShortAdvance.offerWindowId, cadenceMarketBeforeAdvance.offerWindowId);
+  assert.equal(cadenceMarketAfterShortAdvance.generatedAtUtc, cadenceMarketBeforeAdvance.generatedAtUtc);
+
+  const cadenceRefreshTargetUtc = addMinutes(cadenceStartedAtUtc, 25 * 60);
+  const cadenceRefreshAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${cadenceSaveId}_advance_after_staffing_refresh`,
+    saveId: cadenceSaveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: cadenceShortAdvanceTargetUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: cadenceRefreshTargetUtc,
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(cadenceRefreshAdvanceResult.success, true, cadenceRefreshAdvanceResult.hardBlockers?.[0] ?? "Expected long advance to succeed.");
+  assert.equal(cadenceRefreshAdvanceResult.metadata?.staffingMarketChanged, true);
+  assert.ok((cadenceRefreshAdvanceResult.metadata?.staffingMarketOfferCount ?? 0) > 0);
+
+  const cadenceMarketAfterRefresh = await backend.loadActiveStaffingMarket(cadenceSaveId);
+  assert.ok(cadenceMarketAfterRefresh);
+  assert.notEqual(cadenceMarketAfterRefresh.offerWindowId, cadenceMarketBeforeAdvance.offerWindowId);
+  assert.equal(cadenceMarketAfterRefresh.generatedAtUtc, cadenceRefreshTargetUtc);
+  assert.equal(cadenceMarketAfterRefresh.expiresAtUtc, addMinutes(cadenceRefreshTargetUtc, 24 * 60));
+  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) >= 16);
+  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) <= 32);
 
   const selectedDirectPair = directCandidatePairs.find((pair) => pair.directOffer && pair.contractOffer);
   assert.ok(selectedDirectPair?.directOffer);
