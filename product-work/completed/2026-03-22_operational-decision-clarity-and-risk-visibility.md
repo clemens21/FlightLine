@@ -3,15 +3,15 @@
 ## Status
 
 - Status:
-  Active capability
+  Completed capability
 - Workflow state:
-  paused_at_stream_boundary
+  completed_capability
 - Current owner:
-  Technical Lead (Mara Sterling)
+  Integration and Release Manager (Owen Hart)
 - Current active slice:
-  Stream E - Dispatch readability follow-up
+  none; capability complete
 - Next routing target:
-  Implementation Engineer (dispatch readability follow-up)
+  none
 - Last updated:
   2026-03-23
 
@@ -205,7 +205,7 @@
   4. broader pilot-market QoL and embedded hire-table controls
   5. dispatch readability follow-up
 - Approved next slice:
-  - Stream E - Dispatch readability follow-up
+  - none; capability complete
 - Deferred slices:
   - deeper finance analysis tooling
   - stronger market-need weighting for pilot generation
@@ -229,7 +229,8 @@
   - Stream A landed cleanly into the umbrella capability branch at `0617eb7` after the direct-dispatch handoff fix for `#59` passed Nadia revalidation on `codex/contracts-clarity`.
   - Stream C landed cleanly into the umbrella capability branch at `dd84a06` after the focused finance graph persistence repro passed and no remaining Nadia findings were raised on `codex/overview-finance-visibility`.
   - Stream D landed cleanly into the umbrella capability branch at `6b8749a` after staffing market validation passed across build, focused staffing checks, server smoke, browser smoke, and a focused Nadia-style browser/server revalidation.
-  - Later streams remain sequential to avoid shared shell/render overlap.
+  - Stream E landed cleanly into the umbrella capability branch at `c14d833` after the dispatch readability pass cleared build, `ui-server-smoke`, and `ui-smoke`.
+  - The capability completed after integrated validation passed across build, `overview-finance`, `staffing-market`, `ui-server-staffing-status`, `ui-server-smoke`, `ui-shell-navigation`, `ui-contracts-dispatch-handoff`, `ui-aircraft-compare`, and `ui-smoke`.
 
 ## Notes
 

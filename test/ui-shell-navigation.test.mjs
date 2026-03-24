@@ -356,7 +356,7 @@ try {
 
   await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
   await clickUi(page.locator("[data-accept-offer]").first());
-  await page.waitForFunction(() => document.body.innerText.includes("Open Route Planning"));
+  await page.waitForFunction(() => document.body.innerText.includes("Send to route plan"));
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Use Accepted / Active"));
 
   await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));

@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.4.1`
+- `0.5.0`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -25,6 +25,7 @@ The repo adopted SemVer on the `0.1.0-dev.1` prerelease line, cut its first rele
 The aircraft maintenance recovery and service-flow capability advanced the release to `0.3.0`.
 The finance-versus-lease aircraft ownership alignment advanced the release to `0.4.0`.
 The tracked-aircraft-image asset landing advances the release to `0.4.1`.
+The operational decision clarity and risk visibility capability advances the release to `0.5.0`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
