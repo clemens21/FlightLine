@@ -507,16 +507,17 @@ try {
 
   const contractStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(contractSaveId)}/tab/staffing`);
   assert.equal(contractStaffingTab.tabId, "staffing");
-  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-search/);
-  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-fit/);
-  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort/);
-  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-more-toggle/);
-  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-path-filter/);
-  assert.equal(contractStaffingTab.contentHtml.includes('data-staffing-candidate-path="both"'), true);
-  assert.equal(contractStaffingTab.contentHtml.includes('data-staffing-candidate-path="direct"'), true);
-  assert.equal(contractStaffingTab.contentHtml.includes('data-staffing-candidate-path="contract"'), true);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="pilot"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="base"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="certifications"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort-button="name"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort-button="direct_cost"/);
+  assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-more-toggle/);
+  assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-reset/);
+  assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-path-filter/);
   const contractRow = extractFirstPilotRow(contractStaffingTab.contentHtml);
   const contractDetail = extractEmployeeDetail(contractStaffingTab.contentHtml);
+  assert.doesNotMatch(contractRow.rowHtml, /broader fit|core fit|adjacent fit|direct \+ contract|direct only|contract only/i);
   assert.match(contractRow.rowHtml, /contract hire/i);
   assert.match(contractDetail, /Convert to direct hire/i);
   assert.match(contractDetail, /Dismiss pilot/i);

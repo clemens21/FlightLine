@@ -1206,7 +1206,111 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       overflow: auto;
     }
     .staffing-hire-market-list table {
-      min-width: 1520px;
+      min-width: 1580px;
+    }
+    .staffing-hire-market-list th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      overflow: visible;
+      vertical-align: top;
+    }
+    .staffing-hire-column-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .staffing-hire-sort-button {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .staffing-hire-column[aria-sort="ascending"] .staffing-hire-sort-button,
+    .staffing-hire-column[aria-sort="descending"] .staffing-hire-sort-button {
+      color: var(--accent);
+    }
+    .staffing-hire-column[aria-sort="ascending"] .staffing-hire-sort-button::after,
+    .staffing-hire-column[aria-sort="descending"] .staffing-hire-sort-button::after {
+      font-size: 11px;
+      line-height: 1;
+      opacity: 0.9;
+    }
+    .staffing-hire-column[aria-sort="ascending"] .staffing-hire-sort-button::after {
+      content: "↑";
+    }
+    .staffing-hire-column[aria-sort="descending"] .staffing-hire-sort-button::after {
+      content: "↓";
+    }
+    .staffing-hire-column-actions {
+      display: inline-flex;
+      gap: 4px;
+      flex: 0 0 auto;
+    }
+    .staffing-hire-icon-button {
+      appearance: none;
+      border: 0;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 999px;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .staffing-hire-icon-button svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+    }
+    .staffing-hire-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      z-index: 6;
+      width: min(320px, calc(100vw - 48px));
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .staffing-hire-popover-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .staffing-hire-popover-body {
+      display: grid;
+      gap: 10px;
+    }
+    .staffing-hire-popover-field {
+      display: grid;
+      gap: 6px;
+    }
+    .staffing-hire-popover-field input,
+    .staffing-hire-popover-field select {
+      width: 100%;
+    }
+    .staffing-hire-popover-clear {
+      flex: 0 0 auto;
     }
     .staffing-hire-market-list th,
     .staffing-hire-market-list td {

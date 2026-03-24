@@ -594,18 +594,26 @@ try {
   assert.ok((await page.locator("[data-pilot-candidate-market]").count()) >= 1);
   await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]").length >= 8);
   assert.equal(await page.locator("[data-staffing-hire-overlay]").isVisible(), false);
-  assert.equal(await page.locator("[data-staffing-hire-search]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-hire-fit]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-hire-sort]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-hire-more-toggle]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-hire-more]").isVisible(), false);
+  assert.equal(await page.locator("[data-staffing-hire-column] [data-staffing-hire-sort-button]").count() >= 10, true);
+  assert.equal(await page.locator("[data-staffing-hire-popover-toggle]").count() >= 10, true);
+  assert.equal(await page.locator("[data-staffing-hire-more-toggle]").count(), 0);
+  assert.equal(await page.locator("[data-staffing-hire-reset]").count(), 0);
+  assert.equal(await page.locator("[data-staffing-hire-popover]").count() >= 10, true);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Reliability" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Stress" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Procedure" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Training" }).count(), 1);
   const baselineVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
   const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
-  await page.locator("[data-staffing-hire-search]").fill(firstCandidateName);
+  await page.locator("button[aria-label='Pilot search']").evaluate((button) => {
+    button.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+  });
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Pilot search']")?.getAttribute("aria-expanded") === "true");
+  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill(firstCandidateName);
   await page.waitForFunction((expectedName) => {
     const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
     return visibleRows.length > 0
@@ -615,16 +623,41 @@ try {
   const searchVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
   assert.equal(searchVisibleCandidates > 0, true);
   assert.equal(searchVisibleCandidates < baselineVisibleCandidates, true);
-  await page.locator("[data-staffing-hire-search]").fill("");
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-search]")?.value === "");
-  await clickUi(page.locator("[data-staffing-hire-more-toggle]"));
-  await page.waitForFunction(() => !document.querySelector("[data-staffing-hire-more]")?.hasAttribute("hidden"));
-  await page.locator("[data-staffing-hire-path-filter]").selectOption("direct");
+  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill("");
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']")?.value === "");
+  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotFit']").selectOption("core");
+  await page.waitForFunction(() => document.querySelector("[data-pilot-candidate-row]:not([hidden])") !== null);
+  assert.equal(await page.locator("[data-pilot-candidate-row]:not([hidden])").count() < baselineVisibleCandidates, true);
+  await clickUi(page.locator("[data-staffing-hire-clear='pilot']"));
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotFit']")?.value === "all");
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']")?.value === "");
+  await page.locator("button[aria-label='Pilot search']").evaluate((button) => {
+    button.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+  });
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Pilot search']")?.getAttribute("aria-expanded") === "false");
+  await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
+  await page.waitForFunction(() => document.querySelector("[data-pilot-candidate-row]") !== null);
+  assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "ascending");
+  await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-column='pilot']")?.getAttribute("aria-sort") === "descending");
+  assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "descending");
+  await page.locator("button[aria-label='Direct hire filter']").evaluate((button) => {
+    button.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+  });
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "true");
+  await page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']").selectOption("offered");
   await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length > 0);
   assert.equal(await page.locator("[data-pilot-candidate-row]:not([hidden])").count() < baselineVisibleCandidates, true);
-  await clickUi(page.locator("[data-staffing-hire-reset]"));
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-search]")?.value === "");
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-path-filter]")?.value === "all");
+  await clickUi(page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-clear='direct_hire']"));
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']")?.value === "all");
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
   });
@@ -652,22 +685,17 @@ try {
   assert.ok(hireMarketScroll.scrollHeight > hireMarketScroll.clientHeight);
   assert.ok(hireMarketScroll.scrollTop > 0);
   assert.ok((await page.locator("[data-pilot-candidate-row] [data-staff-portrait-surface='hire-row']").count()) >= 1);
-  const firstCandidateRowText = (await page.locator("[data-pilot-candidate-row]").first().textContent()) ?? "";
-  assert.equal(firstCandidateRowText.includes("Available now"), false);
-  assert.equal(firstCandidateRowText.includes("Direct hire"), false);
-  assert.equal(firstCandidateRowText.includes("Contract hire"), false);
-  assert.equal(firstCandidateRowText.includes("single turboprop utility"), false);
+  const firstCandidateRow = page.locator("[data-pilot-candidate-row]").first();
+  const firstCandidatePilotCellText = (await firstCandidateRow.locator("td").first().textContent()) ?? "";
+  assert.match(firstCandidatePilotCellText, /[A-Za-z]/);
+  assert.equal(firstCandidatePilotCellText.includes("Broader fit"), false);
+  assert.equal(firstCandidatePilotCellText.includes("Core fit"), false);
+  assert.equal(firstCandidatePilotCellText.includes("Adjacent fit"), false);
+  assert.equal(firstCandidatePilotCellText.includes("Direct + Contract"), false);
+  assert.equal(firstCandidatePilotCellText.includes("Direct only"), false);
+  assert.equal(firstCandidatePilotCellText.includes("Contract only"), false);
+  assert.equal(firstCandidatePilotCellText.includes("Available now"), false);
   assert.ok(await page.locator("[data-pilot-candidate-row]").first().locator("[data-pilot-stat-rating='operationalReliability']").count() >= 1);
-  const hireRowPortraitBox = await page.locator("[data-pilot-candidate-row] [data-staff-portrait-frame='hire-row']").first().evaluate((element) => {
-    if (!(element instanceof HTMLElement)) {
-      return { width: 0, height: 0 };
-    }
-
-    const rect = element.getBoundingClientRect();
-    return { width: rect.width, height: rect.height };
-  });
-  assert.ok(hireRowPortraitBox.width >= 20 && hireRowPortraitBox.width <= 28);
-  assert.ok(hireRowPortraitBox.height >= 20 && hireRowPortraitBox.height <= 28);
   await page.setViewportSize({ width: 1440, height: 900 });
   const firstVisibleCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
   const firstCandidatePortrait = await page.locator("[data-pilot-candidate-row]").first().locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");

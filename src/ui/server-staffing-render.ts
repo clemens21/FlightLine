@@ -98,6 +98,35 @@ function renderPilotStatRating(statValue, options = {}) {
         : `${score}/10`;
     return `<span class="pilot-stat-rating${compactClass}"${metricAttribute} data-pilot-stat-score="${escapeHtml(String(score))}" aria-label="${escapeHtml(ariaLabel)}"><span class="pilot-stat-stars" aria-hidden="true">${starFills.map((fill) => `<span class="pilot-stat-star" data-pilot-stat-star-fill="${escapeHtml(String(fill))}" style="--pilot-stat-fill:${escapeHtml(String(fill))}%"></span>`).join("")}</span><span class="pilot-stat-score">${escapeHtml(`${score}/10`)}</span></span>`;
 }
+
+function renderStaffingHireIcon(kind) {
+    if (kind === "search") {
+        return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10 4a6 6 0 1 0 3.73 10.7l4.28 4.28 1.41-1.41-4.28-4.28A6 6 0 0 0 10 4Zm0 2a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z"></path></svg>`;
+    }
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8v5l-4 2v-7L3 5Z"></path></svg>`;
+}
+
+function renderStaffingHireIconButton(columnKey, kind, label) {
+    return `<button type="button" class="staffing-hire-icon-button" data-staffing-hire-popover-toggle="${escapeHtml(columnKey)}" aria-label="${escapeHtml(label)}">${renderStaffingHireIcon(kind)}</button>`;
+}
+
+function renderStaffingHirePopoverField(label, controlMarkup, detail = "") {
+    return `<label class="staffing-hire-popover-field"><span class="eyebrow">${escapeHtml(label)}</span>${controlMarkup}${detail ? `<span class="muted">${escapeHtml(detail)}</span>` : ""}</label>`;
+}
+
+function renderStaffingHirePopover(columnKey, title, bodyMarkup) {
+    return `<div class="staffing-hire-popover" data-staffing-hire-popover="${escapeHtml(columnKey)}" hidden><div class="staffing-hire-popover-head"><strong>${escapeHtml(title)}</strong><button type="button" class="ghost-button compact staffing-hire-popover-clear" data-staffing-hire-clear="${escapeHtml(columnKey)}">Clear</button></div><div class="staffing-hire-popover-body">${bodyMarkup}</div></div>`;
+}
+
+function renderStaffingHireSortButton(columnKey, label, sortKey) {
+    return `<button type="button" class="staffing-hire-sort-button" data-staffing-hire-sort-button="${escapeHtml(sortKey)}">${escapeHtml(label)}</button>`;
+}
+
+function renderStaffingHireHeaderCell(columnKey, label, sortKey, popoverMarkup, iconKinds = []) {
+    const iconButtons = iconKinds.map((kind) => renderStaffingHireIconButton(columnKey, kind, `${label} ${kind === "search" ? "search" : "filter"}`)).join("");
+    return `<th class="staffing-hire-column" data-staffing-hire-column="${escapeHtml(columnKey)}"><div class="staffing-hire-column-head">${renderStaffingHireSortButton(columnKey, label, sortKey)}<span class="staffing-hire-column-actions">${iconButtons}</span></div>${popoverMarkup ?? ""}</th>`;
+}
+
 function candidateDetailId(offer) {
     return offer?.candidateProfileId ?? offer?.staffingOfferId ?? "";
 }
@@ -325,8 +354,25 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
     const selectedCandidateId = candidateViews.some((candidate) => candidate.candidateId === options.selectedCandidateId)
         ? options.selectedCandidateId
         : candidateViews[0]?.candidateId ?? "";
-    const candidateCount = candidateViews.length;
     const defaultSortKey = "relevance";
+    const certOptions = [
+        ["all", "All certifications"],
+        ...pilotCertificationDisplayOrder.map((certificationCode) => [certificationCode, certificationCode]),
+    ];
+    const scoreOptions = Array.from({ length: 11 }, (_, score) => score === 0
+        ? ["", "All scores"]
+        : [String(score), `${score}+`]);
+    const availabilityOptions = [
+        ["all", "All rows"],
+        ["offered", "Offered only"],
+        ["not_offered", "Not offered"],
+    ];
+    const fitOptions = [
+        ["all", "All fits"],
+        ["core", "Core fit"],
+        ["adjacent", "Adjacent fit"],
+        ["broader", "Broader fit"],
+    ];
     const candidateRows = candidateViews.map((candidate) => {
         if (!candidate) {
             return "";
@@ -335,32 +381,39 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
         const portraitSeed = resolveCandidateGroupPortraitSeed(candidate);
         const directLabel = candidate.directOffer ? describePilotHirePrice(candidate.directOffer) : "Not offered";
         const contractLabel = candidate.contractOffer ? describePilotHirePrice(candidate.contractOffer) : "Not offered";
-        const searchIndex = escapeHtml(candidate.searchIndex);
-        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(candidate.candidateId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(candidate.candidateId)}" data-staffing-candidate-name="${escapeHtml(candidate.displayName)}" data-staffing-candidate-base="${escapeHtml(candidate.currentAirportId ?? "")}" data-staffing-candidate-search="${searchIndex}" data-staffing-candidate-fit="${escapeHtml(candidate.fitBucket)}" data-staffing-candidate-path="${escapeHtml(candidate.availabilityPath)}" data-staffing-candidate-relevance="${escapeHtml(String(candidate.relevanceScore))}" data-staffing-candidate-hours="${escapeHtml(String(candidate.candidateProfile?.totalCareerHours ?? 0))}" data-staffing-candidate-direct-cost="${escapeHtml(String(candidate.directOffer?.fixedCostAmount ?? ""))}" data-staffing-candidate-contract-cost="${escapeHtml(String(candidate.contractOffer?.fixedCostAmount ?? ""))}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<div class="meta-stack"><strong>${escapeHtml(candidate.displayName)}</strong><div class="pill-row staffing-hire-row-pills"><span class="badge accent">${escapeHtml(candidate.fitLabel)}</span><span class="badge neutral">${candidate.availabilityPath === "both" ? "Direct + contract" : candidate.availabilityPath === "direct" ? "Direct only" : candidate.availabilityPath === "contract" ? "Contract only" : "No path"}</span></div></div></div></td><td>${candidate.currentAirportId ? renderCompactAirportDisplay(candidate.currentAirportId) : `<span class="muted">Unassigned</span>`}</td><td class="staffing-certifications-cell">${escapeHtml(formatPilotCertificationList(candidate.certifications ?? []))}</td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.totalCareerHours ?? 0))}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.operationalReliability, { compact: true, label: "Operational reliability", metric: "operationalReliability" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.stressTolerance, { compact: true, label: "Stress tolerance", metric: "stressTolerance" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.procedureDiscipline, { compact: true, label: "Procedure discipline", metric: "procedureDiscipline" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.trainingAptitude, { compact: true, label: "Training aptitude", metric: "trainingAptitude" })}</td><td>${candidate.directOffer ? escapeHtml(directLabel) : `<span class="muted">Not offered</span>`}</td><td>${candidate.contractOffer ? escapeHtml(contractLabel) : `<span class="muted">Not offered</span>`}</td></tr>`;
+        const candidateCertifications = candidate.certifications ?? [];
+        const baseAirport = candidate.currentAirportId ? describeAirport(candidate.currentAirportId) : null;
+        const baseSearch = baseAirport ? `${baseAirport.code} ${baseAirport.primaryLabel}` : candidate.currentAirportId ?? "";
+        const operationalReliability = normalizePilotStatScore(candidate.candidateProfile?.statProfile?.operationalReliability);
+        const stressTolerance = normalizePilotStatScore(candidate.candidateProfile?.statProfile?.stressTolerance);
+        const procedureDiscipline = normalizePilotStatScore(candidate.candidateProfile?.statProfile?.procedureDiscipline);
+        const trainingAptitude = normalizePilotStatScore(candidate.candidateProfile?.statProfile?.trainingAptitude);
+        return `<tr class="aircraft-row ${isSelected ? "selected" : ""}" data-pilot-candidate-row="${escapeHtml(candidate.candidateId)}" data-staffing-row-select="hire" data-staffing-detail-id="${escapeHtml(candidate.candidateId)}" data-staffing-candidate-name="${escapeHtml(candidate.displayName)}" data-staffing-candidate-base="${escapeHtml(candidate.currentAirportId ?? "")}" data-staffing-candidate-base-search="${escapeHtml(baseSearch)}" data-staffing-candidate-search="${escapeHtml(candidate.searchIndex)}" data-staffing-candidate-fit="${escapeHtml(candidate.fitBucket)}" data-staffing-candidate-relevance="${escapeHtml(String(candidate.relevanceScore))}" data-staffing-candidate-hours="${escapeHtml(String(candidate.candidateProfile?.totalCareerHours ?? 0))}" data-staffing-candidate-cert-count="${escapeHtml(String(candidateCertifications.length))}" data-staffing-candidate-certifications="${escapeHtml(candidateCertifications.join("|"))}" data-staffing-candidate-operational-reliability="${escapeHtml(String(operationalReliability))}" data-staffing-candidate-stress-tolerance="${escapeHtml(String(stressTolerance))}" data-staffing-candidate-procedure-discipline="${escapeHtml(String(procedureDiscipline))}" data-staffing-candidate-training-aptitude="${escapeHtml(String(trainingAptitude))}" data-staffing-candidate-direct-availability="${candidate.directOffer ? "offered" : "not_offered"}" data-staffing-candidate-contract-availability="${candidate.contractOffer ? "offered" : "not_offered"}" data-staffing-candidate-direct-cost="${escapeHtml(String(candidate.directOffer?.fixedCostAmount ?? ""))}" data-staffing-candidate-contract-cost="${escapeHtml(String(candidate.contractOffer?.fixedCostAmount ?? ""))}" aria-selected="${isSelected ? "true" : "false"}" tabindex="0"><td><div class="staff-identity">${renderStaffPortrait(portraitSeed, "hire-row")}<strong>${escapeHtml(candidate.displayName)}</strong></div></td><td>${candidate.currentAirportId ? renderCompactAirportDisplay(candidate.currentAirportId) : `<span class="muted">Unassigned</span>`}</td><td class="staffing-certifications-cell">${escapeHtml(formatPilotCertificationList(candidateCertifications))}</td><td>${escapeHtml(formatPilotHours(candidate.candidateProfile?.totalCareerHours ?? 0))}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.operationalReliability, { compact: true, label: "Operational reliability", metric: "operationalReliability" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.stressTolerance, { compact: true, label: "Stress tolerance", metric: "stressTolerance" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.procedureDiscipline, { compact: true, label: "Procedure discipline", metric: "procedureDiscipline" })}</td><td>${renderPilotStatRating(candidate.candidateProfile?.statProfile?.trainingAptitude, { compact: true, label: "Training aptitude", metric: "trainingAptitude" })}</td><td>${candidate.directOffer ? escapeHtml(directLabel) : `<span class="muted">Not offered</span>`}</td><td>${candidate.contractOffer ? escapeHtml(contractLabel) : `<span class="muted">Not offered</span>`}</td></tr>`;
     }).join("");
-    const emptyState = `<div class="empty-state compact" data-staffing-market-empty hidden><strong>No pilots match the current filters.</strong><div class="muted">Broaden the search, expand fit, or clear the extra market controls.</div></div>`;
-    const fitOptions = [
-        ["all", "All fits"],
-        ["core", "Core fit"],
-        ["adjacent", "Adjacent fit"],
-        ["broader", "Broader fit"],
-    ];
-    const pathOptions = [
-        ["all", "All paths"],
-        ["both", "Direct + contract"],
-        ["direct", "Direct only"],
-        ["contract", "Contract only"],
-    ];
-    const sortOptions = [
-        ["relevance", "Owned-fleet relevance"],
-        ["fit", "Qualification fit"],
-        ["name", "Name"],
-        ["hours", "Total hours"],
-        ["direct_cost", "Direct cost"],
-        ["contract_cost", "Contract cost"],
-        ["base", "Base"],
-    ];
-    return `<div class="staffing-hire-market-shell" data-staffing-hire-market-shell data-staffing-default-sort-key="${escapeHtml(defaultSortKey)}" data-staffing-default-sort-direction="desc" data-staffing-default-fit="all" data-staffing-default-path="all" data-staffing-default-search=""><div class="staffing-hire-toolbar" data-staffing-hire-toolbar><div class="staffing-hire-toolbar-primary"><label class="staffing-hire-control"><span class="eyebrow">Search</span><input type="search" placeholder="Name, base, certification, aircraft type" data-staffing-hire-search value="" /></label><label class="staffing-hire-control"><span class="eyebrow">Qualification fit</span><select data-staffing-hire-fit>${fitOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "all" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label><label class="staffing-hire-control"><span class="eyebrow">Sort</span><select data-staffing-hire-sort>${sortOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === defaultSortKey ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label></div><div class="staffing-hire-toolbar-actions"><button type="button" class="ghost-button compact" data-staffing-hire-more-toggle aria-expanded="false">More</button><button type="button" class="ghost-button compact" data-staffing-hire-reset>Reset</button></div></div><div class="staffing-hire-more" data-staffing-hire-more hidden><label class="staffing-hire-control"><span class="eyebrow">Availability path</span><select data-staffing-hire-path-filter>${pathOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "all" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select></label><label class="staffing-hire-control"><span class="eyebrow">Direction</span><select data-staffing-hire-direction><option value="desc" selected>Descending</option><option value="asc">Ascending</option></select></label><div class="staffing-hire-market-note"><strong>${escapeHtml(String(candidateCount))} candidate${candidateCount === 1 ? "" : "s"}</strong><span class="muted">Broad market generation keeps the list hireable without collapsing it to a single fleet fit.</span></div></div>${emptyState}<div class="staffing-hire-market-list table-wrap" data-pilot-candidate-market data-staffing-scroll-region="hire:list" data-pilot-candidate-market-table><table><thead><tr><th>Pilot</th><th>Base</th><th>Certification(s)</th><th>Total hours</th><th>Reliability</th><th>Stress</th><th>Procedure</th><th>Training</th><th>Direct hire</th><th>Contract hire</th></tr></thead><tbody>${candidateRows}</tbody></table></div></div>`;
+    const emptyState = `<div class="empty-state compact" data-staffing-market-empty hidden><strong>No pilots match the current filters.</strong><div class="muted">Use the column controls to narrow the market or clear a column to broaden it.</div></div>`;
+    const pilotPopover = renderStaffingHirePopover("pilot", "Pilot controls", `${renderStaffingHirePopoverField("Pilot name", `<input type="search" placeholder="Search pilot names" data-staffing-hire-field="pilotSearch" value="" />`, "Matches the pilot cell name only.")}${renderStaffingHirePopoverField("Qualification fit", `<select data-staffing-hire-field="pilotFit">${fitOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "all" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`)} `);
+    const basePopover = renderStaffingHirePopover("base", "Base controls", `${renderStaffingHirePopoverField("Airport / base", `<input type="search" placeholder="Search base code or airport" data-staffing-hire-field="baseSearch" value="" />`, "Matches the base column.")}`);
+    const certificationPopover = renderStaffingHirePopover("certifications", "Certification controls", `${renderStaffingHirePopoverField("Certification text", `<input type="search" placeholder="Search certifications" data-staffing-hire-field="certificationSearch" value="" />`, "Matches the certification list.")}${renderStaffingHirePopoverField("Fixed certification", `<select data-staffing-hire-field="certificationFilter">${certOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "all" ? " selected" : ""}>${escapeHtml(label)} </option>`).join("")}</select>`, "Choose one exact certification to focus the list.")}`);
+    const hoursPopover = renderStaffingHirePopover("hours", "Total hours controls", `${renderStaffingHirePopoverField("Minimum hours", `<input type="number" min="0" step="1" inputmode="numeric" placeholder="0" data-staffing-hire-field="hoursMin" value="" />`)}${renderStaffingHirePopoverField("Maximum hours", `<input type="number" min="0" step="1" inputmode="numeric" placeholder="Any" data-staffing-hire-field="hoursMax" value="" />`)}`);
+    const reliabilityPopover = renderStaffingHirePopover("reliability", "Reliability controls", renderStaffingHirePopoverField("Minimum score", `<select data-staffing-hire-field="reliabilityMin">${scoreOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`));
+    const stressPopover = renderStaffingHirePopover("stress", "Stress controls", renderStaffingHirePopoverField("Minimum score", `<select data-staffing-hire-field="stressMin">${scoreOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`));
+    const procedurePopover = renderStaffingHirePopover("procedure", "Procedure controls", renderStaffingHirePopoverField("Minimum score", `<select data-staffing-hire-field="procedureMin">${scoreOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`));
+    const trainingPopover = renderStaffingHirePopover("training", "Training controls", renderStaffingHirePopoverField("Minimum score", `<select data-staffing-hire-field="trainingMin">${scoreOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`));
+    const directHirePopover = renderStaffingHirePopover("direct_hire", "Direct hire controls", renderStaffingHirePopoverField("Availability", `<select data-staffing-hire-field="directAvailability">${availabilityOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "all" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`));
+    const contractHirePopover = renderStaffingHirePopover("contract_hire", "Contract hire controls", renderStaffingHirePopoverField("Availability", `<select data-staffing-hire-field="contractAvailability">${availabilityOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "all" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`));
+    const headerRow = [
+        renderStaffingHireHeaderCell("pilot", "Pilot", "name", pilotPopover, ["search", "filter"]),
+        renderStaffingHireHeaderCell("base", "Base", "base", basePopover, ["search"]),
+        renderStaffingHireHeaderCell("certifications", "Certification(s)", "certifications", certificationPopover, ["search", "filter"]),
+        renderStaffingHireHeaderCell("hours", "Total hours", "hours", hoursPopover, ["filter"]),
+        renderStaffingHireHeaderCell("reliability", "Reliability", "operationalReliability", reliabilityPopover, ["filter"]),
+        renderStaffingHireHeaderCell("stress", "Stress", "stressTolerance", stressPopover, ["filter"]),
+        renderStaffingHireHeaderCell("procedure", "Procedure", "procedureDiscipline", procedurePopover, ["filter"]),
+        renderStaffingHireHeaderCell("training", "Training", "trainingAptitude", trainingPopover, ["filter"]),
+        renderStaffingHireHeaderCell("direct_hire", "Direct hire", "direct_cost", directHirePopover, ["filter"]),
+        renderStaffingHireHeaderCell("contract_hire", "Contract hire", "contract_cost", contractHirePopover, ["filter"]),
+    ].join("");
+    return `<div class="staffing-hire-market-shell" data-staffing-hire-market-shell data-staffing-default-sort-key="${escapeHtml(defaultSortKey)}" data-staffing-default-sort-direction="desc" data-staffing-default-fit="all" data-staffing-default-search=""><div class="staffing-hire-market-list table-wrap" data-pilot-candidate-market data-staffing-scroll-region="hire:list" data-pilot-candidate-market-table><table><thead><tr>${headerRow}</tr></thead><tbody>${candidateRows}</tbody></table></div>${emptyState}</div>`;
 }
 function renderStaffingFactRow(label, value, detail = "") {
     return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><strong>${escapeHtml(value)}</strong>${detail ? `<span class="muted">${escapeHtml(detail)}</span>` : ""}</div></div>`;
