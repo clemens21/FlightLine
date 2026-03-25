@@ -228,6 +228,7 @@ For several active development efforts at once:
 5. Temporary additional implementation sessions may be authorized only by the Technical Lead, and only after interfaces, file ownership boundaries, and validation expectations are explicitly frozen.
 6. QA should review either each risky stream independently or the integrated result, depending on where the real risk sits.
 7. Integration review is required before landing when multiple streams touch adjacent systems or shared state.
+8. Close sub-agents promptly once their assigned work is complete or no longer needed; do not leave idle sub-agents open between phases.
 
 ## Branch Working Model
 

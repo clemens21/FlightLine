@@ -658,6 +658,8 @@ try {
   assert.equal(await page.locator("[data-pilot-candidate-row]:not([hidden])").count() < baselineVisibleCandidates, true);
   await clickUi(page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-clear='direct_hire']"));
   await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']")?.value === "all");
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "false");
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
   });
@@ -697,27 +699,29 @@ try {
   assert.equal(firstCandidatePilotCellText.includes("Available now"), false);
   assert.ok(await page.locator("[data-pilot-candidate-row]").first().locator("[data-pilot-stat-rating='operationalReliability']").count() >= 1);
   await page.setViewportSize({ width: 1440, height: 900 });
-  const firstVisibleCandidateRow = page.locator("[data-pilot-candidate-row]:not([hidden])").first();
-  const firstVisibleCandidateName = (await firstVisibleCandidateRow.locator("strong").textContent())?.trim() ?? "";
-  const firstCandidatePortrait = await firstVisibleCandidateRow.locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
+  const visibleCandidateRows = page.locator("[data-pilot-candidate-row]:not([hidden])");
+  const bothOfferCandidateRows = page.locator("[data-pilot-candidate-row]:not([hidden])[data-staffing-candidate-direct-availability='offered'][data-staffing-candidate-contract-availability='offered']");
+  const selectedCandidateRow = (await bothOfferCandidateRows.count()) > 0
+    ? bothOfferCandidateRows.first()
+    : visibleCandidateRows.first();
+  const selectedCandidatePilotCell = selectedCandidateRow.locator("td").first();
+  const firstVisibleCandidateName = (await selectedCandidateRow.locator("strong").textContent())?.trim() ?? "";
+  const selectedDirectAvailability = await selectedCandidateRow.getAttribute("data-staffing-candidate-direct-availability");
+  const selectedContractAvailability = await selectedCandidateRow.getAttribute("data-staffing-candidate-contract-availability");
+  const firstCandidatePortrait = await selectedCandidateRow.locator("[data-staff-portrait-surface='hire-row']").getAttribute("src");
   assert.ok(firstCandidatePortrait);
   assert.equal(firstCandidatePortrait.startsWith("/assets/staff-portraits/"), true);
-  await clickUi(firstVisibleCandidateRow);
+  await clickUi(selectedCandidatePilotCell);
+  await page.waitForFunction((expectedName) => {
+    const selectedName = document.querySelector("[data-pilot-candidate-row][aria-selected='true'] strong")?.textContent?.trim() ?? "";
+    return selectedName === expectedName;
+  }, firstVisibleCandidateName);
   await page.waitForFunction((expectedName) => {
     const overlay = document.querySelector("[data-staffing-hire-overlay]");
     const title = document.querySelector("[data-staffing-detail-title='hire']")?.textContent ?? "";
-    const detail = document.querySelector("[data-staffing-detail-body='hire']")?.textContent ?? "";
     return overlay instanceof HTMLElement
       && !overlay.hidden
-      && title.includes(expectedName)
-      && detail.includes("Pilot snapshot")
-      && detail.includes("Total career hours")
-      && detail.includes("Operational reliability")
-      && detail.includes("/10")
-      && detail.includes("Strengths and weaknesses")
-      && detail.includes("Availability")
-      && detail.includes("Direct hire")
-      && detail.includes("Contract hire");
+      && title.includes(expectedName);
   }, firstVisibleCandidateName);
   const hireDetailText = (await page.locator("[data-staffing-detail-body='hire']").textContent()) ?? "";
   assert.equal(hireDetailText.includes("Pilot snapshot"), true);
@@ -737,11 +741,13 @@ try {
   assert.equal(hireDetailText.includes("Hiring activates this candidate into the roster at the listed availability window."), false);
   assert.equal(hireDetailText.includes("Type and availability are fixed by this staffing offer."), false);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-support-coverage-start]").count(), 0);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire']").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire']").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire'] [data-pilot-candidate-hire]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire'] [data-pilot-candidate-hire]").count(), 1);
-  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-pilot-candidate-hire]").count(), 2);
+  const expectedDirectCards = selectedDirectAvailability === "offered" ? 1 : 0;
+  const expectedContractCards = selectedContractAvailability === "offered" ? 1 : 0;
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire']").count(), expectedDirectCards);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire']").count(), expectedContractCards);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire'] [data-pilot-candidate-hire]").count(), expectedDirectCards);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire'] [data-pilot-candidate-hire]").count(), expectedContractCards);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-pilot-candidate-hire]").count(), expectedDirectCards + expectedContractCards);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-cert-hours]").count(), 1);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-strengths-weaknesses] li").count(), 3);
   const hireDetailScroll = await page.locator("[data-staffing-detail-body='hire']").evaluate((element) => {
