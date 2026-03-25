@@ -289,6 +289,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     const workspaceButton = target?.closest<HTMLElement>("[data-staffing-workspace-tab]");
     if (workspaceButton) {
       event.preventDefault();
+      event.stopPropagation();
       activeView = normalizeWorkspaceView(workspaceButton.dataset.staffingWorkspaceTab);
       if (activeView !== "hire") {
         hireOverlayOpen = false;
@@ -302,6 +303,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     const closeButton = target?.closest<HTMLElement>("[data-staffing-detail-close='hire']");
     if (closeButton) {
       event.preventDefault();
+      event.stopPropagation();
       closeHireOverlay();
       return;
     }
@@ -309,6 +311,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     const clearButton = target?.closest<HTMLElement>("[data-staffing-hire-clear]");
     if (clearButton) {
       event.preventDefault();
+      event.stopPropagation();
       activePopover = normalizeMarketPopoverKey(clearButton.dataset.staffingHireClear);
       marketState = resetMarketPopoverState(marketState, activePopover);
       storeMarketState(saveId, marketState);
@@ -319,6 +322,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     const sortButton = target?.closest<HTMLButtonElement>("[data-staffing-hire-sort-button]");
     if (sortButton) {
       event.preventDefault();
+      event.stopPropagation();
       const nextSortKey = normalizeMarketSortKey(sortButton.dataset.staffingHireSortButton);
       const nextSortDirection =
         marketState.sortKey === nextSortKey
@@ -340,6 +344,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     const popoverToggle = target?.closest<HTMLElement>("[data-staffing-hire-popover-toggle]");
     if (popoverToggle) {
       event.preventDefault();
+      event.stopPropagation();
       toggleMarketPopover(normalizeMarketPopoverKey(popoverToggle.dataset.staffingHirePopoverToggle));
       return;
     }
@@ -387,6 +392,8 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
     if (!field) {
       return;
     }
+
+    event.stopPropagation();
 
     switch (field) {
       case "pilotSearch":
@@ -513,6 +520,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   host.addEventListener("input", handleMarketControlEvent);
   host.addEventListener("change", handleMarketControlEvent);
   host.addEventListener("keydown", handleKeydown);
+  document.addEventListener("keydown", handleKeydown, true);
   document.addEventListener("click", handleDocumentClick, true);
   host.addEventListener("scroll", handleScroll, true);
   render();
@@ -525,6 +533,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       host.removeEventListener("input", handleMarketControlEvent);
       host.removeEventListener("change", handleMarketControlEvent);
       host.removeEventListener("keydown", handleKeydown);
+      document.removeEventListener("keydown", handleKeydown, true);
       document.removeEventListener("click", handleDocumentClick, true);
       host.removeEventListener("scroll", handleScroll, true);
     },
@@ -873,6 +882,45 @@ function getSortKeyForHeader(columnKey: string | undefined): StaffingMarketSortK
   }
 }
 
+function positionActivePopover(host: HTMLElement, activePopover: StaffingMarketPopoverKey): void {
+  if (activePopover === null) {
+    return;
+  }
+
+  const popover = host.querySelector<HTMLElement>(
+    `[data-staffing-hire-popover="${activePopover}"]`,
+  );
+  const marketRegion = host.querySelector<HTMLElement>("[data-pilot-candidate-market]");
+  if (!popover || popover.hidden || !marketRegion) {
+    return;
+  }
+
+  popover.dataset.staffingHirePopoverSide = "start";
+  popover.style.removeProperty("--staffing-hire-popover-nudge");
+
+  const viewportPadding = 12;
+  const marketRect = marketRegion.getBoundingClientRect();
+  const allowedLeft = Math.max(viewportPadding, marketRect.left + viewportPadding);
+  const allowedRight = Math.min(window.innerWidth - viewportPadding, marketRect.right - viewportPadding);
+
+  let popoverRect = popover.getBoundingClientRect();
+  if (popoverRect.right > allowedRight) {
+    popover.dataset.staffingHirePopoverSide = "end";
+    popoverRect = popover.getBoundingClientRect();
+  }
+
+  let nudge = 0;
+  if (popoverRect.right > allowedRight) {
+    nudge -= popoverRect.right - allowedRight;
+  }
+  if (popoverRect.left < allowedLeft) {
+    nudge += allowedLeft - popoverRect.left;
+  }
+  if (nudge !== 0) {
+    popover.style.setProperty("--staffing-hire-popover-nudge", `${Math.round(nudge)}px`);
+  }
+}
+
 function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState, activePopover: StaffingMarketPopoverKey): void {
   const controls: Array<[string, string]> = [
     ["pilotSearch", "input[data-staffing-hire-field='pilotSearch']"],
@@ -961,6 +1009,8 @@ function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState,
       : "none");
     column.classList.toggle("is-sorted", isActive);
   });
+
+  positionActivePopover(host, activePopover);
 }
 
 function applyMarketState(host: HTMLElement, marketState: StaffingMarketState, activePopover: StaffingMarketPopoverKey): void {

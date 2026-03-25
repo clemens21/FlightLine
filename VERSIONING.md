@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.6.2`
+- `0.6.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -31,6 +31,7 @@ The UI server route-and-render extraction refactor advances the release to `0.5.
 The staffing hire-market header-control refresh advances the release to `0.6.0`.
 The staffing hire-table header style fix advances the release to `0.6.1`.
 The staffing hire-table header prominence and divider polish advances the release to `0.6.2`.
+The staffing hire-table popover reliability and bounds fix advances the release to `0.6.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

@@ -660,6 +660,37 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']")?.value === "all");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "false");
+  await page.locator("button[aria-label='Contract hire filter']").evaluate((button) => {
+    button.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+  });
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Contract hire filter']")?.getAttribute("aria-expanded") === "true");
+  const contractHirePopoverBounds = await page.locator("[data-staffing-hire-popover='contract_hire']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const market = document.querySelector("[data-pilot-candidate-market]");
+    const marketRect = market instanceof HTMLElement ? market.getBoundingClientRect() : rect;
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      marketLeft: marketRect.left,
+      marketRight: marketRect.right,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  assert.ok(contractHirePopoverBounds);
+  assert.equal(contractHirePopoverBounds.left >= Math.max(12, contractHirePopoverBounds.marketLeft + 12), true);
+  assert.equal(contractHirePopoverBounds.right <= Math.min(contractHirePopoverBounds.viewportWidth - 12, contractHirePopoverBounds.marketRight - 12), true);
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Contract hire filter']")?.getAttribute("aria-expanded") === "false");
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
   });

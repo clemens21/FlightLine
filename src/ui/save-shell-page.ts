@@ -1348,6 +1348,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       left: 0;
       z-index: 6;
       width: min(320px, calc(100vw - 48px));
+      max-width: calc(100vw - 24px);
       padding: 12px;
       display: grid;
       gap: 10px;
@@ -1355,6 +1356,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-radius: 14px;
       background: var(--panel-strong);
       box-shadow: var(--shadow);
+      transform: translateX(var(--staffing-hire-popover-nudge, 0));
+    }
+    .staffing-hire-popover[data-staffing-hire-popover-side="end"] {
+      left: auto;
+      right: 0;
     }
     .staffing-hire-popover-head {
       display: flex;
