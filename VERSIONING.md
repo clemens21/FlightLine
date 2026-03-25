@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.6.3`
+- `0.6.4`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -32,6 +32,7 @@ The staffing hire-market header-control refresh advances the release to `0.6.0`.
 The staffing hire-table header style fix advances the release to `0.6.1`.
 The staffing hire-table header prominence and divider polish advances the release to `0.6.2`.
 The staffing hire-table popover reliability and bounds fix advances the release to `0.6.3`.
+The staffing hire-table scroll-region fix advances the release to `0.6.4`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

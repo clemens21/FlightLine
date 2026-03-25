@@ -1200,10 +1200,19 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: hidden;
     }
+    .staffing-hire-market-shell {
+      display: flex;
+      flex: 1 1 auto;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
     .staffing-hire-market-list {
       flex: 1 1 auto;
       min-height: 0;
+      max-height: 100%;
       overflow: auto;
+      overscroll-behavior: contain;
     }
     .staffing-hire-market-list table {
       min-width: 1580px;
