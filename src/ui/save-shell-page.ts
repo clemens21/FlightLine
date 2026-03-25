@@ -1253,13 +1253,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       opacity: 0.45;
     }
     .staffing-hire-column-head {
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+      justify-content: stretch;
+      gap: 10px;
       min-width: 0;
       min-height: 30px;
       padding: 2px 0;
+      position: relative;
+      isolation: isolate;
     }
     .staffing-hire-sort-button,
     body[data-theme="dark"] .staffing-hire-sort-button,
@@ -1286,6 +1289,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       font-size: 13px;
       line-height: 1.1;
       letter-spacing: 0.01em;
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1 1 auto;
     }
     .staffing-hire-sort-button:hover,
     .staffing-hire-sort-button:focus-visible {
@@ -1323,6 +1330,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: inline-flex;
       gap: 4px;
       flex: 0 0 auto;
+      position: relative;
+      z-index: 2;
     }
     .staffing-hire-icon-button,
     body[data-theme="dark"] .staffing-hire-icon-button,
@@ -1332,13 +1341,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: var(--accent-soft);
       color: var(--accent);
       border-radius: 999px;
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
       padding: 0;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      position: relative;
+      z-index: 2;
+      flex: 0 0 auto;
     }
     .staffing-hire-icon-button:hover,
     .staffing-hire-icon-button:focus-visible {

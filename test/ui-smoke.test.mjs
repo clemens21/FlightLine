@@ -631,13 +631,7 @@ try {
   await clickUi(page.locator("[data-staffing-hire-clear='pilot']"));
   await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotFit']")?.value === "all");
   await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']")?.value === "");
-  await page.locator("button[aria-label='Pilot search']").evaluate((button) => {
-    button.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }));
-  });
+  await clickUi(page.locator("button[aria-label='Pilot search']"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Pilot search']")?.getAttribute("aria-expanded") === "false");
   await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
   await page.waitForFunction(() => document.querySelector("[data-pilot-candidate-row]") !== null);
@@ -645,13 +639,7 @@ try {
   await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
   await page.waitForFunction(() => document.querySelector("[data-staffing-hire-column='pilot']")?.getAttribute("aria-sort") === "descending");
   assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "descending");
-  await page.locator("button[aria-label='Direct hire filter']").evaluate((button) => {
-    button.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }));
-  });
+  await clickUi(page.locator("button[aria-label='Direct hire filter']"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "true");
   await page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']").selectOption("offered");
   await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length > 0);
@@ -660,13 +648,7 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']")?.value === "all");
   await page.keyboard.press("Escape");
   await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "false");
-  await page.locator("button[aria-label='Contract hire filter']").evaluate((button) => {
-    button.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }));
-  });
+  await clickUi(page.locator("button[aria-label='Contract hire filter']"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Contract hire filter']")?.getAttribute("aria-expanded") === "true");
   const contractHirePopoverBounds = await page.locator("[data-staffing-hire-popover='contract_hire']").evaluate((element) => {
     if (!(element instanceof HTMLElement)) {
