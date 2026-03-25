@@ -1214,6 +1214,34 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       z-index: 2;
       overflow: visible;
       vertical-align: top;
+      background: linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 94%, transparent), color-mix(in srgb, var(--panel) 92%, transparent));
+      backdrop-filter: blur(10px) saturate(1.02);
+      -webkit-backdrop-filter: blur(10px) saturate(1.02);
+      box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent) 16%, var(--line));
+    }
+    .staffing-hire-market-list th,
+    .staffing-hire-market-list td {
+      position: relative;
+    }
+    .staffing-hire-market-list th:not(:first-child)::before,
+    .staffing-hire-market-list td:not(:first-child)::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      width: 1px;
+      pointer-events: none;
+    }
+    .staffing-hire-market-list th:not(:first-child)::before {
+      top: 10px;
+      bottom: 8px;
+      background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--accent) 34%, var(--line)) 18%, color-mix(in srgb, var(--accent) 34%, var(--line)) 82%, transparent 100%);
+      opacity: 0.85;
+    }
+    .staffing-hire-market-list td:not(:first-child)::before {
+      top: 9px;
+      bottom: 9px;
+      background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--text) 14%, var(--line)) 22%, color-mix(in srgb, var(--text) 14%, var(--line)) 78%, transparent 100%);
+      opacity: 0.45;
     }
     .staffing-hire-column-head {
       display: flex;
@@ -1221,6 +1249,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       justify-content: space-between;
       gap: 8px;
       min-width: 0;
+      min-height: 30px;
+      padding: 2px 0;
     }
     .staffing-hire-sort-button,
     body[data-theme="dark"] .staffing-hire-sort-button,
@@ -1243,6 +1273,15 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       box-shadow: none;
       justify-content: flex-start;
       text-align: left;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+    }
+    .staffing-hire-sort-button:hover,
+    .staffing-hire-sort-button:focus-visible {
+      color: color-mix(in srgb, var(--accent) 72%, var(--text));
+      outline: none;
     }
     .staffing-hire-column[aria-sort="ascending"] .staffing-hire-sort-button,
     .staffing-hire-column[aria-sort="descending"] .staffing-hire-sort-button {
@@ -1259,6 +1298,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staffing-hire-column[aria-sort="descending"] .staffing-hire-sort-button::after {
       content: "↓";
+    }
+    .staffing-hire-column.is-sorted::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 0;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--accent) 72%, #fff) 18%, color-mix(in srgb, var(--accent) 72%, #fff) 82%, transparent 100%);
+      pointer-events: none;
     }
     .staffing-hire-column-actions {
       display: inline-flex;
@@ -1280,6 +1330,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       align-items: center;
       justify-content: center;
       cursor: pointer;
+    }
+    .staffing-hire-icon-button:hover,
+    .staffing-hire-icon-button:focus-visible {
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+      outline: none;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
     }
     .staffing-hire-icon-button svg {
       width: 12px;
