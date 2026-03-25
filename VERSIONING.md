@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.6.5`
+- `0.7.0`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -34,6 +34,7 @@ The staffing hire-table header prominence and divider polish advances the releas
 The staffing hire-table popover reliability and bounds fix advances the release to `0.6.3`.
 The staffing hire-table scroll-region fix advances the release to `0.6.4`.
 The staffing hire-table header-control hit-target polish advances the release to `0.6.5`.
+The aircraft market and contracts board header-control rollout advances the release to `0.7.0`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
