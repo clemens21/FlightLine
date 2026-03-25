@@ -320,8 +320,17 @@ try {
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="contract_hire"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-popover-toggle'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-sort-button'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-clear'), false);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-more-toggle'), false);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-reset'), false);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-control-type="search"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-control-type="filter"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="pilotSearch"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="baseSearch"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="certificationFilter"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="directCostMin"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="contractHourlyMin"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-candidate-contract-hourly-rate'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="operationalReliability"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="stressTolerance"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="procedureDiscipline"'), true);

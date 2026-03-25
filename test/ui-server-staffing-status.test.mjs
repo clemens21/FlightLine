@@ -512,9 +512,13 @@ try {
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="certifications"/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort-button="name"/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort-button="direct_cost"/);
+  assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-clear/);
   assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-more-toggle/);
   assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-reset/);
   assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-path-filter/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-control-type="search"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-control-type="filter"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-candidate-contract-hourly-rate=/);
   const contractRow = extractFirstPilotRow(contractStaffingTab.contentHtml);
   const contractDetail = extractEmployeeDetail(contractStaffingTab.contentHtml);
   assert.doesNotMatch(contractRow.rowHtml, /broader fit|core fit|adjacent fit|direct \+ contract|direct only|contract only/i);

@@ -673,78 +673,166 @@ try {
   await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]").length >= 8);
   assert.equal(await page.locator("[data-staffing-hire-overlay]").isVisible(), false);
   assert.equal(await page.locator("[data-staffing-hire-column] [data-staffing-hire-sort-button]").count() >= 10, true);
-  assert.equal(await page.locator("[data-staffing-hire-popover-toggle]").count() >= 10, true);
+  assert.equal(await page.locator("[data-staffing-hire-popover-toggle]").count(), 10);
   assert.equal(await page.locator("[data-staffing-hire-more-toggle]").count(), 0);
   assert.equal(await page.locator("[data-staffing-hire-reset]").count(), 0);
   assert.equal(await page.locator("[data-staffing-hire-popover]").count() >= 10, true);
+  assert.equal(await page.locator("[data-staffing-hire-clear]").count(), 0);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Reliability" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Stress" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Procedure" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Training" }).count(), 1);
   await page.setViewportSize({ width: 1800, height: 1000 });
-  const baselineVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
-  const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
-  const popoverToggleColumns = await page.locator("[data-staffing-hire-popover-toggle]").evaluateAll((elements) => {
-    return elements.map((element) => ({
-      column: element.getAttribute("data-staffing-hire-popover-toggle") ?? "",
-      label: element.getAttribute("aria-label") ?? "",
+  assert.equal(await page.locator("button[aria-label='Pilot search']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Pilot filter']").count(), 0);
+  assert.equal(await page.locator("button[aria-label='Base search']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Base filter']").count(), 0);
+  assert.equal(await page.locator("button[aria-label='Certification(s) search']").count(), 0);
+  assert.equal(await page.locator("button[aria-label='Certification(s) filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Total hours filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Reliability filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Stress filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Procedure filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Training filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Direct hire filter']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Contract hire filter']").count(), 1);
+  const baselineCandidates = await page.evaluate(() => {
+    return [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")].map((row) => ({
+      name: row.getAttribute("data-staffing-candidate-name") ?? "",
+      baseSearch: row.getAttribute("data-staffing-candidate-base-search") ?? "",
+      certifications: (row.getAttribute("data-staffing-candidate-certifications") ?? "").split("|").filter(Boolean),
+      hours: Number.parseFloat(row.getAttribute("data-staffing-candidate-hours") ?? "0") || 0,
+      reliability: Number.parseFloat(row.getAttribute("data-staffing-candidate-operational-reliability") ?? "0") || 0,
+      directAvailability: row.getAttribute("data-staffing-candidate-direct-availability") ?? "not_offered",
+      directCost: Number.parseFloat(row.getAttribute("data-staffing-candidate-direct-cost") ?? ""),
+      contractAvailability: row.getAttribute("data-staffing-candidate-contract-availability") ?? "not_offered",
+      contractHourlyRate: Number.parseFloat(row.getAttribute("data-staffing-candidate-contract-hourly-rate") ?? ""),
     }));
   });
-  for (const { column, label } of popoverToggleColumns) {
-    const buttonLocator = page.locator(`button[aria-label="${label}"]`).first();
-    await clickUi(buttonLocator.locator("svg").first());
-    await page.waitForFunction(([expectedColumn, expectedLabel]) => {
-      const popover = document.querySelector(`[data-staffing-hire-popover="${expectedColumn}"]`);
-      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
-      return popover instanceof HTMLElement
-        && !popover.hidden
-        && toggle instanceof HTMLElement
-        && toggle.getAttribute("aria-expanded") === "true";
-    }, [column, label]);
-    await page.keyboard.press("Escape");
-    await page.waitForFunction((expectedLabel) => {
-      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
-      return toggle instanceof HTMLElement
-        && toggle.getAttribute("aria-expanded") === "false";
-    }, label);
-  }
+  const baselineVisibleCandidates = baselineCandidates.length;
+  const candidateSample = baselineCandidates[0];
+  const multiCertCandidate = baselineCandidates.find((candidate) => candidate.certifications.length >= 2) ?? candidateSample;
+  const firstCandidateName = candidateSample?.name ?? "";
+  const pilotSearchTerm = firstCandidateName.split(" ")[0] ?? firstCandidateName;
+  const baseSearchTerm = (candidateSample?.baseSearch ?? "").split(/\s+/)[0] ?? "";
+  const selectedHours = String(multiCertCandidate?.hours ?? 0);
+  const selectedReliability = String(multiCertCandidate?.reliability ?? 0);
+  assert.ok(baselineVisibleCandidates >= 8);
+  assert.ok(pilotSearchTerm.length > 0);
+  assert.ok(baseSearchTerm.length > 0);
+  assert.ok((multiCertCandidate?.certifications?.length ?? 0) >= 2);
+
   await clickUi(page.locator("button[aria-label='Pilot search']"));
-  await page.waitForFunction(() => document.querySelector("button[aria-label='Pilot search']")?.getAttribute("aria-expanded") === "true");
-  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill(firstCandidateName);
-  await page.waitForFunction((expectedName) => {
+  await page.waitForFunction(() => {
+    const control = document.querySelector("[data-staffing-hire-popover='pilot']");
+    return control instanceof HTMLElement && !control.hidden;
+  });
+  const pilotSearchGeometry = await page.evaluate(() => {
+    const control = document.querySelector("[data-staffing-hire-popover='pilot']");
+    const header = document.querySelector("[data-staffing-hire-column='pilot']");
+    const button = document.querySelector("button[aria-label='Pilot search']");
+    if (!(control instanceof HTMLElement) || !(header instanceof HTMLElement) || !(button instanceof HTMLElement)) {
+      return null;
+    }
+    const controlRect = control.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    return {
+      controlLeft: controlRect.left,
+      controlRight: controlRect.right,
+      controlWidth: controlRect.width,
+      headerLeft: headerRect.left,
+      headerRight: headerRect.right,
+      buttonLeft: buttonRect.left,
+    };
+  });
+  assert.ok(pilotSearchGeometry);
+  assert.equal(pilotSearchGeometry.controlWidth >= 180, true);
+  assert.equal(pilotSearchGeometry.controlLeft <= pilotSearchGeometry.headerRight - 24, true);
+  assert.equal(pilotSearchGeometry.controlLeft < pilotSearchGeometry.buttonLeft, true);
+  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill(pilotSearchTerm);
+  await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
+  await page.waitForFunction(() => {
+    const control = document.querySelector("[data-staffing-hire-popover='pilot']");
+    return !(control instanceof HTMLElement) || control.hidden;
+  });
+  await page.waitForFunction((expectedSearch) => {
     const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
     return visibleRows.length > 0
       && visibleRows.length < (document.querySelectorAll("[data-pilot-candidate-row]").length || 0)
-      && visibleRows.some((row) => row.textContent?.includes(expectedName));
-  }, firstCandidateName);
-  const searchVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
-  assert.equal(searchVisibleCandidates > 0, true);
-  assert.equal(searchVisibleCandidates < baselineVisibleCandidates, true);
-  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill("");
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']")?.value === "");
-  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotFit']").selectOption("core");
-  await page.waitForFunction(() => document.querySelector("[data-pilot-candidate-row]:not([hidden])") !== null);
-  assert.equal(await page.locator("[data-pilot-candidate-row]:not([hidden])").count() < baselineVisibleCandidates, true);
-  await clickUi(page.locator("[data-staffing-hire-clear='pilot']"));
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotFit']")?.value === "all");
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']")?.value === "");
+      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-name") ?? "").toLowerCase().includes(expectedSearch));
+  }, pilotSearchTerm.toLowerCase());
   await clickUi(page.locator("button[aria-label='Pilot search']"));
-  await page.waitForFunction(() => document.querySelector("button[aria-label='Pilot search']")?.getAttribute("aria-expanded") === "false");
-  await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
-  await page.waitForFunction(() => document.querySelector("[data-pilot-candidate-row]") !== null);
-  assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "ascending");
-  await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-column='pilot']")?.getAttribute("aria-sort") === "descending");
-  assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "descending");
-  await clickUi(page.locator("button[aria-label='Direct hire filter']"));
-  await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "true");
-  await page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']").selectOption("offered");
-  await page.waitForFunction(() => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length > 0);
-  assert.equal(await page.locator("[data-pilot-candidate-row]:not([hidden])").count() < baselineVisibleCandidates, true);
-  await clickUi(page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-clear='direct_hire']"));
-  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directAvailability']")?.value === "all");
+  await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill("");
+  await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
+
+  await clickUi(page.locator("button[aria-label='Base search']"));
+  await page.locator("[data-staffing-hire-popover='base'] [data-staffing-hire-field='baseSearch']").fill(baseSearchTerm);
+  await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
+  await page.waitForFunction((expectedSearch) => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-base-search") ?? "").toLowerCase().includes(expectedSearch));
+  }, baseSearchTerm.toLowerCase());
+  await clickUi(page.locator("button[aria-label='Base search']"));
+  await page.locator("[data-staffing-hire-popover='base'] [data-staffing-hire-field='baseSearch']").fill("");
+  await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
+
+  await clickUi(page.locator("button[aria-label='Certification(s) filter']"));
+  await page.locator(`[data-staffing-hire-popover='certifications'] input[value='${multiCertCandidate.certifications[0]}']`).check();
+  await page.locator(`[data-staffing-hire-popover='certifications'] input[value='${multiCertCandidate.certifications[1]}']`).check();
+  await page.waitForFunction((certifications) => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.every((row) => {
+        const rowCertifications = (row.getAttribute("data-staffing-candidate-certifications") ?? "").split("|").filter(Boolean);
+        return certifications.every((entry) => rowCertifications.includes(entry));
+      });
+  }, multiCertCandidate.certifications.slice(0, 2));
+  await page.locator(`[data-staffing-hire-popover='certifications'] input[value='${multiCertCandidate.certifications[0]}']`).uncheck();
+  await page.locator(`[data-staffing-hire-popover='certifications'] input[value='${multiCertCandidate.certifications[1]}']`).uncheck();
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
   await page.keyboard.press("Escape");
-  await page.waitForFunction(() => document.querySelector("button[aria-label='Direct hire filter']")?.getAttribute("aria-expanded") === "false");
+
+  await clickUi(page.locator("button[aria-label='Total hours filter']"));
+  await page.locator("[data-staffing-hire-popover='hours'] [data-staffing-hire-field='hoursMin']").fill(selectedHours);
+  await page.locator("[data-staffing-hire-popover='hours'] [data-staffing-hire-field='hoursMax']").fill(selectedHours);
+  await page.waitForFunction((expectedHours) => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-hours") ?? "") === expectedHours);
+  }, selectedHours);
+  await page.locator("[data-staffing-hire-popover='hours'] [data-staffing-hire-field='hoursMin']").fill("");
+  await page.locator("[data-staffing-hire-popover='hours'] [data-staffing-hire-field='hoursMax']").fill("");
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
+  await page.keyboard.press("Escape");
+
+  await clickUi(page.locator("button[aria-label='Reliability filter']"));
+  await page.locator("[data-staffing-hire-popover='reliability'] [data-staffing-hire-field='reliabilityMin']").fill(selectedReliability);
+  await page.locator("[data-staffing-hire-popover='reliability'] [data-staffing-hire-field='reliabilityMax']").fill(selectedReliability);
+  await page.waitForFunction((expectedScore) => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-operational-reliability") ?? "") === expectedScore);
+  }, selectedReliability);
+  await page.locator("[data-staffing-hire-popover='reliability'] [data-staffing-hire-field='reliabilityMin']").fill("");
+  await page.locator("[data-staffing-hire-popover='reliability'] [data-staffing-hire-field='reliabilityMax']").fill("");
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
+  await page.keyboard.press("Escape");
+
+  await clickUi(page.locator("button[aria-label='Direct hire filter']"));
+  await page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directCostMin']").fill("1");
+  await page.waitForFunction(() => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-direct-availability") ?? "") === "offered");
+  });
+  await page.locator("[data-staffing-hire-popover='direct_hire'] [data-staffing-hire-field='directCostMin']").fill("");
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
+  await page.keyboard.press("Escape");
+
   await clickUi(page.locator("button[aria-label='Contract hire filter']"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Contract hire filter']")?.getAttribute("aria-expanded") === "true");
   const contractHirePopoverBounds = await page.locator("[data-staffing-hire-popover='contract_hire']").evaluate((element) => {
@@ -768,8 +856,23 @@ try {
   assert.ok(contractHirePopoverBounds);
   assert.equal(contractHirePopoverBounds.left >= Math.max(12, contractHirePopoverBounds.marketLeft + 12), true);
   assert.equal(contractHirePopoverBounds.right <= Math.min(contractHirePopoverBounds.viewportWidth - 12, contractHirePopoverBounds.marketRight - 12), true);
+  await page.locator("[data-staffing-hire-popover='contract_hire'] [data-staffing-hire-field='contractHourlyMin']").fill("1");
+  await page.waitForFunction(() => {
+    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
+    return visibleRows.length > 0
+      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-contract-availability") ?? "") === "offered");
+  });
+  await page.locator("[data-staffing-hire-popover='contract_hire'] [data-staffing-hire-field='contractHourlyMin']").fill("");
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
   await page.keyboard.press("Escape");
-  await page.waitForFunction(() => document.querySelector("button[aria-label='Contract hire filter']")?.getAttribute("aria-expanded") === "false");
+
+  await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
+  await page.waitForFunction(() => document.querySelector("[data-pilot-candidate-row]") !== null);
+  assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "ascending");
+  await clickUi(page.locator("[data-staffing-hire-sort-button='name']"));
+  await page.waitForFunction(() => document.querySelector("[data-staffing-hire-column='pilot']")?.getAttribute("aria-sort") === "descending");
+  assert.equal(await page.locator("[data-staffing-hire-column='pilot']").getAttribute("aria-sort"), "descending");
+
   const hireMarketOverflow = await page.locator("[data-pilot-candidate-market]").evaluate((element) => {
     return element instanceof HTMLElement ? window.getComputedStyle(element).overflowY : "hidden";
   });

@@ -1369,29 +1369,51 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staffing-hire-popover {
       position: absolute;
-      top: calc(100% + 8px);
-      left: 0;
       z-index: 6;
-      width: min(320px, calc(100vw - 48px));
+      transform: translateX(var(--staffing-hire-popover-nudge, 0));
+    }
+    .staffing-hire-popover--search {
+      top: 50%;
+      right: 34px;
+      width: max(180px, min(320px, calc(100% - 44px)));
+      max-width: min(320px, calc(100vw - 24px));
+      transform: translateX(var(--staffing-hire-popover-nudge, 0)) translateY(-50%);
+    }
+    .staffing-hire-inline-search,
+    .staffing-hire-inline-search:is(input) {
+      width: 100%;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+      background: color-mix(in srgb, var(--panel-strong) 92%, var(--accent-soft));
+      color: var(--text);
+      box-shadow: var(--shadow);
+    }
+    .staffing-hire-inline-search::placeholder {
+      color: color-mix(in srgb, var(--muted) 80%, var(--text));
+    }
+    .staffing-hire-inline-search:focus {
+      outline: none;
+      border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow);
+    }
+    .staffing-hire-popover--filter {
+      top: calc(100% + 8px);
+      right: 0;
+      width: min(248px, calc(100vw - 48px));
       max-width: calc(100vw - 24px);
-      padding: 12px;
+      padding: 10px;
       display: grid;
       gap: 10px;
       border: 1px solid var(--line);
       border-radius: 14px;
       background: var(--panel-strong);
       box-shadow: var(--shadow);
-      transform: translateX(var(--staffing-hire-popover-nudge, 0));
     }
-    .staffing-hire-popover[data-staffing-hire-popover-side="end"] {
-      left: auto;
-      right: 0;
-    }
-    .staffing-hire-popover-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+    .staffing-hire-popover--filter[data-staffing-hire-popover-side="start"] {
+      left: 0;
+      right: auto;
     }
     .staffing-hire-popover-body {
       display: grid;
@@ -1401,12 +1423,44 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 6px;
     }
+    .staffing-hire-popover-field--compact {
+      gap: 8px;
+    }
+    .staffing-hire-range-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .staffing-hire-range-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .staffing-hire-range-field input {
+      width: 100%;
+    }
+    .staffing-hire-checkbox-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .staffing-hire-checkbox-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .staffing-hire-checkbox-option input {
+      margin: 0;
+      accent-color: var(--accent);
+    }
     .staffing-hire-popover-field input,
     .staffing-hire-popover-field select {
       width: 100%;
-    }
-    .staffing-hire-popover-clear {
-      flex: 0 0 auto;
     }
     .staffing-hire-market-list th,
     .staffing-hire-market-list td {

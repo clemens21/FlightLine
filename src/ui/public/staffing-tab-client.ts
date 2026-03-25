@@ -14,8 +14,6 @@ const selectionStoragePrefix = "flightline:staffing-selection:";
 const scrollStoragePrefix = "flightline:staffing-scroll:";
 const marketStoragePrefix = "flightline:staffing-market:";
 
-type StaffingMarketFitFilter = "all" | "core" | "adjacent" | "broader";
-type StaffingMarketAvailabilityFilter = "all" | "offered" | "not_offered";
 type StaffingMarketPopoverKey =
   | "pilot"
   | "base"
@@ -30,7 +28,6 @@ type StaffingMarketPopoverKey =
   | null;
 type StaffingMarketSortKey =
   | "relevance"
-  | "fit"
   | "name"
   | "base"
   | "certifications"
@@ -45,36 +42,44 @@ type StaffingMarketSortDirection = "asc" | "desc";
 
 interface StaffingMarketState {
   pilotSearch: string;
-  pilotFit: StaffingMarketFitFilter;
   baseSearch: string;
-  certificationSearch: string;
-  certificationFilter: string;
+  certificationFilters: string[];
   hoursMin: string;
   hoursMax: string;
   reliabilityMin: string;
+  reliabilityMax: string;
   stressMin: string;
+  stressMax: string;
   procedureMin: string;
+  procedureMax: string;
   trainingMin: string;
-  directAvailability: StaffingMarketAvailabilityFilter;
-  contractAvailability: StaffingMarketAvailabilityFilter;
+  trainingMax: string;
+  directCostMin: string;
+  directCostMax: string;
+  contractHourlyMin: string;
+  contractHourlyMax: string;
   sortKey: StaffingMarketSortKey;
   sortDirection: StaffingMarketSortDirection;
 }
 
 const defaultMarketState: StaffingMarketState = {
   pilotSearch: "",
-  pilotFit: "all",
   baseSearch: "",
-  certificationSearch: "",
-  certificationFilter: "all",
+  certificationFilters: [],
   hoursMin: "",
   hoursMax: "",
   reliabilityMin: "",
+  reliabilityMax: "",
   stressMin: "",
+  stressMax: "",
   procedureMin: "",
+  procedureMax: "",
   trainingMin: "",
-  directAvailability: "all",
-  contractAvailability: "all",
+  trainingMax: "",
+  directCostMin: "",
+  directCostMax: "",
+  contractHourlyMin: "",
+  contractHourlyMax: "",
   sortKey: "relevance",
   sortDirection: "desc",
 };
@@ -99,7 +104,6 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   let marketState = restoreMarketState(saveId) ?? {
     ...defaultMarketState,
     pilotSearch: host.dataset.staffingDefaultSearch ?? defaultMarketState.pilotSearch,
-    pilotFit: normalizeMarketFitFilter(host.dataset.staffingDefaultFit),
     sortKey: normalizeMarketSortKey(host.dataset.staffingDefaultSortKey),
     sortDirection: normalizeMarketSortDirection(host.dataset.staffingDefaultSortDirection),
   };
@@ -273,6 +277,20 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   function toggleMarketPopover(popoverKey: StaffingMarketPopoverKey): void {
     activePopover = activePopover === popoverKey ? null : popoverKey;
     render();
+    if (activePopover !== null) {
+      window.requestAnimationFrame(() => {
+        const firstField = host.querySelector<HTMLInputElement | HTMLSelectElement>(
+          `[data-staffing-hire-popover="${activePopover}"] [data-staffing-hire-field]`,
+        );
+        if (!firstField) {
+          return;
+        }
+        firstField.focus();
+        if (firstField instanceof HTMLInputElement && firstField.type === "search") {
+          firstField.select();
+        }
+      });
+    }
   }
 
   function updateMarketState(nextState: Partial<StaffingMarketState>): void {
@@ -305,17 +323,6 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       event.preventDefault();
       event.stopPropagation();
       closeHireOverlay();
-      return;
-    }
-
-    const clearButton = target?.closest<HTMLElement>("[data-staffing-hire-clear]");
-    if (clearButton) {
-      event.preventDefault();
-      event.stopPropagation();
-      activePopover = normalizeMarketPopoverKey(clearButton.dataset.staffingHireClear);
-      marketState = resetMarketPopoverState(marketState, activePopover);
-      storeMarketState(saveId, marketState);
-      render();
       return;
     }
 
@@ -399,17 +406,17 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       case "pilotSearch":
         updateMarketState({ pilotSearch: (target as HTMLInputElement).value });
         return;
-      case "pilotFit":
-        updateMarketState({ pilotFit: normalizeMarketFitFilter((target as HTMLSelectElement).value) });
-        return;
       case "baseSearch":
         updateMarketState({ baseSearch: (target as HTMLInputElement).value });
         return;
-      case "certificationSearch":
-        updateMarketState({ certificationSearch: (target as HTMLInputElement).value });
-        return;
       case "certificationFilter":
-        updateMarketState({ certificationFilter: (target as HTMLSelectElement).value });
+        updateMarketState({
+          certificationFilters: Array.from(
+            host.querySelectorAll<HTMLInputElement>(
+              "input[data-staffing-hire-field='certificationFilter']:checked",
+            ),
+          ).map((input) => input.value),
+        });
         return;
       case "hoursMin":
         updateMarketState({ hoursMin: (target as HTMLInputElement).value });
@@ -418,22 +425,40 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
         updateMarketState({ hoursMax: (target as HTMLInputElement).value });
         return;
       case "reliabilityMin":
-        updateMarketState({ reliabilityMin: (target as HTMLSelectElement).value });
+        updateMarketState({ reliabilityMin: (target as HTMLInputElement).value });
+        return;
+      case "reliabilityMax":
+        updateMarketState({ reliabilityMax: (target as HTMLInputElement).value });
         return;
       case "stressMin":
-        updateMarketState({ stressMin: (target as HTMLSelectElement).value });
+        updateMarketState({ stressMin: (target as HTMLInputElement).value });
+        return;
+      case "stressMax":
+        updateMarketState({ stressMax: (target as HTMLInputElement).value });
         return;
       case "procedureMin":
-        updateMarketState({ procedureMin: (target as HTMLSelectElement).value });
+        updateMarketState({ procedureMin: (target as HTMLInputElement).value });
+        return;
+      case "procedureMax":
+        updateMarketState({ procedureMax: (target as HTMLInputElement).value });
         return;
       case "trainingMin":
-        updateMarketState({ trainingMin: (target as HTMLSelectElement).value });
+        updateMarketState({ trainingMin: (target as HTMLInputElement).value });
         return;
-      case "directAvailability":
-        updateMarketState({ directAvailability: normalizeMarketAvailabilityFilter((target as HTMLSelectElement).value) });
+      case "trainingMax":
+        updateMarketState({ trainingMax: (target as HTMLInputElement).value });
         return;
-      case "contractAvailability":
-        updateMarketState({ contractAvailability: normalizeMarketAvailabilityFilter((target as HTMLSelectElement).value) });
+      case "directCostMin":
+        updateMarketState({ directCostMin: (target as HTMLInputElement).value });
+        return;
+      case "directCostMax":
+        updateMarketState({ directCostMax: (target as HTMLInputElement).value });
+        return;
+      case "contractHourlyMin":
+        updateMarketState({ contractHourlyMin: (target as HTMLInputElement).value });
+        return;
+      case "contractHourlyMax":
+        updateMarketState({ contractHourlyMax: (target as HTMLInputElement).value });
         return;
       default:
         return;
@@ -671,20 +696,22 @@ function restoreMarketState(saveId: string): StaffingMarketState | null {
         : typeof parsed.search === "string"
           ? parsed.search
           : defaultMarketState.pilotSearch,
-      pilotFit: normalizeMarketFitFilter(parsed.pilotFit ?? parsed.fit),
       baseSearch: typeof parsed.baseSearch === "string" ? parsed.baseSearch : defaultMarketState.baseSearch,
-      certificationSearch: typeof parsed.certificationSearch === "string"
-        ? parsed.certificationSearch
-        : defaultMarketState.certificationSearch,
-      certificationFilter: normalizeCertificationFilter(parsed.certificationFilter),
+      certificationFilters: normalizeCertificationFilters(parsed.certificationFilters ?? parsed.certificationFilter),
       hoursMin: normalizeOptionalNumberString(parsed.hoursMin),
       hoursMax: normalizeOptionalNumberString(parsed.hoursMax),
       reliabilityMin: normalizeOptionalNumberString(parsed.reliabilityMin),
+      reliabilityMax: normalizeOptionalNumberString(parsed.reliabilityMax),
       stressMin: normalizeOptionalNumberString(parsed.stressMin),
+      stressMax: normalizeOptionalNumberString(parsed.stressMax),
       procedureMin: normalizeOptionalNumberString(parsed.procedureMin),
+      procedureMax: normalizeOptionalNumberString(parsed.procedureMax),
       trainingMin: normalizeOptionalNumberString(parsed.trainingMin),
-      directAvailability: normalizeMarketAvailabilityFilter(parsed.directAvailability),
-      contractAvailability: normalizeMarketAvailabilityFilter(parsed.contractAvailability),
+      trainingMax: normalizeOptionalNumberString(parsed.trainingMax),
+      directCostMin: normalizeOptionalNumberString(parsed.directCostMin),
+      directCostMax: normalizeOptionalNumberString(parsed.directCostMax),
+      contractHourlyMin: normalizeOptionalNumberString(parsed.contractHourlyMin),
+      contractHourlyMax: normalizeOptionalNumberString(parsed.contractHourlyMax),
       sortKey: normalizeMarketSortKey(parsed.sortKey),
       sortDirection: normalizeMarketSortDirection(parsed.sortDirection),
     };
@@ -705,19 +732,25 @@ function storeMarketState(saveId: string, state: StaffingMarketState): void {
   }
 }
 
-function normalizeMarketFitFilter(rawValue: unknown): StaffingMarketFitFilter {
-  return rawValue === "core" || rawValue === "adjacent" || rawValue === "broader"
-    ? rawValue
-    : "all";
-}
-
-function normalizeCertificationFilter(rawValue: unknown): string {
-  return typeof rawValue === "string" && rawValue.trim().length > 0 ? rawValue : "all";
+function normalizeCertificationFilters(rawValue: unknown): string[] {
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+  }
+  if (typeof rawValue === "string") {
+    const normalized = rawValue.trim();
+    if (!normalized || normalized === "all") {
+      return [];
+    }
+    return [normalized];
+  }
+  return [];
 }
 
 function normalizeMarketSortKey(rawValue: unknown): StaffingMarketSortKey {
-  return rawValue === "fit"
-    || rawValue === "name"
+  return rawValue === "name"
     || rawValue === "base"
     || rawValue === "certifications"
     || rawValue === "hours"
@@ -733,10 +766,6 @@ function normalizeMarketSortKey(rawValue: unknown): StaffingMarketSortKey {
 
 function normalizeMarketSortDirection(rawValue: unknown): StaffingMarketSortDirection {
   return rawValue === "asc" ? "asc" : "desc";
-}
-
-function normalizeMarketAvailabilityFilter(rawValue: unknown): StaffingMarketAvailabilityFilter {
-  return rawValue === "offered" || rawValue === "not_offered" ? rawValue : "all";
 }
 
 function normalizeOptionalNumberString(rawValue: unknown): string {
@@ -775,70 +804,9 @@ function normalizeMarketPopoverKey(rawValue: unknown): StaffingMarketPopoverKey 
     : null;
 }
 
-function resetMarketPopoverState(state: StaffingMarketState, popoverKey: StaffingMarketPopoverKey): StaffingMarketState {
-  switch (popoverKey) {
-    case "pilot":
-      return {
-        ...state,
-        pilotSearch: "",
-        pilotFit: "all",
-      };
-    case "base":
-      return {
-        ...state,
-        baseSearch: "",
-      };
-    case "certifications":
-      return {
-        ...state,
-        certificationSearch: "",
-        certificationFilter: "all",
-      };
-    case "hours":
-      return {
-        ...state,
-        hoursMin: "",
-        hoursMax: "",
-      };
-    case "reliability":
-      return {
-        ...state,
-        reliabilityMin: "",
-      };
-    case "stress":
-      return {
-        ...state,
-        stressMin: "",
-      };
-    case "procedure":
-      return {
-        ...state,
-        procedureMin: "",
-      };
-    case "training":
-      return {
-        ...state,
-        trainingMin: "",
-      };
-    case "direct_hire":
-      return {
-        ...state,
-        directAvailability: "all",
-      };
-    case "contract_hire":
-      return {
-        ...state,
-        contractAvailability: "all",
-      };
-    default:
-      return state;
-  }
-}
-
 function defaultSortDirectionForKey(sortKey: StaffingMarketSortKey): StaffingMarketSortDirection {
   switch (sortKey) {
     case "relevance":
-    case "fit":
     case "certifications":
     case "hours":
     case "operationalReliability":
@@ -895,7 +863,8 @@ function positionActivePopover(host: HTMLElement, activePopover: StaffingMarketP
     return;
   }
 
-  popover.dataset.staffingHirePopoverSide = "start";
+  const controlType = popover.dataset.staffingHireControlType ?? "filter";
+  popover.dataset.staffingHirePopoverSide = controlType === "search" ? "overlay" : "end";
   popover.style.removeProperty("--staffing-hire-popover-nudge");
 
   const viewportPadding = 12;
@@ -904,8 +873,8 @@ function positionActivePopover(host: HTMLElement, activePopover: StaffingMarketP
   const allowedRight = Math.min(window.innerWidth - viewportPadding, marketRect.right - viewportPadding);
 
   let popoverRect = popover.getBoundingClientRect();
-  if (popoverRect.right > allowedRight) {
-    popover.dataset.staffingHirePopoverSide = "end";
+  if (controlType !== "search" && popoverRect.left < allowedLeft) {
+    popover.dataset.staffingHirePopoverSide = "start";
     popoverRect = popover.getBoundingClientRect();
   }
 
@@ -924,18 +893,21 @@ function positionActivePopover(host: HTMLElement, activePopover: StaffingMarketP
 function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState, activePopover: StaffingMarketPopoverKey): void {
   const controls: Array<[string, string]> = [
     ["pilotSearch", "input[data-staffing-hire-field='pilotSearch']"],
-    ["pilotFit", "select[data-staffing-hire-field='pilotFit']"],
     ["baseSearch", "input[data-staffing-hire-field='baseSearch']"],
-    ["certificationSearch", "input[data-staffing-hire-field='certificationSearch']"],
-    ["certificationFilter", "select[data-staffing-hire-field='certificationFilter']"],
     ["hoursMin", "input[data-staffing-hire-field='hoursMin']"],
     ["hoursMax", "input[data-staffing-hire-field='hoursMax']"],
-    ["reliabilityMin", "select[data-staffing-hire-field='reliabilityMin']"],
-    ["stressMin", "select[data-staffing-hire-field='stressMin']"],
-    ["procedureMin", "select[data-staffing-hire-field='procedureMin']"],
-    ["trainingMin", "select[data-staffing-hire-field='trainingMin']"],
-    ["directAvailability", "select[data-staffing-hire-field='directAvailability']"],
-    ["contractAvailability", "select[data-staffing-hire-field='contractAvailability']"],
+    ["reliabilityMin", "input[data-staffing-hire-field='reliabilityMin']"],
+    ["reliabilityMax", "input[data-staffing-hire-field='reliabilityMax']"],
+    ["stressMin", "input[data-staffing-hire-field='stressMin']"],
+    ["stressMax", "input[data-staffing-hire-field='stressMax']"],
+    ["procedureMin", "input[data-staffing-hire-field='procedureMin']"],
+    ["procedureMax", "input[data-staffing-hire-field='procedureMax']"],
+    ["trainingMin", "input[data-staffing-hire-field='trainingMin']"],
+    ["trainingMax", "input[data-staffing-hire-field='trainingMax']"],
+    ["directCostMin", "input[data-staffing-hire-field='directCostMin']"],
+    ["directCostMax", "input[data-staffing-hire-field='directCostMax']"],
+    ["contractHourlyMin", "input[data-staffing-hire-field='contractHourlyMin']"],
+    ["contractHourlyMax", "input[data-staffing-hire-field='contractHourlyMax']"],
   ];
 
   for (const [field, selector] of controls) {
@@ -948,17 +920,8 @@ function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState,
       case "pilotSearch":
         control.value = marketState.pilotSearch;
         break;
-      case "pilotFit":
-        control.value = marketState.pilotFit;
-        break;
       case "baseSearch":
         control.value = marketState.baseSearch;
-        break;
-      case "certificationSearch":
-        control.value = marketState.certificationSearch;
-        break;
-      case "certificationFilter":
-        control.value = marketState.certificationFilter;
         break;
       case "hoursMin":
         control.value = marketState.hoursMin;
@@ -969,25 +932,47 @@ function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState,
       case "reliabilityMin":
         control.value = marketState.reliabilityMin;
         break;
+      case "reliabilityMax":
+        control.value = marketState.reliabilityMax;
+        break;
       case "stressMin":
         control.value = marketState.stressMin;
+        break;
+      case "stressMax":
+        control.value = marketState.stressMax;
         break;
       case "procedureMin":
         control.value = marketState.procedureMin;
         break;
+      case "procedureMax":
+        control.value = marketState.procedureMax;
+        break;
       case "trainingMin":
         control.value = marketState.trainingMin;
         break;
-      case "directAvailability":
-        control.value = marketState.directAvailability;
+      case "trainingMax":
+        control.value = marketState.trainingMax;
         break;
-      case "contractAvailability":
-        control.value = marketState.contractAvailability;
+      case "directCostMin":
+        control.value = marketState.directCostMin;
+        break;
+      case "directCostMax":
+        control.value = marketState.directCostMax;
+        break;
+      case "contractHourlyMin":
+        control.value = marketState.contractHourlyMin;
+        break;
+      case "contractHourlyMax":
+        control.value = marketState.contractHourlyMax;
         break;
       default:
         break;
     }
   }
+
+  host.querySelectorAll<HTMLInputElement>("input[data-staffing-hire-field='certificationFilter']").forEach((checkbox) => {
+    checkbox.checked = marketState.certificationFilters.includes(checkbox.value);
+  });
 
   host.querySelectorAll<HTMLElement>("[data-staffing-hire-popover]").forEach((popover) => {
     const popoverKey = normalizeMarketPopoverKey(popover.dataset.staffingHirePopover);
@@ -1028,37 +1013,31 @@ function applyMarketState(host: HTMLElement, marketState: StaffingMarketState, a
     if (!matchesTextFilter(row.dataset.staffingCandidateName, marketState.pilotSearch)) {
       return false;
     }
-    if (marketState.pilotFit !== "all" && marketState.pilotFit !== normalizeMarketFitFilter(row.dataset.staffingCandidateFit)) {
-      return false;
-    }
     if (!matchesTextFilter(row.dataset.staffingCandidateBaseSearch, marketState.baseSearch)) {
       return false;
     }
-    if (!matchesTextFilter(row.dataset.staffingCandidateCertifications, marketState.certificationSearch)) {
-      return false;
-    }
-    if (marketState.certificationFilter !== "all" && !matchesFixedCertification(row, marketState.certificationFilter)) {
+    if (!matchesCertificationFilters(row, marketState.certificationFilters)) {
       return false;
     }
     if (!matchesRangeFilter(row.dataset.staffingCandidateHours, marketState.hoursMin, marketState.hoursMax)) {
       return false;
     }
-    if (!matchesMinimumFilter(row.dataset.staffingCandidateOperationalReliability, marketState.reliabilityMin)) {
+    if (!matchesRangeFilter(row.dataset.staffingCandidateOperationalReliability, marketState.reliabilityMin, marketState.reliabilityMax)) {
       return false;
     }
-    if (!matchesMinimumFilter(row.dataset.staffingCandidateStressTolerance, marketState.stressMin)) {
+    if (!matchesRangeFilter(row.dataset.staffingCandidateStressTolerance, marketState.stressMin, marketState.stressMax)) {
       return false;
     }
-    if (!matchesMinimumFilter(row.dataset.staffingCandidateProcedureDiscipline, marketState.procedureMin)) {
+    if (!matchesRangeFilter(row.dataset.staffingCandidateProcedureDiscipline, marketState.procedureMin, marketState.procedureMax)) {
       return false;
     }
-    if (!matchesMinimumFilter(row.dataset.staffingCandidateTrainingAptitude, marketState.trainingMin)) {
+    if (!matchesRangeFilter(row.dataset.staffingCandidateTrainingAptitude, marketState.trainingMin, marketState.trainingMax)) {
       return false;
     }
-    if (!matchesAvailabilityFilter(row.dataset.staffingCandidateDirectAvailability, marketState.directAvailability)) {
+    if (!matchesOptionalOfferRangeFilter(row.dataset.staffingCandidateDirectCost, marketState.directCostMin, marketState.directCostMax)) {
       return false;
     }
-    if (!matchesAvailabilityFilter(row.dataset.staffingCandidateContractAvailability, marketState.contractAvailability)) {
+    if (!matchesOptionalOfferRangeFilter(row.dataset.staffingCandidateContractHourlyRate, marketState.contractHourlyMin, marketState.contractHourlyMax)) {
       return false;
     }
     return true;
@@ -1083,19 +1062,6 @@ function applyMarketState(host: HTMLElement, marketState: StaffingMarketState, a
 
   marketShell.dataset.staffingVisibleCandidates = String(visibleRows.length);
   marketShell.dataset.staffingVisibleCandidateNames = visibleRows.map((row) => row.dataset.staffingCandidateName ?? "").join("|");
-}
-
-function fitBucketRank(value: StaffingMarketFitFilter): number {
-  switch (value) {
-    case "core":
-      return 0;
-    case "adjacent":
-      return 1;
-    case "broader":
-      return 2;
-    default:
-      return 3;
-  }
 }
 
 function matchesTextFilter(value: string | undefined, search: string): boolean {
@@ -1124,27 +1090,28 @@ function matchesRangeFilter(rawValue: string | undefined, minimum: string, maxim
   return true;
 }
 
-function matchesMinimumFilter(rawValue: string | undefined, minimum: string): boolean {
+function matchesOptionalOfferRangeFilter(rawValue: string | undefined, minimum: string, maximum: string): boolean {
   const minValue = parseOptionalNumber(minimum);
-  if (minValue === null) {
+  const maxValue = parseOptionalNumber(maximum);
+  if (minValue === null && maxValue === null) {
     return true;
   }
 
   const value = Number.parseFloat(rawValue ?? "");
-  return Number.isFinite(value) ? value >= minValue : false;
-}
-
-function matchesAvailabilityFilter(rawValue: string | undefined, filter: StaffingMarketAvailabilityFilter): boolean {
-  if (filter === "all") {
-    return true;
+  if (!Number.isFinite(value)) {
+    return false;
   }
-
-  const normalizedAvailability = rawValue === "offered" ? "offered" : "not_offered";
-  return normalizedAvailability === filter;
+  if (minValue !== null && value < minValue) {
+    return false;
+  }
+  if (maxValue !== null && value > maxValue) {
+    return false;
+  }
+  return true;
 }
 
-function matchesFixedCertification(row: HTMLTableRowElement, certificationCode: string): boolean {
-  if (certificationCode === "all") {
+function matchesCertificationFilters(row: HTMLTableRowElement, certificationFilters: string[]): boolean {
+  if (certificationFilters.length === 0) {
     return true;
   }
 
@@ -1152,19 +1119,11 @@ function matchesFixedCertification(row: HTMLTableRowElement, certificationCode: 
     .split("|")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-  return certifications.includes(certificationCode);
+  return certificationFilters.every((entry) => certifications.includes(entry));
 }
 
 function compareCandidateRows(left: HTMLTableRowElement, right: HTMLTableRowElement, state: StaffingMarketState): number {
   switch (state.sortKey) {
-    case "fit": {
-      const leftFit = fitBucketRank(normalizeMarketFitFilter(left.dataset.staffingCandidateFit));
-      const rightFit = fitBucketRank(normalizeMarketFitFilter(right.dataset.staffingCandidateFit));
-      if (leftFit !== rightFit) {
-        return state.sortDirection === "asc" ? leftFit - rightFit : rightFit - leftFit;
-      }
-      break;
-    }
     case "name": {
       const comparison = (left.dataset.staffingCandidateName ?? "").localeCompare(right.dataset.staffingCandidateName ?? "");
       if (comparison !== 0) {
