@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.8.0`
+- `0.8.1`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -38,6 +38,7 @@ The aircraft market and contracts board header-control rollout advances the rele
 The aircraft market and contracts board header visual unification advances the release to `0.7.1`.
 The aircraft market and contracts board header typography and width alignment advances the release to `0.7.2`.
 The staff hire header search-and-filter rework advances the release to `0.8.0`.
+The staff hire contract-sort, certification-filter, and column-width stability follow-up advances the release to `0.8.1`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
