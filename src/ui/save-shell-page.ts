@@ -1215,7 +1215,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       overscroll-behavior: contain;
     }
     .staffing-hire-market-list table {
-      min-width: 1580px;
+      min-width: 1740px;
+      width: 100%;
+      table-layout: fixed;
     }
     .staffing-hire-market-list th {
       position: sticky;
@@ -1441,18 +1443,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staffing-hire-checkbox-list {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
+      justify-items: start;
     }
     .staffing-hire-checkbox-option {
-      display: inline-flex;
+      display: inline-grid;
+      grid-template-columns: 16px minmax(0, 1fr);
       align-items: center;
       gap: 6px;
+      width: 100%;
       min-width: 0;
       color: var(--text);
       font-size: 12px;
       line-height: 1.2;
-      white-space: nowrap;
     }
     .staffing-hire-checkbox-option input {
       margin: 0;

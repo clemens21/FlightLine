@@ -26,6 +26,7 @@ type StaffingMarketPopoverKey =
   | "direct_hire"
   | "contract_hire"
   | null;
+type StaffingContractSortBasis = "upfront" | "hourly";
 type StaffingMarketSortKey =
   | "relevance"
   | "name"
@@ -58,6 +59,7 @@ interface StaffingMarketState {
   directCostMax: string;
   contractHourlyMin: string;
   contractHourlyMax: string;
+  contractSortBasis: StaffingContractSortBasis;
   sortKey: StaffingMarketSortKey;
   sortDirection: StaffingMarketSortDirection;
 }
@@ -80,6 +82,7 @@ const defaultMarketState: StaffingMarketState = {
   directCostMax: "",
   contractHourlyMin: "",
   contractHourlyMax: "",
+  contractSortBasis: "upfront",
   sortKey: "relevance",
   sortDirection: "desc",
 };
@@ -460,6 +463,9 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       case "contractHourlyMax":
         updateMarketState({ contractHourlyMax: (target as HTMLInputElement).value });
         return;
+      case "contractSortBasis":
+        updateMarketState({ contractSortBasis: normalizeContractSortBasis((target as HTMLSelectElement).value) });
+        return;
       default:
         return;
     }
@@ -712,6 +718,7 @@ function restoreMarketState(saveId: string): StaffingMarketState | null {
       directCostMax: normalizeOptionalNumberString(parsed.directCostMax),
       contractHourlyMin: normalizeOptionalNumberString(parsed.contractHourlyMin),
       contractHourlyMax: normalizeOptionalNumberString(parsed.contractHourlyMax),
+      contractSortBasis: normalizeContractSortBasis(parsed.contractSortBasis),
       sortKey: normalizeMarketSortKey(parsed.sortKey),
       sortDirection: normalizeMarketSortDirection(parsed.sortDirection),
     };
@@ -766,6 +773,10 @@ function normalizeMarketSortKey(rawValue: unknown): StaffingMarketSortKey {
 
 function normalizeMarketSortDirection(rawValue: unknown): StaffingMarketSortDirection {
   return rawValue === "asc" ? "asc" : "desc";
+}
+
+function normalizeContractSortBasis(rawValue: unknown): StaffingContractSortBasis {
+  return rawValue === "hourly" ? "hourly" : "upfront";
 }
 
 function normalizeOptionalNumberString(rawValue: unknown): string {
@@ -908,6 +919,7 @@ function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState,
     ["directCostMax", "input[data-staffing-hire-field='directCostMax']"],
     ["contractHourlyMin", "input[data-staffing-hire-field='contractHourlyMin']"],
     ["contractHourlyMax", "input[data-staffing-hire-field='contractHourlyMax']"],
+    ["contractSortBasis", "select[data-staffing-hire-field='contractSortBasis']"],
   ];
 
   for (const [field, selector] of controls) {
@@ -964,6 +976,9 @@ function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState,
         break;
       case "contractHourlyMax":
         control.value = marketState.contractHourlyMax;
+        break;
+      case "contractSortBasis":
+        control.value = marketState.contractSortBasis;
         break;
       default:
         break;
@@ -1190,12 +1205,16 @@ function compareCandidateRows(left: HTMLTableRowElement, right: HTMLTableRowElem
       const leftCost = Number.parseFloat(
         state.sortKey === "direct_cost"
           ? left.dataset.staffingCandidateDirectCost ?? ""
-          : left.dataset.staffingCandidateContractCost ?? "",
+          : state.contractSortBasis === "hourly"
+            ? left.dataset.staffingCandidateContractHourlyRate ?? ""
+            : left.dataset.staffingCandidateContractCost ?? "",
       );
       const rightCost = Number.parseFloat(
         state.sortKey === "direct_cost"
           ? right.dataset.staffingCandidateDirectCost ?? ""
-          : right.dataset.staffingCandidateContractCost ?? "",
+          : state.contractSortBasis === "hourly"
+            ? right.dataset.staffingCandidateContractHourlyRate ?? ""
+            : right.dataset.staffingCandidateContractCost ?? "",
       );
       const normalizedLeftCost = Number.isFinite(leftCost) ? leftCost : Number.POSITIVE_INFINITY;
       const normalizedRightCost = Number.isFinite(rightCost) ? rightCost : Number.POSITIVE_INFINITY;

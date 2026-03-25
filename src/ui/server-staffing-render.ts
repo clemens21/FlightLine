@@ -372,6 +372,10 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
         ? options.selectedCandidateId
         : candidateViews[0]?.candidateId ?? "";
     const defaultSortKey = "relevance";
+    const contractSortOptions = [
+        ["upfront", "Upfront fee"],
+        ["hourly", "Hourly rate"],
+    ];
     const candidateRows = candidateViews.map((candidate) => {
         if (!candidate) {
             return "";
@@ -435,13 +439,13 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
         minPlaceholder: "Any",
         maxPlaceholder: "Any",
     })));
-    const contractHirePopover = renderStaffingHireFilterControl("contract_hire", renderStaffingHireCompactField("Contract hourly", renderStaffingHireRangeFields("contractHourlyMin", "contractHourlyMax", {
+    const contractHirePopover = renderStaffingHireFilterControl("contract_hire", `${renderStaffingHireCompactField("Contract hourly", renderStaffingHireRangeFields("contractHourlyMin", "contractHourlyMax", {
         minimum: 0,
         maximum: "",
         step: 5,
         minPlaceholder: "Any",
         maxPlaceholder: "Any",
-    })));
+    }))}${renderStaffingHireCompactField("Sort by", `<select data-staffing-hire-field="contractSortBasis">${contractSortOptions.map(([value, label]) => `<option value="${escapeHtml(value)}"${value === "upfront" ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}</select>`)}`);
     const headerRow = [
         renderStaffingHireHeaderCell("pilot", "Pilot", "name", pilotPopover, ["search"]),
         renderStaffingHireHeaderCell("base", "Base", "base", basePopover, ["search"]),
@@ -454,7 +458,8 @@ function renderPilotHiringMarket(saveId, tabId, source, options = {}) {
         renderStaffingHireHeaderCell("direct_hire", "Direct hire", "direct_cost", directHirePopover, ["filter"]),
         renderStaffingHireHeaderCell("contract_hire", "Contract hire", "contract_cost", contractHirePopover, ["filter"]),
     ].join("");
-    return `<div class="staffing-hire-market-shell" data-staffing-hire-market-shell data-staffing-default-sort-key="${escapeHtml(defaultSortKey)}" data-staffing-default-sort-direction="desc" data-staffing-default-search=""><div class="staffing-hire-market-list table-wrap" data-pilot-candidate-market data-staffing-scroll-region="hire:list" data-pilot-candidate-market-table><table><thead><tr>${headerRow}</tr></thead><tbody>${candidateRows}</tbody></table></div>${emptyState}</div>`;
+    const columnGroup = `<colgroup><col style="width:240px" /><col style="width:180px" /><col style="width:210px" /><col style="width:130px" /><col style="width:150px" /><col style="width:150px" /><col style="width:150px" /><col style="width:150px" /><col style="width:170px" /><col style="width:210px" /></colgroup>`;
+    return `<div class="staffing-hire-market-shell" data-staffing-hire-market-shell data-staffing-default-sort-key="${escapeHtml(defaultSortKey)}" data-staffing-default-sort-direction="desc" data-staffing-default-search=""><div class="staffing-hire-market-list table-wrap" data-pilot-candidate-market data-staffing-scroll-region="hire:list" data-pilot-candidate-market-table><table>${columnGroup}<thead><tr>${headerRow}</tr></thead><tbody>${candidateRows}</tbody></table></div>${emptyState}</div>`;
 }
 function renderStaffingFactRow(label, value, detail = "") {
     return `<div class="aircraft-fact-row"><div class="eyebrow">${escapeHtml(label)}</div><div class="aircraft-fact-copy"><strong>${escapeHtml(value)}</strong>${detail ? `<span class="muted">${escapeHtml(detail)}</span>` : ""}</div></div>`;

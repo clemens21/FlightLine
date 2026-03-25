@@ -330,6 +330,7 @@ try {
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="certificationFilter"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="directCostMin"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="contractHourlyMin"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="contractSortBasis"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-candidate-contract-hourly-rate'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="operationalReliability"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="stressTolerance"'), true);
