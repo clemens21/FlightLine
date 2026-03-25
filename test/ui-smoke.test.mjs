@@ -373,6 +373,8 @@ try {
   assert.equal(await page.locator(".contracts-main-body > .contracts-filters").count(), 0);
   assert.ok((await page.locator("[data-contracts-board-popover-toggle]").count()) >= 4);
   const contractsBoardTable = page.locator(".contracts-board-table").first();
+  const contractsHeaderText = (await contractsBoardTable.locator("thead").textContent()) ?? "";
+  assert.equal(/\bSORT\b|\bASC\b|\bDESC\b/.test(contractsHeaderText), false);
   const contractsPopoverToggleColumns = await contractsBoardTable.locator("[data-contracts-board-popover-toggle]").evaluateAll((elements) => {
     return elements.map((element) => ({
       column: element.getAttribute("data-contracts-board-popover-toggle") ?? "",
@@ -1016,6 +1018,8 @@ try {
   assert.equal(await page.locator(".market-toolbar").count(), 0);
   assert.ok((await page.locator("[data-market-popover-toggle]").count()) >= 4);
   const aircraftMarketTable = page.locator(".aircraft-market-table").first();
+  const aircraftHeaderText = (await aircraftMarketTable.locator("thead").textContent()) ?? "";
+  assert.equal(/\bSORT\b|\bASC\b|\bDESC\b/.test(aircraftHeaderText), false);
   const marketPopoverToggleColumns = await aircraftMarketTable.locator("[data-market-popover-toggle]").evaluateAll((elements) => {
     return elements.map((element) => ({
       column: element.getAttribute("data-market-popover-toggle") ?? "",

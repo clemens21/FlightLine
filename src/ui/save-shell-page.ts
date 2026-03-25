@@ -1419,6 +1419,30 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-hire-market-list th {
       font-size: 12px;
     }
+    .aircraft-market-table th::before,
+    .aircraft-market-table td::before,
+    .contracts-board-table th::before,
+    .contracts-board-table td::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      width: 1px;
+      pointer-events: none;
+    }
+    .aircraft-market-table th:not(:first-child)::before,
+    .contracts-board-table th:not(:first-child)::before {
+      top: 10px;
+      bottom: 8px;
+      background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--accent) 34%, var(--line)) 18%, color-mix(in srgb, var(--accent) 34%, var(--line)) 82%, transparent 100%);
+      opacity: 0.85;
+    }
+    .aircraft-market-table td:not(:first-child)::before,
+    .contracts-board-table td:not(:first-child)::before {
+      top: 9px;
+      bottom: 9px;
+      background: linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--text) 14%, var(--line)) 22%, color-mix(in srgb, var(--text) 14%, var(--line)) 78%, transparent 100%);
+      opacity: 0.45;
+    }
     .table-header-column {
       position: relative;
       overflow: visible;
@@ -1426,12 +1450,15 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .table-header-control {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
-      gap: 8px;
+      justify-content: stretch;
+      gap: 10px;
       min-width: 0;
       min-height: 30px;
       padding: 2px 0;
+      position: relative;
+      isolation: isolate;
     }
     .table-header-label {
       display: inline-flex;
@@ -1445,14 +1472,41 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      width: 100%;
+      justify-content: flex-start;
+      text-align: left;
     }
     .table-header-control .table-sort {
+      appearance: none;
+      border: 0;
+      border-radius: 0;
+      margin: 0;
+      background: transparent;
+      color: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0;
+      font: inherit;
       min-width: 0;
-      justify-content: flex-start;
       font-size: 13px;
       font-weight: 700;
       line-height: 1.1;
       letter-spacing: 0.01em;
+      white-space: nowrap;
+      box-shadow: none;
+      justify-content: flex-start;
+      text-align: left;
+      color: var(--text);
+      width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1 1 auto;
+    }
+    .table-header-control .table-sort:hover,
+    .table-header-control .table-sort:focus-visible {
+      color: color-mix(in srgb, var(--accent) 72%, var(--text));
+      outline: none;
     }
     .table-header-actions {
       display: inline-flex;
@@ -1493,6 +1547,33 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       pointer-events: none;
     }
     .table-header-icon-button svg * {
+      pointer-events: none;
+    }
+    .table-header-column[aria-sort="ascending"] .table-sort,
+    .table-header-column[aria-sort="descending"] .table-sort {
+      color: var(--accent);
+    }
+    .table-header-column[aria-sort="ascending"] .table-sort::after,
+    .table-header-column[aria-sort="descending"] .table-sort::after {
+      font-size: 11px;
+      line-height: 1;
+      opacity: 0.9;
+    }
+    .table-header-column[aria-sort="ascending"] .table-sort::after {
+      content: "\\2191";
+    }
+    .table-header-column[aria-sort="descending"] .table-sort::after {
+      content: "\\2193";
+    }
+    .table-header-column.is-sorted::after {
+      content: "";
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      bottom: 0;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--accent) 72%, #fff) 18%, color-mix(in srgb, var(--accent) 72%, #fff) 82%, transparent 100%);
       pointer-events: none;
     }
     .table-header-popover {

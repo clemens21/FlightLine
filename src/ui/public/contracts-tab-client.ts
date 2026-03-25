@@ -1244,10 +1244,10 @@ function renderOffersTable(
             filterLabel: "Payload filter",
             popoverBody: renderContractsPayloadPopover(state),
           })}
-          <th>Aircraft</th>
-          <th class="sortable">${renderSortButton("distanceNm", "Distance", state)}</th>
-          <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
-          <th>Due</th>
+          ${renderContractsStaticHeaderCell("Aircraft")}
+          ${renderContractsSortHeaderCell("distanceNm", "Distance", state)}
+          ${renderContractsSortHeaderCell("hoursRemaining", "Hours Left", state)}
+          ${renderContractsStaticHeaderCell("Due")}
           ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
             filterLabel: "Payout filter",
             popoverSide: "end",
@@ -1289,15 +1289,15 @@ function renderCompanyContractsTable(
             searchLabel: "Route search",
             popoverBody: renderContractsRoutePopover(state, selectedRoute),
           })}
-          <th>State</th>
+          ${renderContractsStaticHeaderCell("State")}
           ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
             filterLabel: "Payload filter",
             popoverBody: renderContractsPayloadPopover(state),
           })}
-          <th>Aircraft</th>
-          <th class="sortable">${renderSortButton("distanceNm", "Distance", state)}</th>
-          <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
-          <th>Due</th>
+          ${renderContractsStaticHeaderCell("Aircraft")}
+          ${renderContractsSortHeaderCell("distanceNm", "Distance", state)}
+          ${renderContractsSortHeaderCell("hoursRemaining", "Hours Left", state)}
+          ${renderContractsStaticHeaderCell("Due")}
           ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
             filterLabel: "Payout filter",
             popoverSide: "end",
@@ -1793,8 +1793,7 @@ function togglePlannerReviewSelection(state: ContractsUiState, routePlanItemId: 
 
 function renderSortButton(field: SortField, label: string, state: ContractsUiState): string {
   const isCurrent = state.sortField === field;
-  const directionLabel = isCurrent ? (state.sortDirection === "asc" ? "ASC" : "DESC") : "SORT";
-  return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-sort-field="${field}"><span>${escapeHtml(label)}</span><span class="table-sort-direction">${directionLabel}</span></button>`;
+  return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-sort-field="${field}"><span>${escapeHtml(label)}</span></button>`;
 }
 
 function renderContractsHeaderIcon(kind: "search" | "filter"): string {
@@ -1824,7 +1823,19 @@ function renderContractsBoardHeaderCell(
   const filterButton = options.filterLabel
     ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.filterLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("filter")}</button>`
     : "";
-  return `<th class="table-header-column"><div class="table-header-control"><div class="table-header-actions">${searchButton}${filterButton}</div><span class="table-header-label">${escapeHtml(label)}</span></div><div class="table-header-popover" data-contracts-board-popover="${escapeHtml(key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button compact" data-contracts-board-clear="${escapeHtml(key)}">Clear</button></div><div class="table-header-popover-body">${options.popoverBody}</div></div></th>`;
+  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions">${searchButton}${filterButton}</span></div><div class="table-header-popover" data-contracts-board-popover="${escapeHtml(key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button compact" data-contracts-board-clear="${escapeHtml(key)}">Clear</button></div><div class="table-header-popover-body">${options.popoverBody}</div></div></th>`;
+}
+
+function renderContractsSortHeaderCell(field: SortField, label: string, state: ContractsUiState): string {
+  const isCurrent = state.sortField === field;
+  const ariaSort = isCurrent
+    ? state.sortDirection === "asc" ? "ascending" : "descending"
+    : "none";
+  return `<th class="sortable table-header-column${isCurrent ? " is-sorted" : ""}" aria-sort="${ariaSort}"><div class="table-header-control">${renderSortButton(field, label, state)}<span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+}
+
+function renderContractsStaticHeaderCell(label: string): string {
+  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
 }
 
 function renderContractsRoutePopover(state: ContractsUiState, selectedRoute: SelectedRoute | null): string {
