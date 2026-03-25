@@ -1222,9 +1222,13 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 8px;
       min-width: 0;
     }
-    .staffing-hire-sort-button {
+    .staffing-hire-sort-button,
+    body[data-theme="dark"] .staffing-hire-sort-button,
+    body[data-theme="forest"] .staffing-hire-sort-button {
       appearance: none;
       border: 0;
+      border-radius: 0;
+      margin: 0;
       background: transparent;
       color: inherit;
       display: inline-flex;
@@ -1236,6 +1240,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       cursor: pointer;
       min-width: 0;
       white-space: nowrap;
+      box-shadow: none;
+      justify-content: flex-start;
+      text-align: left;
     }
     .staffing-hire-column[aria-sort="ascending"] .staffing-hire-sort-button,
     .staffing-hire-column[aria-sort="descending"] .staffing-hire-sort-button {
@@ -1258,7 +1265,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 4px;
       flex: 0 0 auto;
     }
-    .staffing-hire-icon-button {
+    .staffing-hire-icon-button,
+    body[data-theme="dark"] .staffing-hire-icon-button,
+    body[data-theme="forest"] .staffing-hire-icon-button {
       appearance: none;
       border: 0;
       background: var(--accent-soft);
