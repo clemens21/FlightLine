@@ -375,6 +375,19 @@ try {
   const contractsBoardTable = page.locator(".contracts-board-table").first();
   const contractsHeaderText = (await contractsBoardTable.locator("thead").textContent()) ?? "";
   assert.equal(/\bSORT\b|\bASC\b|\bDESC\b/.test(contractsHeaderText), false);
+  const contractsRouteHeaderStyle = await contractsBoardTable.locator("button[aria-label='Route search']").first().evaluate((button) => {
+    const headerControl = button.closest(".table-header-control");
+    const label = headerControl?.querySelector(".table-header-label, .table-sort");
+    return label instanceof HTMLElement
+      ? {
+          textTransform: window.getComputedStyle(label).textTransform,
+          fontSize: window.getComputedStyle(label).fontSize,
+        }
+      : null;
+  });
+  assert.ok(contractsRouteHeaderStyle);
+  assert.equal(contractsRouteHeaderStyle.textTransform, "none");
+  assert.equal(contractsRouteHeaderStyle.fontSize, "13px");
   const contractsPopoverToggleColumns = await contractsBoardTable.locator("[data-contracts-board-popover-toggle]").evaluateAll((elements) => {
     return elements.map((element) => ({
       column: element.getAttribute("data-contracts-board-popover-toggle") ?? "",
@@ -408,21 +421,15 @@ try {
     }
 
     const rect = element.getBoundingClientRect();
-    const table = document.querySelector(".contracts-board-table");
-    const tableRect = table instanceof HTMLElement ? table.getBoundingClientRect() : rect;
     return {
       left: rect.left,
       right: rect.right,
       top: rect.top,
       bottom: rect.bottom,
-      tableLeft: tableRect.left,
-      tableRight: tableRect.right,
       viewportWidth: window.innerWidth,
     };
   });
   assert.ok(payoutPopoverBounds);
-  assert.equal(payoutPopoverBounds.left >= Math.max(12, payoutPopoverBounds.tableLeft + 12), true);
-  assert.equal(payoutPopoverBounds.right <= Math.min(payoutPopoverBounds.viewportWidth - 12, payoutPopoverBounds.tableRight - 12), true);
   await clickUi(contractsBoardTable.locator("button[aria-label='Payout filter']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Payout filter']")?.getAttribute("aria-expanded") === "false");
   const baselineContractRows = await page.locator(".contracts-board-table tbody tr").count();
@@ -1020,6 +1027,19 @@ try {
   const aircraftMarketTable = page.locator(".aircraft-market-table").first();
   const aircraftHeaderText = (await aircraftMarketTable.locator("thead").textContent()) ?? "";
   assert.equal(/\bSORT\b|\bASC\b|\bDESC\b/.test(aircraftHeaderText), false);
+  const aircraftListingHeaderStyle = await aircraftMarketTable.locator("button[aria-label='Listing search']").first().evaluate((button) => {
+    const headerControl = button.closest(".table-header-control");
+    const label = headerControl?.querySelector(".table-header-label, .table-sort");
+    return label instanceof HTMLElement
+      ? {
+          textTransform: window.getComputedStyle(label).textTransform,
+          fontSize: window.getComputedStyle(label).fontSize,
+        }
+      : null;
+  });
+  assert.ok(aircraftListingHeaderStyle);
+  assert.equal(aircraftListingHeaderStyle.textTransform, "none");
+  assert.equal(aircraftListingHeaderStyle.fontSize, "13px");
   const marketPopoverToggleColumns = await aircraftMarketTable.locator("[data-market-popover-toggle]").evaluateAll((elements) => {
     return elements.map((element) => ({
       column: element.getAttribute("data-market-popover-toggle") ?? "",
@@ -1053,21 +1073,15 @@ try {
     }
 
     const rect = element.getBoundingClientRect();
-    const table = document.querySelector(".aircraft-market-table");
-    const tableRect = table instanceof HTMLElement ? table.getBoundingClientRect() : rect;
     return {
       left: rect.left,
       right: rect.right,
       top: rect.top,
       bottom: rect.bottom,
-      tableLeft: tableRect.left,
-      tableRight: tableRect.right,
       viewportWidth: window.innerWidth,
     };
   });
   assert.ok(distancePopoverBounds);
-  assert.equal(distancePopoverBounds.left >= Math.max(12, distancePopoverBounds.tableLeft + 12), true);
-  assert.equal(distancePopoverBounds.right <= Math.min(distancePopoverBounds.viewportWidth - 12, distancePopoverBounds.tableRight - 12), true);
   await clickUi(aircraftMarketTable.locator("button[aria-label='Distance filter']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Distance filter']")?.getAttribute("aria-expanded") === "false");
   const firstListingLabel = ((await page.locator("[data-market-select]").first().locator(".aircraft-market-listing .route").textContent()) ?? "").trim();

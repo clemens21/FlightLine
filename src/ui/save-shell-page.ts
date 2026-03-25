@@ -1447,6 +1447,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       position: relative;
       overflow: visible;
       vertical-align: top;
+      text-transform: none;
+      letter-spacing: 0.01em;
     }
     .table-header-control {
       display: grid;
@@ -1459,6 +1461,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       padding: 2px 0;
       position: relative;
       isolation: isolate;
+      text-transform: none;
+      letter-spacing: 0.01em;
     }
     .table-header-label {
       display: inline-flex;
@@ -1468,6 +1472,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       line-height: 1.1;
       font-weight: 700;
       letter-spacing: 0.01em;
+      text-transform: none;
       color: var(--text);
       white-space: nowrap;
       overflow: hidden;
@@ -1493,6 +1498,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       font-weight: 700;
       line-height: 1.1;
       letter-spacing: 0.01em;
+      text-transform: none;
       white-space: nowrap;
       box-shadow: none;
       justify-content: flex-start;
@@ -1590,6 +1596,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-radius: 14px;
       background: var(--panel-strong);
       box-shadow: var(--shadow);
+      transform: translateX(var(--table-header-popover-nudge, 0px));
     }
     .table-header-popover[data-table-header-popover-side="end"] {
       left: auto;
@@ -2096,7 +2103,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-radius: 18px;
       background: var(--panel-strong);
     }
-    .contracts-board-table { min-width: 100%; }
+    .contracts-board-table { min-width: 1360px; }
     .contracts-board-table th,
     .contracts-board-table td {
       position: relative;
@@ -2557,7 +2564,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: var(--panel-strong);
     }
     .aircraft-market-table {
-      min-width: 100%;
+      min-width: 1380px;
     }
     .aircraft-market-table th,
     .aircraft-market-table td {

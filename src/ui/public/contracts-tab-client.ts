@@ -1150,6 +1150,44 @@ export function mountContractsTab(
 
     renderVisibleMap(root, state, selectedRoute);
     restoreFocusState(root, focusState);
+    positionActiveBoardPopover();
+  }
+
+  function positionActiveBoardPopover(): void {
+    if (activeBoardPopover === null) {
+      return;
+    }
+
+    const popover = root.querySelector<HTMLElement>(`[data-contracts-board-popover="${activeBoardPopover}"]`);
+    const boardRegion = root.querySelector<HTMLElement>(".contracts-board-wrap");
+    if (!popover || popover.hidden || !boardRegion) {
+      return;
+    }
+
+    popover.dataset.tableHeaderPopoverSide = "start";
+    popover.style.removeProperty("--table-header-popover-nudge");
+
+    const viewportPadding = 12;
+    const boardRect = boardRegion.getBoundingClientRect();
+    const allowedLeft = Math.max(viewportPadding, boardRect.left + viewportPadding);
+    const allowedRight = Math.min(window.innerWidth - viewportPadding, boardRect.right - viewportPadding);
+
+    let popoverRect = popover.getBoundingClientRect();
+    if (popoverRect.right > allowedRight) {
+      popover.dataset.tableHeaderPopoverSide = "end";
+      popoverRect = popover.getBoundingClientRect();
+    }
+
+    let nudge = 0;
+    if (popoverRect.right > allowedRight) {
+      nudge -= popoverRect.right - allowedRight;
+    }
+    if (popoverRect.left < allowedLeft) {
+      nudge += allowedLeft - popoverRect.left;
+    }
+    if (nudge !== 0) {
+      popover.style.setProperty("--table-header-popover-nudge", `${Math.round(nudge)}px`);
+    }
   }
 }
 

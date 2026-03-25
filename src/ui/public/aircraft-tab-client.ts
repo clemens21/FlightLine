@@ -138,6 +138,44 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     if (marketList) {
       marketList.scrollTop = marketListScrollTop;
     }
+    positionActiveMarketPopover();
+  }
+
+  function positionActiveMarketPopover(): void {
+    if (activeMarketPopover === null) {
+      return;
+    }
+
+    const popover = host.querySelector<HTMLElement>(`[data-market-popover="${activeMarketPopover}"]`);
+    const marketRegion = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
+    if (!popover || popover.hidden || !marketRegion) {
+      return;
+    }
+
+    popover.dataset.tableHeaderPopoverSide = "start";
+    popover.style.removeProperty("--table-header-popover-nudge");
+
+    const viewportPadding = 12;
+    const marketRect = marketRegion.getBoundingClientRect();
+    const allowedLeft = Math.max(viewportPadding, marketRect.left + viewportPadding);
+    const allowedRight = Math.min(window.innerWidth - viewportPadding, marketRect.right - viewportPadding);
+
+    let popoverRect = popover.getBoundingClientRect();
+    if (popoverRect.right > allowedRight) {
+      popover.dataset.tableHeaderPopoverSide = "end";
+      popoverRect = popover.getBoundingClientRect();
+    }
+
+    let nudge = 0;
+    if (popoverRect.right > allowedRight) {
+      nudge -= popoverRect.right - allowedRight;
+    }
+    if (popoverRect.left < allowedLeft) {
+      nudge += allowedLeft - popoverRect.left;
+    }
+    if (nudge !== 0) {
+      popover.style.setProperty("--table-header-popover-nudge", `${Math.round(nudge)}px`);
+    }
   }
 
   function setMarketOverlayVisible(isVisible: boolean): void {
