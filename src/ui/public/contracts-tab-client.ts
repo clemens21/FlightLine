@@ -81,6 +81,8 @@ interface PlannerChainSummary {
   continuityIssues: string[];
 }
 
+type ContractsBoardPopoverKey = "route" | "fit" | "payload" | "payout";
+
 interface ContractsUiState {
   payload: ContractsViewPayload;
   filters: FilterState;
@@ -244,13 +246,14 @@ export function mountContractsTab(
   let lastX = 0;
   let lastY = 0;
   let textFilterDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+  let activeBoardPopover: ContractsBoardPopoverKey | null = null;
 
   focusSelectedRoute(state);
   render();
 
   // Click actions cover board navigation, planner mutations, acceptance or cancellation, and selection changes.
   const handleClick = (event: Event) => {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     if (!target) {
       return;
     }
@@ -258,11 +261,12 @@ export function mountContractsTab(
     const workspaceTabButton = target.closest<HTMLElement>("[data-workspace-tab]");
     if (workspaceTabButton) {
       const nextTab = workspaceTabButton.dataset.workspaceTab as ContractsWorkspaceTab | undefined;
-      if (nextTab) {
-        state.workspaceTab = nextTab;
-        if (nextTab === "planning") {
-          state.acceptanceNextStepTab = null;
-          focusPlannerChain(state);
+        if (nextTab) {
+          state.workspaceTab = nextTab;
+          activeBoardPopover = null;
+          if (nextTab === "planning") {
+            state.acceptanceNextStepTab = null;
+            focusPlannerChain(state);
         } else {
           focusSelectedRoute(state);
         }
@@ -274,11 +278,12 @@ export function mountContractsTab(
     const boardTabButton = target.closest<HTMLElement>("[data-board-tab]");
     if (boardTabButton) {
       const nextTab = boardTabButton.dataset.boardTab as ContractsBoardTab | undefined;
-      if (nextTab) {
-        state.boardTab = nextTab;
-        if (nextTab !== "available") {
-          state.acceptanceNextStepTab = null;
-          state.acceptanceNextStepOfferId = null;
+        if (nextTab) {
+          state.boardTab = nextTab;
+          activeBoardPopover = null;
+          if (nextTab !== "available") {
+            state.acceptanceNextStepTab = null;
+            state.acceptanceNextStepOfferId = null;
           state.acceptanceNextStepCompanyContractId = null;
         }
         ensureActiveTabSelection(state);
@@ -291,13 +296,76 @@ export function mountContractsTab(
     const boardScopeButton = target.closest<HTMLElement>("[data-board-scope]");
     if (boardScopeButton) {
       const nextScope = boardScopeButton.dataset.boardScope as ContractsBoardScope | undefined;
-      if (nextScope) {
-        state.boardScope = nextScope;
-        if (state.boardTab !== "active") {
-          state.boardTab = "active";
-        }
+        if (nextScope) {
+          state.boardScope = nextScope;
+          activeBoardPopover = null;
+          if (state.boardTab !== "active") {
+            state.boardTab = "active";
+          }
         ensureActiveTabSelection(state);
         focusSelectedRoute(state);
+        render();
+      }
+      return;
+    }
+
+    const boardPopoverClearButton = target.closest<HTMLElement>("[data-contracts-board-clear]");
+    if (boardPopoverClearButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      switch (normalizeContractsBoardPopoverKey(boardPopoverClearButton.dataset.contractsBoardClear)) {
+        case "route":
+          state.filters = {
+            ...state.filters,
+            searchText: "",
+            originCode: "",
+            destinationCode: "",
+          };
+          state.appliedTextFilters = {
+            ...state.appliedTextFilters,
+            searchText: "",
+            originCode: "",
+            destinationCode: "",
+          };
+          break;
+        case "fit":
+          state.filters = {
+            ...state.filters,
+            fitBucket: "all",
+          };
+          break;
+        case "payload":
+          state.filters = {
+            ...state.filters,
+            volumeType: "all",
+            passengerCountMin: "",
+            passengerCountMax: "",
+            cargoWeightMin: "",
+            cargoWeightMax: "",
+          };
+          break;
+        case "payout":
+          state.filters = {
+            ...state.filters,
+            payoutMin: "",
+            payoutMax: "",
+          };
+          break;
+        default:
+          break;
+      }
+      ensureActiveTabSelection(state);
+      render();
+      return;
+    }
+
+    const boardPopoverToggleButton = target.closest<HTMLElement>("[data-contracts-board-popover-toggle]");
+    if (boardPopoverToggleButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const popoverKey = normalizeContractsBoardPopoverKey(boardPopoverToggleButton.dataset.contractsBoardPopoverToggle);
+      if (popoverKey) {
+        activeBoardPopover = activeBoardPopover === popoverKey ? null : popoverKey;
         render();
       }
       return;
@@ -307,6 +375,7 @@ export function mountContractsTab(
     if (sortButton) {
       const nextField = sortButton.dataset.sortField as SortField | undefined;
       if (nextField) {
+        activeBoardPopover = null;
         if (state.sortField === nextField) {
           state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
         } else {
@@ -521,7 +590,14 @@ export function mountContractsTab(
         ...state.appliedTextFilters,
         originCode: destinationCode,
       };
+      activeBoardPopover = null;
       ensureActiveTabSelection(state);
+      render();
+      return;
+    }
+
+    if (activeBoardPopover !== null && !target.closest("[data-contracts-board-popover]") && !target.closest("[data-contracts-board-popover-toggle]")) {
+      activeBoardPopover = null;
       render();
       return;
     }
@@ -603,6 +679,24 @@ export function mountContractsTab(
     render(captureFocusState(root));
   };
 
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || activeBoardPopover === null) {
+      return;
+    }
+    event.preventDefault();
+    activeBoardPopover = null;
+    render(captureFocusState(root));
+  };
+
+  const handleDocumentClick = (event: MouseEvent) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || activeBoardPopover === null || root.contains(target)) {
+      return;
+    }
+    activeBoardPopover = null;
+    render();
+  };
+
   const handleWheel = (event: WheelEvent) => {
     const svg = resolveContractsMapSvg(event.target);
     if (!svg) {
@@ -665,6 +759,8 @@ export function mountContractsTab(
   root.addEventListener("click", handleClick);
   root.addEventListener("input", handleFilterChange);
   root.addEventListener("change", handleFilterChange);
+  root.addEventListener("keydown", handleKeydown);
+  document.addEventListener("click", handleDocumentClick, true);
   root.addEventListener("wheel", handleWheel, { passive: false });
   root.addEventListener("pointerdown", handlePointerDown);
   root.addEventListener("pointermove", handlePointerMove);
@@ -716,6 +812,8 @@ export function mountContractsTab(
       root.removeEventListener("click", handleClick);
       root.removeEventListener("input", handleFilterChange);
       root.removeEventListener("change", handleFilterChange);
+      root.removeEventListener("keydown", handleKeydown);
+      document.removeEventListener("click", handleDocumentClick, true);
       root.removeEventListener("wheel", handleWheel);
       root.removeEventListener("pointerdown", handlePointerDown);
       root.removeEventListener("pointermove", handlePointerMove);
@@ -978,68 +1076,14 @@ export function mountContractsTab(
               : ""}
           </div>
           <div class="panel-body contracts-main-body">
-            <section class="contracts-filters">
-              <label>Search
-                <input name="searchText" value="${escapeHtml(state.filters.searchText)}" placeholder="Airport, city, or route code" />
-              </label>
-              <label>Departure airport
-                <input name="originCode" value="${escapeHtml(state.filters.originCode)}" placeholder="Type code or airport" />
-              </label>
-              ${selectedRoute
-                ? `<div class="filter-shortcut"><span class="muted">Selected destination: ${escapeHtml(selectedRoute.route.destination.code)}</span><button type="button" class="button-secondary" data-use-selected-destination>Use as departure filter</button></div>`
-                : `<div class="filter-shortcut"><span class="muted">Select a contract row to use its destination as the next departure filter.</span></div>`}
-              <label>Destination airport
-                <input name="destinationCode" value="${escapeHtml(state.filters.destinationCode)}" placeholder="Type code or airport" />
-              </label>
-              <label>Payload Type
-                <select name="volumeType">
-                  <option value="all">All</option>
-                  <option value="passenger" ${state.filters.volumeType === "passenger" ? "selected" : ""}>Passenger</option>
-                  <option value="cargo" ${state.filters.volumeType === "cargo" ? "selected" : ""}>Cargo</option>
-                </select>
-              </label>
-              ${state.boardTab === "available"
-                ? `<label>Fit
-                  <select name="fitBucket">
-                    <option value="all">All</option>
-                    <option value="flyable_now" ${state.filters.fitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option>
-                    <option value="flyable_with_reposition" ${state.filters.fitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option>
-                    <option value="stretch_growth" ${state.filters.fitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option>
-                    <option value="blocked_now" ${state.filters.fitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option>
-                  </select>
-                </label>`
-                : `<div class="contracts-filter-placeholder"><div class="eyebrow">View</div><strong>${escapeHtml(renderTabDescription(state.boardTab))}</strong></div>`}
-              <div class="range-field">
-                <span>Payout</span>
-                <div class="range-inputs">
-                  <input name="payoutMin" type="number" min="0" value="${escapeHtml(state.filters.payoutMin)}" placeholder="Min" />
-                  <input name="payoutMax" type="number" min="0" value="${escapeHtml(state.filters.payoutMax)}" placeholder="Max" />
-                </div>
-              </div>
-              <div class="range-field">
-                <span>Passengers</span>
-                <div class="range-inputs">
-                  <input name="passengerCountMin" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMin)}" placeholder="Min" />
-                  <input name="passengerCountMax" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMax)}" placeholder="Max" />
-                </div>
-              </div>
-              <div class="range-field">
-                <span>Cargo (lb)</span>
-                <div class="range-inputs">
-                  <input name="cargoWeightMin" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMin)}" placeholder="Min" />
-                  <input name="cargoWeightMax" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMax)}" placeholder="Max" />
-                </div>
-              </div>
-            </section>
-
             ${state.acceptanceNextStepTab === "planning" && state.message?.tone === "notice"
               ? renderAcceptanceCallout(state)
               : ""}
 
             <div class="contracts-board-wrap">
               ${state.boardTab === "available"
-                ? renderOffersTable(sortedOffers, state.selectedOfferId, state)
-                : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state)}
+                ? renderOffersTable(sortedOffers, state.selectedOfferId, state, selectedRoute, activeBoardPopover)
+                : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state, selectedRoute, activeBoardPopover)}
             </div>
           </div>
         </section>
@@ -1173,7 +1217,13 @@ function renderWorkspaceTab(tabId: ContractsWorkspaceTab, label: string, activeT
   return `<button type="button" class="contracts-workspace-tab ${activeTab === tabId ? "current" : ""}" data-workspace-tab="${tabId}" role="tab" aria-selected="${activeTab === tabId ? "true" : "false"}"><span>${escapeHtml(label)}</span></button>`;
 }
 
-function renderOffersTable(offers: ContractsViewOffer[], selectedOfferId: string | null, state: ContractsUiState): string {
+function renderOffersTable(
+  offers: ContractsViewOffer[],
+  selectedOfferId: string | null,
+  state: ContractsUiState,
+  selectedRoute: SelectedRoute | null,
+  activePopover: ContractsBoardPopoverKey | null,
+): string {
   if (offers.length === 0) {
     return `<div class="empty-state">No available contracts match the current filters.</div>`;
   }
@@ -1182,14 +1232,27 @@ function renderOffersTable(offers: ContractsViewOffer[], selectedOfferId: string
     <table class="contracts-board-table">
       <thead>
         <tr>
-          <th>Route</th>
-          <th>Fit</th>
-          <th>Payload</th>
+          ${renderContractsBoardHeaderCell("route", "Route", state, activePopover, {
+            searchLabel: "Route search",
+            popoverBody: renderContractsRoutePopover(state, selectedRoute),
+          })}
+          ${renderContractsBoardHeaderCell("fit", "Fit", state, activePopover, {
+            filterLabel: "Fit filter",
+            popoverBody: renderContractsFitPopover(state),
+          })}
+          ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
+            filterLabel: "Payload filter",
+            popoverBody: renderContractsPayloadPopover(state),
+          })}
           <th>Aircraft</th>
           <th class="sortable">${renderSortButton("distanceNm", "Distance", state)}</th>
           <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
           <th>Due</th>
-          <th>Payout</th>
+          ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
+            filterLabel: "Payout filter",
+            popoverSide: "end",
+            popoverBody: renderContractsPayoutPopover(state),
+          })}
           <th></th>
         </tr>
       </thead>
@@ -1206,6 +1269,8 @@ function renderCompanyContractsTable(
   currentTimeUtc: string,
   boardTab: ContractsBoardTab,
   state: ContractsUiState,
+  selectedRoute: SelectedRoute | null,
+  activePopover: ContractsBoardPopoverKey | null,
 ): string {
   if (contracts.length === 0) {
     const emptyLabel = boardTab === "active"
@@ -1220,14 +1285,24 @@ function renderCompanyContractsTable(
     <table class="contracts-board-table">
       <thead>
         <tr>
-          <th>Route</th>
+          ${renderContractsBoardHeaderCell("route", "Route", state, activePopover, {
+            searchLabel: "Route search",
+            popoverBody: renderContractsRoutePopover(state, selectedRoute),
+          })}
           <th>State</th>
-          <th>Payload</th>
+          ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
+            filterLabel: "Payload filter",
+            popoverBody: renderContractsPayloadPopover(state),
+          })}
           <th>Aircraft</th>
           <th class="sortable">${renderSortButton("distanceNm", "Distance", state)}</th>
           <th class="sortable">${renderSortButton("hoursRemaining", "Hours Left", state)}</th>
           <th>Due</th>
-          <th>Payout</th>
+          ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
+            filterLabel: "Payout filter",
+            popoverSide: "end",
+            popoverBody: renderContractsPayoutPopover(state),
+          })}
           <th></th>
         </tr>
       </thead>
@@ -1720,6 +1795,64 @@ function renderSortButton(field: SortField, label: string, state: ContractsUiSta
   const isCurrent = state.sortField === field;
   const directionLabel = isCurrent ? (state.sortDirection === "asc" ? "ASC" : "DESC") : "SORT";
   return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-sort-field="${field}"><span>${escapeHtml(label)}</span><span class="table-sort-direction">${directionLabel}</span></button>`;
+}
+
+function renderContractsHeaderIcon(kind: "search" | "filter"): string {
+  if (kind === "search") {
+    return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1 0 15a7.5 7.5 0 0 1 0-15Zm0 2a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11Zm8.2 12.8 2.8 2.8-1.4 1.4-2.8-2.8 1.4-1.4Z"/></svg>`;
+  }
+
+  return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 6.56l-5.2 5.58v6.11a1.5 1.5 0 0 1-2.44 1.17l-2.4-1.95a1.5 1.5 0 0 1-.56-1.17v-4.16L4.34 6.56A1.5 1.5 0 0 1 4 5.5Z"/></svg>`;
+}
+
+function renderContractsBoardHeaderCell(
+  key: ContractsBoardPopoverKey,
+  label: string,
+  state: ContractsUiState,
+  activePopover: ContractsBoardPopoverKey | null,
+  options: {
+    searchLabel?: string;
+    filterLabel?: string;
+    popoverBody: string;
+    popoverSide?: "start" | "end";
+  },
+): string {
+  const popoverOpen = activePopover === key;
+  const searchButton = options.searchLabel
+    ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.searchLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("search")}</button>`
+    : "";
+  const filterButton = options.filterLabel
+    ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.filterLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("filter")}</button>`
+    : "";
+  return `<th class="table-header-column"><div class="table-header-control"><div class="table-header-actions">${searchButton}${filterButton}</div><span class="table-header-label">${escapeHtml(label)}</span></div><div class="table-header-popover" data-contracts-board-popover="${escapeHtml(key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button compact" data-contracts-board-clear="${escapeHtml(key)}">Clear</button></div><div class="table-header-popover-body">${options.popoverBody}</div></div></th>`;
+}
+
+function renderContractsRoutePopover(state: ContractsUiState, selectedRoute: SelectedRoute | null): string {
+  return `<label class="table-header-popover-field"><span>Search</span><input name="searchText" value="${escapeHtml(state.filters.searchText)}" placeholder="Airport, city, or route code" /></label><label class="table-header-popover-field"><span>Departure airport</span><input name="originCode" value="${escapeHtml(state.filters.originCode)}" placeholder="Type code or airport" /></label><label class="table-header-popover-field"><span>Destination airport</span><input name="destinationCode" value="${escapeHtml(state.filters.destinationCode)}" placeholder="Type code or airport" /></label>${selectedRoute ? `<div class="table-header-shortcut"><span class="muted">Selected destination: ${escapeHtml(selectedRoute.route.destination.code)}</span><button type="button" class="button-secondary" data-use-selected-destination>Use as departure filter</button></div>` : `<div class="table-header-shortcut"><span class="muted">Select a contract row to use its destination as the next departure filter.</span></div>`}`;
+}
+
+function renderContractsFitPopover(state: ContractsUiState): string {
+  return `<label class="table-header-popover-field"><span>Fit</span><select name="fitBucket"><option value="all">All</option><option value="flyable_now" ${state.filters.fitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option><option value="flyable_with_reposition" ${state.filters.fitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option><option value="stretch_growth" ${state.filters.fitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option><option value="blocked_now" ${state.filters.fitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option></select></label>`;
+}
+
+function renderContractsPayloadPopover(state: ContractsUiState): string {
+  return `<label class="table-header-popover-field"><span>Payload type</span><select name="volumeType"><option value="all">All</option><option value="passenger" ${state.filters.volumeType === "passenger" ? "selected" : ""}>Passenger</option><option value="cargo" ${state.filters.volumeType === "cargo" ? "selected" : ""}>Cargo</option></select></label><div class="table-header-range-field"><span>Passengers</span><div class="table-header-range-inputs"><input name="passengerCountMin" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMin)}" placeholder="Min" /><input name="passengerCountMax" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMax)}" placeholder="Max" /></div></div><div class="table-header-range-field"><span>Cargo (lb)</span><div class="table-header-range-inputs"><input name="cargoWeightMin" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMin)}" placeholder="Min" /><input name="cargoWeightMax" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMax)}" placeholder="Max" /></div></div>`;
+}
+
+function renderContractsPayoutPopover(state: ContractsUiState): string {
+  return `<div class="table-header-range-field"><span>Payout</span><div class="table-header-range-inputs"><input name="payoutMin" type="number" min="0" value="${escapeHtml(state.filters.payoutMin)}" placeholder="Min" /><input name="payoutMax" type="number" min="0" value="${escapeHtml(state.filters.payoutMax)}" placeholder="Max" /></div></div>`;
+}
+
+function normalizeContractsBoardPopoverKey(value: string | undefined): ContractsBoardPopoverKey | null {
+  switch (value) {
+    case "route":
+    case "fit":
+    case "payload":
+    case "payout":
+      return value;
+    default:
+      return null;
+  }
 }
 
 function sortOffers(offers: ContractsViewOffer[], state: ContractsUiState): ContractsViewOffer[] {

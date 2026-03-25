@@ -1362,6 +1362,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       width: 12px;
       height: 12px;
       fill: currentColor;
+      pointer-events: none;
+    }
+    .staffing-hire-icon-button svg * {
+      pointer-events: none;
     }
     .staffing-hire-popover {
       position: absolute;
@@ -1414,6 +1418,139 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staffing-hire-market-list th {
       font-size: 12px;
+    }
+    .table-header-column {
+      position: relative;
+      overflow: visible;
+      vertical-align: top;
+    }
+    .table-header-control {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      min-height: 30px;
+      padding: 2px 0;
+    }
+    .table-header-label {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      font-size: 13px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .table-header-control .table-sort {
+      min-width: 0;
+      justify-content: flex-start;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+    }
+    .table-header-actions {
+      display: inline-flex;
+      gap: 4px;
+      flex: 0 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+    .table-header-icon-button,
+    body[data-theme="dark"] .table-header-icon-button,
+    body[data-theme="forest"] .table-header-icon-button {
+      appearance: none;
+      border: 0;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 999px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      z-index: 2;
+      flex: 0 0 auto;
+    }
+    .table-header-icon-button:hover,
+    .table-header-icon-button:focus-visible {
+      background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+      outline: none;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
+    }
+    .table-header-icon-button svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+      pointer-events: none;
+    }
+    .table-header-icon-button svg * {
+      pointer-events: none;
+    }
+    .table-header-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      z-index: 6;
+      width: min(320px, calc(100vw - 48px));
+      max-width: calc(100vw - 24px);
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .table-header-popover[data-table-header-popover-side="end"] {
+      left: auto;
+      right: 0;
+    }
+    .table-header-popover-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .table-header-popover-body {
+      display: grid;
+      gap: 10px;
+    }
+    .table-header-popover-field {
+      display: grid;
+      gap: 6px;
+    }
+    .table-header-popover-field input,
+    .table-header-popover-field select {
+      width: 100%;
+    }
+    .table-header-range-field {
+      display: grid;
+      gap: 6px;
+    }
+    .table-header-range-inputs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .table-header-shortcut {
+      display: grid;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
+    }
+    .table-header-shortcut .button-secondary {
+      justify-self: start;
     }
     .staffing-hire-market-list .staff-identity {
       gap: 8px;
@@ -1836,9 +1973,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       align-content: stretch;
     }
     .contracts-main-body {
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
+      display: flex;
+      flex-direction: column;
       gap: 14px;
+      min-height: 0;
       overflow: hidden;
     }
     .contracts-filters {
@@ -1878,6 +2016,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: var(--panel-strong);
     }
     .contracts-board-table { min-width: 100%; }
+    .contracts-board-table th,
+    .contracts-board-table td {
+      position: relative;
+    }
     th.sortable { white-space: nowrap; }
     .table-sort,
     body[data-theme="dark"] .table-sort {
@@ -2322,12 +2464,23 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 14px;
       overflow: hidden;
     }
+    .aircraft-market-body {
+      display: flex;
+      flex-direction: column;
+    }
     .aircraft-table-wrap {
       min-height: 0;
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 18px;
       background: var(--panel-strong);
+    }
+    .aircraft-market-table {
+      min-width: 100%;
+    }
+    .aircraft-market-table th,
+    .aircraft-market-table td {
+      position: relative;
     }
     .aircraft-toolbar {
       display: grid;

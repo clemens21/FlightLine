@@ -285,7 +285,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   }
 
   function handleClick(event: MouseEvent): void {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     const workspaceButton = target?.closest<HTMLElement>("[data-staffing-workspace-tab]");
     if (workspaceButton) {
       event.preventDefault();
@@ -383,7 +383,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   }
 
   function handleMarketControlEvent(event: Event): void {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     if (!target) {
       return;
     }
@@ -453,7 +453,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       return;
     }
 
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     const row = target?.closest<HTMLElement>("[data-staffing-row-select]");
     if (!row || !host.contains(row)) {
       return;
@@ -484,7 +484,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   }
 
   function handleDocumentClick(event: MouseEvent): void {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     if (!target) {
       return;
     }
@@ -502,7 +502,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   }
 
   function handleScroll(event: Event): void {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     const region = target?.closest<HTMLElement>("[data-staffing-scroll-region]");
     if (!region || !host.contains(region)) {
       return;

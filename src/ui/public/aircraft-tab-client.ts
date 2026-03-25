@@ -53,6 +53,8 @@ interface AircraftCompareState {
   pendingReplacement: AircraftCompareRef | null;
 }
 
+type AircraftMarketPopoverKey = "listing" | "airport" | "condition" | "distance";
+
 interface StoredAircraftCompareState {
   isOpen?: boolean;
   items?: AircraftCompareRef[];
@@ -76,6 +78,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   let marketSort = payload.marketWorkspace.defaultSort;
   let selectedOfferId = payload.marketWorkspace.defaultSelectedOfferId;
   let acquisitionReview: AcquisitionReviewState | null = null;
+  let activeMarketPopover: AircraftMarketPopoverKey | null = null;
   let marketOverlayOpen = false;
   let compareState = loadStoredCompareState(payload.saveId) ?? {
     isOpen: false,
@@ -125,7 +128,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       marketOverlayOpen = false;
       acquisitionReview = null;
     }
-    host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview, compareState);
+    host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview, compareState, activeMarketPopover);
     setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
     const fleetList = host.querySelector<HTMLElement>("[data-aircraft-scroll='fleet-list']");
     const marketList = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
@@ -154,8 +157,22 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     render();
   }
 
+  function closeMarketPopover(): void {
+    if (activeMarketPopover === null) {
+      return;
+    }
+
+    activeMarketPopover = null;
+    render();
+  }
+
+  function toggleMarketPopover(popoverKey: AircraftMarketPopoverKey): void {
+    activeMarketPopover = activeMarketPopover === popoverKey ? null : popoverKey;
+    render();
+  }
+
   function handleClick(event: MouseEvent): void {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     if (!target) {
       return;
     }
@@ -299,6 +316,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       if (workspaceTab !== "market") {
         marketOverlayOpen = false;
       }
+      activeMarketPopover = null;
       storeWorkspace(payload.saveId, workspaceTab);
       render();
       return;
@@ -318,6 +336,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       selectedOfferId = selectOfferRow.dataset.marketSelect ?? selectedOfferId;
       marketOverlayOpen = true;
       acquisitionReview = null;
+      activeMarketPopover = null;
       render();
       setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
       return;
@@ -326,6 +345,53 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     if (target.closest("[data-aircraft-market-close]")) {
       event.preventDefault();
       closeMarketOverlay();
+      return;
+    }
+
+    const marketPopoverClearButton = target.closest<HTMLElement>("[data-market-clear]");
+    if (marketPopoverClearButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      switch (normalizeAircraftMarketPopoverKey(marketPopoverClearButton.dataset.marketClear)) {
+        case "listing":
+          marketFilters = {
+            ...marketFilters,
+            searchText: "",
+          };
+          break;
+        case "airport":
+          marketFilters = {
+            ...marketFilters,
+            locationAirportText: "",
+          };
+          break;
+        case "condition":
+          marketFilters = {
+            ...marketFilters,
+            conditionBand: payload.marketWorkspace.defaultFilters.conditionBand,
+          };
+          break;
+        case "distance":
+          marketFilters = {
+            ...marketFilters,
+            maxDistanceNm: payload.marketWorkspace.defaultFilters.maxDistanceNm,
+          };
+          break;
+        default:
+          break;
+      }
+      render();
+      return;
+    }
+
+    const marketPopoverToggle = target.closest<HTMLElement>("[data-market-popover-toggle]");
+    if (marketPopoverToggle) {
+      event.preventDefault();
+      event.stopPropagation();
+      const popoverKey = normalizeAircraftMarketPopoverKey(marketPopoverToggle.dataset.marketPopoverToggle);
+      if (popoverKey) {
+        toggleMarketPopover(popoverKey);
+      }
       return;
     }
 
@@ -394,6 +460,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       if (!key) {
         return;
       }
+      activeMarketPopover = null;
       marketSort = {
         key,
         direction: nextMarketSortDirection(marketSort, key),
@@ -412,11 +479,18 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     if (target.closest("[data-market-clear-filters]")) {
       event.preventDefault();
       marketFilters = payload.marketWorkspace.defaultFilters;
+      activeMarketPopover = null;
+      render();
+      return;
+    }
+
+    if (activeMarketPopover !== null && !target.closest("[data-market-popover]") && !target.closest("[data-market-popover-toggle]")) {
+      activeMarketPopover = null;
       render();
     }
   }
 
-  function handleChange(event: Event): void {
+  function handleFieldEvent(event: Event): void {
     const target = event.target;
     if (!(target instanceof HTMLSelectElement) && !(target instanceof HTMLInputElement)) {
       return;
@@ -439,14 +513,42 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
         [marketFilterName]: target.value,
       };
       render();
+      return;
+    }
+
+    const marketFieldName = target.dataset.marketField as keyof typeof marketFilters | undefined;
+    if (marketFieldName) {
+      marketFilters = {
+        ...marketFilters,
+        [marketFieldName]: target.value,
+      };
+      render();
     }
   }
 
   function handleKeydown(event: KeyboardEvent): void {
+    if (event.key === "Escape" && activeMarketPopover !== null) {
+      event.preventDefault();
+      closeMarketPopover();
+      return;
+    }
+
     if (event.key === "Escape" && marketOverlayOpen) {
       event.preventDefault();
       closeMarketOverlay();
     }
+  }
+
+  function handleDocumentClick(event: MouseEvent): void {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target || activeMarketPopover === null) {
+      return;
+    }
+    if (host.contains(target)) {
+      return;
+    }
+    activeMarketPopover = null;
+    render();
   }
 
   function saveCompareSelectionState(): void {
@@ -564,15 +666,19 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   }
 
   host.addEventListener("click", handleClick);
-  host.addEventListener("change", handleChange);
+  host.addEventListener("input", handleFieldEvent);
+  host.addEventListener("change", handleFieldEvent);
   host.addEventListener("keydown", handleKeydown);
+  document.addEventListener("click", handleDocumentClick, true);
   render();
 
   return {
     destroy(): void {
       host.removeEventListener("click", handleClick);
-      host.removeEventListener("change", handleChange);
+      host.removeEventListener("input", handleFieldEvent);
+      host.removeEventListener("change", handleFieldEvent);
       host.removeEventListener("keydown", handleKeydown);
+      document.removeEventListener("click", handleDocumentClick, true);
     },
   };
 }
@@ -585,6 +691,7 @@ function renderAircraftTab(
   marketViewState: ReturnType<typeof applyAircraftMarketViewState>,
   reviewState: AcquisitionReviewState | null,
   compareState: AircraftCompareState,
+  activeMarketPopover: AircraftMarketPopoverKey | null = null,
 ): string {
   return `
     <section class="panel">
@@ -616,7 +723,7 @@ function renderAircraftTab(
         <div class="aircraft-workspace-shell" data-aircraft-workspace-shell>
           ${workspaceTab === "fleet"
             ? renderFleetWorkspace(payload, fleetViewState, compareState)
-            : renderMarketWorkspace(payload, marketViewState, reviewState, compareState)}
+            : renderMarketWorkspace(payload, marketViewState, reviewState, compareState, activeMarketPopover)}
           ${renderAircraftCompareOverlay(payload, compareState)}
         </div>
       </div>
@@ -680,6 +787,7 @@ function renderMarketWorkspace(
   viewState: ReturnType<typeof applyAircraftMarketViewState>,
   reviewState: AcquisitionReviewState | null,
   compareState: AircraftCompareState,
+  activePopover: AircraftMarketPopoverKey | null = null,
 ): string {
   return `
     <div class="aircraft-market-stage" data-aircraft-market-stage>
@@ -692,19 +800,8 @@ function renderMarketWorkspace(
             <span class="pill">Live market</span>
           </div>
         </div>
-        <div class="panel-body aircraft-fleet-body">
-          <div class="aircraft-toolbar market-toolbar">
-            <label>Search<input type="text" value="${escapeHtml(viewState.filters.searchText)}" data-market-filter="searchText" placeholder="Model or airport" /></label>
-            <label>Condition<select data-market-filter="conditionBand">${renderOptions(viewState.filters.conditionBand, [["all", "All conditions"], ...payload.marketWorkspace.filterOptions.conditionBands.map((value) => [value, marketConditionLabel(value)] as [string, string])])}</select></label>
-            <div class="range-field aircraft-location-range">
-              <span>Location radius</span>
-              <div class="range-inputs">
-                <input type="text" value="${escapeHtml(viewState.filters.locationAirportText)}" data-market-filter="locationAirportText" placeholder="Airport code or name" />
-                <input type="number" min="0" step="25" value="${escapeHtml(viewState.filters.maxDistanceNm)}" data-market-filter="maxDistanceNm" placeholder="Max nm" />
-              </div>
-            </div>
-          </div>
-          ${renderMarketTable(viewState, compareState)}
+        <div class="panel-body aircraft-fleet-body aircraft-market-body">
+          ${renderMarketTable(payload, viewState, compareState, activePopover)}
         </div>
       </section>
       <div class="aircraft-market-overlay" data-aircraft-market-overlay hidden>
@@ -758,8 +855,10 @@ function renderFleetTable(
 
 // Renders the aircraft market table while keeping rows simple enough for cheap full rerenders on every interaction.
 function renderMarketTable(
+  payload: AircraftTabPayload,
   viewState: ReturnType<typeof applyAircraftMarketViewState>,
   compareState: AircraftCompareState,
+  activePopover: AircraftMarketPopoverKey | null,
 ): string {
   if (viewState.visibleOffers.length === 0) {
     return `<div class="empty-state">No aircraft listings match the current market filters. <button type="button" class="button-link button-secondary" data-market-clear-filters="1">Clear filters</button></div>`;
@@ -767,15 +866,48 @@ function renderMarketTable(
 
   return `
     <div class="table-wrap aircraft-table-wrap" data-aircraft-scroll="market-list">
-      <table>
+      <table class="aircraft-market-table">
         <thead>
           <tr>
-            <th>Listing</th>
-            <th>Airport</th>
-            <th class="sortable">${renderMarketSortButton(viewState.sort, "condition", "Condition")}</th>
+            ${renderAircraftMarketHeaderCell({
+              key: "listing",
+              label: "Listing",
+              searchLabel: "Listing search",
+              searchPlaceholder: "Model, registration, airport",
+              searchValue: viewState.filters.searchText,
+              searchField: "searchText",
+              activePopover,
+            })}
+            ${renderAircraftMarketHeaderCell({
+              key: "airport",
+              label: "Airport",
+              searchLabel: "Airport search",
+              searchPlaceholder: "Airport code or name",
+              searchValue: viewState.filters.locationAirportText,
+              searchField: "locationAirportText",
+              activePopover,
+            })}
+            ${renderAircraftMarketHeaderCell({
+              key: "condition",
+              label: "Condition",
+              sort: viewState.sort,
+              sortKey: "condition",
+              filterLabel: "Condition filter",
+              activePopover,
+              popoverBody: `<label class="table-header-popover-field"><span>Condition</span><select data-market-field="conditionBand">${renderOptions(viewState.filters.conditionBand, [["all", "All conditions"], ...payload.marketWorkspace.filterOptions.conditionBands.map((value) => [value, marketConditionLabel(value)] as [string, string])])}</select></label>`,
+            })}
             <th class="sortable">${renderMarketSortButton(viewState.sort, "range", "Capability")}</th>
             <th class="sortable">${renderMarketSortButton(viewState.sort, "asking_price", "Ask")}</th>
-            <th class="sortable">${renderMarketSortButton(viewState.sort, "distance", "Distance")}</th>
+            ${renderAircraftMarketHeaderCell({
+              key: "distance",
+              label: "Distance",
+              sort: viewState.sort,
+              sortKey: "distance",
+              filterLabel: "Distance filter",
+              activePopover,
+              popoverSide: "end",
+              popoverBody: `<label class="table-header-popover-field"><span>Max distance (nm)</span><input type="number" min="0" step="25" value="${escapeHtml(viewState.filters.maxDistanceNm)}" data-market-field="maxDistanceNm" placeholder="Max nm" /></label>`,
+            })}
             <th>Compare</th>
           </tr>
         </thead>
@@ -797,6 +929,59 @@ function renderMarketSortButton(sort: AircraftMarketSort, key: AircraftMarketSor
   const isCurrent = sort.key === key;
   const direction = isCurrent ? sort.direction : defaultMarketSortDirection(key);
   return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-market-sort-key="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="table-sort-direction">${direction === "asc" ? "Asc" : "Desc"}</span></button>`;
+}
+
+function renderAircraftHeaderIcon(kind: "search" | "filter"): string {
+  if (kind === "search") {
+    return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1 0 15a7.5 7.5 0 0 1 0-15Zm0 2a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11Zm8.2 12.8 2.8 2.8-1.4 1.4-2.8-2.8 1.4-1.4Z"/></svg>`;
+  }
+
+  return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 6.56l-5.2 5.58v6.11a1.5 1.5 0 0 1-2.44 1.17l-2.4-1.95a1.5 1.5 0 0 1-.56-1.17v-4.16L4.34 6.56A1.5 1.5 0 0 1 4 5.5Z"/></svg>`;
+}
+
+function renderAircraftMarketHeaderCell(options: {
+  key: AircraftMarketPopoverKey;
+  label: string;
+  activePopover: AircraftMarketPopoverKey | null;
+  sort?: AircraftMarketSort;
+  sortKey?: AircraftMarketSortKey;
+  searchLabel?: string;
+  searchPlaceholder?: string;
+  searchValue?: string;
+  searchField?: "searchText" | "locationAirportText";
+  filterLabel?: string;
+  popoverBody?: string;
+  popoverSide?: "start" | "end";
+}): string {
+  const isSorted = Boolean(options.sort && options.sortKey && options.sort.key === options.sortKey);
+  const ariaSort = options.sort && options.sortKey
+    ? options.sort.key === options.sortKey
+      ? options.sort.direction === "asc" ? "ascending" : "descending"
+      : "none"
+    : undefined;
+  const popoverOpen = options.activePopover === options.key;
+  const searchButton = options.searchLabel
+    ? `<button type="button" class="table-header-icon-button" data-market-popover-toggle="${escapeHtml(options.key)}" aria-label="${escapeHtml(options.searchLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderAircraftHeaderIcon("search")}</button>`
+    : "";
+  const filterButton = options.filterLabel
+    ? `<button type="button" class="table-header-icon-button" data-market-popover-toggle="${escapeHtml(options.key)}" aria-label="${escapeHtml(options.filterLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderAircraftHeaderIcon("filter")}</button>`
+    : "";
+  const popoverBody = options.searchLabel
+    ? `<label class="table-header-popover-field"><span>${escapeHtml(options.label)}</span><input type="text" value="${escapeHtml(options.searchValue ?? "")}" data-market-field="${escapeHtml(options.searchField ?? "searchText")}" placeholder="${escapeHtml(options.searchPlaceholder ?? "")}" /></label>${options.popoverBody ?? ""}`
+    : options.popoverBody ?? "";
+  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control"><div class="table-header-actions">${searchButton}${filterButton}</div>${options.sort && options.sortKey ? renderMarketSortButton(options.sort, options.sortKey, options.label) : `<span class="table-header-label">${escapeHtml(options.label)}</span>`}</div><div class="table-header-popover" data-market-popover="${escapeHtml(options.key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(options.label)}</strong><button type="button" class="ghost-button compact" data-market-clear="${escapeHtml(options.key)}">Clear</button></div><div class="table-header-popover-body">${popoverBody}</div></div></th>`;
+}
+
+function normalizeAircraftMarketPopoverKey(value: string | undefined): AircraftMarketPopoverKey | null {
+  switch (value) {
+    case "listing":
+    case "airport":
+    case "condition":
+    case "distance":
+      return value;
+    default:
+      return null;
+  }
 }
 
 function renderAircraftRow(

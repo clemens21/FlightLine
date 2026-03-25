@@ -370,6 +370,75 @@ try {
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
   assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
   assert.ok((await page.locator(".contracts-board-table tbody tr").count()) > 0);
+  assert.equal(await page.locator(".contracts-main-body > .contracts-filters").count(), 0);
+  assert.ok((await page.locator("[data-contracts-board-popover-toggle]").count()) >= 4);
+  const contractsBoardTable = page.locator(".contracts-board-table").first();
+  const contractsPopoverToggleColumns = await contractsBoardTable.locator("[data-contracts-board-popover-toggle]").evaluateAll((elements) => {
+    return elements.map((element) => ({
+      column: element.getAttribute("data-contracts-board-popover-toggle") ?? "",
+      label: element.getAttribute("aria-label") ?? "",
+    }));
+  });
+  for (const { column, label } of contractsPopoverToggleColumns) {
+    const buttonLocator = contractsBoardTable.locator(`button[aria-label="${label}"]`).first();
+    await clickUi(buttonLocator.locator("svg").first());
+    await page.waitForFunction(([expectedColumn, expectedLabel]) => {
+      const popover = document.querySelector(`[data-contracts-board-popover="${expectedColumn}"]`);
+      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
+      return popover instanceof HTMLElement
+        && !popover.hidden
+        && toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "true";
+    }, [column, label]);
+    await clickUi(buttonLocator.locator("svg").first());
+    await page.waitForFunction((expectedLabel) => {
+      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
+      return toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "false";
+    }, label);
+  }
+  await clickUi(contractsBoardTable.locator("button[aria-label='Payout filter']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='payout']") instanceof HTMLElement
+    && !(document.querySelector("[data-contracts-board-popover='payout']")).hidden);
+  const payoutPopoverBounds = await page.locator("[data-contracts-board-popover='payout']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const table = document.querySelector(".contracts-board-table");
+    const tableRect = table instanceof HTMLElement ? table.getBoundingClientRect() : rect;
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      tableLeft: tableRect.left,
+      tableRight: tableRect.right,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  assert.ok(payoutPopoverBounds);
+  assert.equal(payoutPopoverBounds.left >= Math.max(12, payoutPopoverBounds.tableLeft + 12), true);
+  assert.equal(payoutPopoverBounds.right <= Math.min(payoutPopoverBounds.viewportWidth - 12, payoutPopoverBounds.tableRight - 12), true);
+  await clickUi(contractsBoardTable.locator("button[aria-label='Payout filter']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Payout filter']")?.getAttribute("aria-expanded") === "false");
+  const baselineContractRows = await page.locator(".contracts-board-table tbody tr").count();
+  const firstRouteCellText = (await page.locator(".contracts-board-table tbody tr").first().locator("td").first().textContent()) ?? "";
+  const firstRouteCode = firstRouteCellText.match(/\b[A-Z]{3,4}\b/)?.[0] ?? "";
+  assert.ok(firstRouteCode.length > 0);
+  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='route']") instanceof HTMLElement && !(document.querySelector("[data-contracts-board-popover='route']")).hidden);
+  await page.locator("[data-contracts-board-popover='route'] input[name='searchText']").fill(firstRouteCode);
+  await page.waitForFunction(([expectedCode, expectedCount]) => {
+    const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
+    return rows.length > 0 && rows.length <= expectedCount
+      && rows.every((row) => (row.textContent ?? "").includes(expectedCode));
+  }, [firstRouteCode, baselineContractRows]);
+  await clickUi(page.locator("[data-contracts-board-popover='route'] [data-contracts-board-clear='route']"));
+  await page.waitForFunction((expectedCount) => document.querySelectorAll(".contracts-board-table tbody tr").length === expectedCount, baselineContractRows);
+  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Route search']")?.getAttribute("aria-expanded") === "false");
 
   await clickUi(page.locator("[data-accept-offer]").first());
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
@@ -603,15 +672,34 @@ try {
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Stress" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Procedure" }).count(), 1);
   assert.equal(await page.locator("[data-pilot-candidate-market] th").filter({ hasText: "Training" }).count(), 1);
+  await page.setViewportSize({ width: 1800, height: 1000 });
   const baselineVisibleCandidates = await page.locator("[data-pilot-candidate-row]:not([hidden])").count();
   const firstCandidateName = (await page.locator("[data-pilot-candidate-row]").first().locator("strong").textContent())?.trim() ?? "";
-  await page.locator("button[aria-label='Pilot search']").evaluate((button) => {
-    button.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
+  const popoverToggleColumns = await page.locator("[data-staffing-hire-popover-toggle]").evaluateAll((elements) => {
+    return elements.map((element) => ({
+      column: element.getAttribute("data-staffing-hire-popover-toggle") ?? "",
+      label: element.getAttribute("aria-label") ?? "",
     }));
   });
+  for (const { column, label } of popoverToggleColumns) {
+    const buttonLocator = page.locator(`button[aria-label="${label}"]`).first();
+    await clickUi(buttonLocator.locator("svg").first());
+    await page.waitForFunction(([expectedColumn, expectedLabel]) => {
+      const popover = document.querySelector(`[data-staffing-hire-popover="${expectedColumn}"]`);
+      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
+      return popover instanceof HTMLElement
+        && !popover.hidden
+        && toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "true";
+    }, [column, label]);
+    await page.keyboard.press("Escape");
+    await page.waitForFunction((expectedLabel) => {
+      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
+      return toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "false";
+    }, label);
+  }
+  await clickUi(page.locator("button[aria-label='Pilot search']"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Pilot search']")?.getAttribute("aria-expanded") === "true");
   await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill(firstCandidateName);
   await page.waitForFunction((expectedName) => {
@@ -925,6 +1013,74 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-aircraft-workspace='market']")?.getAttribute("aria-selected") === "true");
   const initialMarketRows = await page.locator("[data-market-select]").count();
   assert.ok(initialMarketRows > 0);
+  assert.equal(await page.locator(".market-toolbar").count(), 0);
+  assert.ok((await page.locator("[data-market-popover-toggle]").count()) >= 4);
+  const aircraftMarketTable = page.locator(".aircraft-market-table").first();
+  const marketPopoverToggleColumns = await aircraftMarketTable.locator("[data-market-popover-toggle]").evaluateAll((elements) => {
+    return elements.map((element) => ({
+      column: element.getAttribute("data-market-popover-toggle") ?? "",
+      label: element.getAttribute("aria-label") ?? "",
+    }));
+  });
+  for (const { column, label } of marketPopoverToggleColumns) {
+    const buttonLocator = aircraftMarketTable.locator(`button[aria-label="${label}"]`).first();
+    await clickUi(buttonLocator.locator("svg").first());
+    await page.waitForFunction(([expectedColumn, expectedLabel]) => {
+      const popover = document.querySelector(`[data-market-popover="${expectedColumn}"]`);
+      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
+      return popover instanceof HTMLElement
+        && !popover.hidden
+        && toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "true";
+    }, [column, label]);
+    await clickUi(buttonLocator.locator("svg").first());
+    await page.waitForFunction((expectedLabel) => {
+      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
+      return toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "false";
+    }, label);
+  }
+  await clickUi(aircraftMarketTable.locator("button[aria-label='Distance filter']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("[data-market-popover='distance']") instanceof HTMLElement
+    && !(document.querySelector("[data-market-popover='distance']")).hidden);
+  const distancePopoverBounds = await page.locator("[data-market-popover='distance']").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const table = document.querySelector(".aircraft-market-table");
+    const tableRect = table instanceof HTMLElement ? table.getBoundingClientRect() : rect;
+    return {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      tableLeft: tableRect.left,
+      tableRight: tableRect.right,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  assert.ok(distancePopoverBounds);
+  assert.equal(distancePopoverBounds.left >= Math.max(12, distancePopoverBounds.tableLeft + 12), true);
+  assert.equal(distancePopoverBounds.right <= Math.min(distancePopoverBounds.viewportWidth - 12, distancePopoverBounds.tableRight - 12), true);
+  await clickUi(aircraftMarketTable.locator("button[aria-label='Distance filter']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Distance filter']")?.getAttribute("aria-expanded") === "false");
+  const firstListingLabel = ((await page.locator("[data-market-select]").first().locator(".aircraft-market-listing .route").textContent()) ?? "").trim();
+  assert.ok(firstListingLabel.length > 0);
+  await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("[data-market-popover='listing']") instanceof HTMLElement && !(document.querySelector("[data-market-popover='listing']")).hidden);
+  await page.locator("[data-market-popover='listing'] input[data-market-field='searchText']").fill(firstListingLabel);
+  await page.waitForFunction(([expectedLabel, expectedCount]) => {
+    const rows = [...document.querySelectorAll("[data-market-select]")];
+    return rows.length > 0
+      && rows.length <= expectedCount
+      && rows.every((row) => (row.textContent ?? "").includes(expectedLabel));
+  }, [firstListingLabel, initialMarketRows]);
+  await clickUi(page.locator("[data-market-popover='listing'] [data-market-clear='listing']"));
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-market-select]").length === expectedCount, initialMarketRows);
+  await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Listing search']")?.getAttribute("aria-expanded") === "false");
   const firstMarketRow = page.locator("[data-market-select]").first();
   assert.equal(await firstMarketRow.locator(".aircraft-market-listing-thumb img").count(), 1);
   const selectedOfferId = await firstMarketRow.getAttribute("data-market-select");
