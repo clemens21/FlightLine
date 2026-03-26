@@ -2630,6 +2630,27 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-market-table td {
       position: relative;
     }
+    .aircraft-market-table .table-header-label,
+    .aircraft-market-table .table-header-control .table-sort,
+    .aircraft-market-table .table-header-control .table-sort:hover,
+    .aircraft-market-table .table-header-control .table-sort:focus-visible,
+    .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort,
+    .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort {
+      color: var(--text);
+    }
+    .aircraft-market-table .table-header-control .table-sort::after,
+    .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort::after,
+    .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort::after {
+      content: none;
+      display: none;
+    }
+    .aircraft-market-table .table-header-column.is-sorted::after {
+      left: 14px;
+      right: 14px;
+      height: 1px;
+      opacity: 0.75;
+      background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--text) 36%, var(--line)) 18%, color-mix(in srgb, var(--text) 36%, var(--line)) 82%, transparent 100%);
+    }
     .aircraft-market-header-popover {
       position: absolute;
       z-index: 6;
