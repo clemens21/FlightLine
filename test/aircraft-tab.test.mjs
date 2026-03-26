@@ -211,17 +211,26 @@ try {
       },
       defaultSelectedOfferId: "offer_home_new",
       defaultFilters: {
-        searchText: "",
-        conditionBand: "all",
-        locationAirportText: "",
-        maxDistanceNm: "0",
+        listingSearchText: "",
+        airportSearchText: "",
+        conditionBands: [],
+        passengerMin: "",
+        passengerMax: "",
+        cargoMin: "",
+        cargoMax: "",
+        rangeMin: "",
+        rangeMax: "",
+        askMin: "",
+        askMax: "",
+        distanceMin: "",
+        distanceMax: "",
       },
       defaultSort: {
         key: "asking_price",
         direction: "asc",
       },
       filterOptions: {
-        conditionBands: ["new", "fair", "rough"],
+        conditionBands: ["rough", "fair", "excellent", "new"],
       },
       offers: [
         {
@@ -430,8 +439,7 @@ try {
 
     const exactLocationView = applyAircraftMarketViewState(marketPayload, {
       filters: {
-        locationAirportText: "KDEN",
-        maxDistanceNm: "0",
+        airportSearchText: "KDEN",
       },
     });
     assert.deepEqual(exactLocationView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new"]);
@@ -439,8 +447,7 @@ try {
 
     const radiusView = applyAircraftMarketViewState(marketPayload, {
       filters: {
-        locationAirportText: "KDEN",
-        maxDistanceNm: "100",
+        distanceMax: "100",
       },
       sort: {
         key: "distance",
@@ -451,11 +458,26 @@ try {
 
     const conditionView = applyAircraftMarketViewState(marketPayload, {
       filters: {
-        conditionBand: "rough",
+        conditionBands: ["rough"],
       },
     });
     assert.deepEqual(conditionView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_far_rough"]);
     assert.equal(conditionView.selectedOfferId, "offer_far_rough");
+
+    const passengerView = applyAircraftMarketViewState(marketPayload, {
+      filters: {
+        passengerMin: "15",
+      },
+    });
+    assert.deepEqual(passengerView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new"]);
+
+    const askRangeView = applyAircraftMarketViewState(marketPayload, {
+      filters: {
+        askMin: "2000000",
+        askMax: "6000000",
+      },
+    });
+    assert.deepEqual(askRangeView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_near_fair", "offer_home_new"]);
 
     const sortedDistanceView = applyAircraftMarketViewState(marketPayload, {
       sort: {
@@ -471,12 +493,24 @@ try {
 
     const searchView = applyAircraftMarketViewState(marketPayload, {
       filters: {
-        searchText: "SkyCourier",
+        listingSearchText: "SkyCourier",
       },
       selectedOfferId: "offer_far_rough",
     });
     assert.deepEqual(searchView.visibleOffers.map((offer) => offer.aircraftOfferId), ["offer_home_new"]);
     assert.equal(searchView.selectedOfferId, "offer_home_new");
+
+    const airportSortView = applyAircraftMarketViewState(marketPayload, {
+      sort: {
+        key: "airport",
+        direction: "asc",
+      },
+    });
+    assert.deepEqual(airportSortView.visibleOffers.map((offer) => offer.aircraftOfferId), [
+      "offer_far_rough",
+      "offer_near_fair",
+      "offer_home_new",
+    ]);
 
     const compareFleetAircraft = makeFleetAircraft({
       aircraftId: "fleet_compare_1",

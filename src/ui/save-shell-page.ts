@@ -2622,11 +2622,111 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: var(--panel-strong);
     }
     .aircraft-market-table {
-      min-width: 1380px;
+      min-width: 1480px;
+      width: 100%;
+      table-layout: fixed;
     }
     .aircraft-market-table th,
     .aircraft-market-table td {
       position: relative;
+    }
+    .aircraft-market-header-popover {
+      position: absolute;
+      z-index: 6;
+      transform: translateX(var(--aircraft-market-popover-nudge, 0px));
+    }
+    .aircraft-market-header-popover--search {
+      top: 50%;
+      right: 34px;
+      width: max(180px, min(320px, calc(100% - 44px)));
+      max-width: min(320px, calc(100vw - 24px));
+      transform: translateX(var(--aircraft-market-popover-nudge, 0px)) translateY(-50%);
+    }
+    .aircraft-market-inline-search,
+    .aircraft-market-inline-search:is(input) {
+      width: 100%;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+      background: color-mix(in srgb, var(--panel-strong) 92%, var(--accent-soft));
+      color: var(--text);
+      box-shadow: var(--shadow);
+    }
+    .aircraft-market-inline-search::placeholder {
+      color: color-mix(in srgb, var(--muted) 80%, var(--text));
+    }
+    .aircraft-market-inline-search:focus {
+      outline: none;
+      border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow);
+    }
+    .aircraft-market-header-popover--filter {
+      top: calc(100% + 8px);
+      right: 0;
+      width: min(236px, calc(100vw - 48px));
+      max-width: calc(100vw - 24px);
+      padding: 10px;
+      display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .aircraft-market-header-popover--filter[data-market-popover-side="start"] {
+      left: 0;
+      right: auto;
+    }
+    .aircraft-market-popover-body {
+      display: grid;
+      gap: 10px;
+    }
+    .aircraft-market-popover-field {
+      display: grid;
+      gap: 8px;
+    }
+    .aircraft-market-range-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .aircraft-market-range-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .aircraft-market-range-field input {
+      width: 100%;
+    }
+    .aircraft-market-checkbox-list {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 8px;
+      justify-items: start;
+    }
+    .aircraft-market-checkbox-option {
+      display: inline-grid;
+      grid-template-columns: 16px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      width: 100%;
+      min-width: 0;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    .aircraft-market-checkbox-option input {
+      margin: 0;
+      accent-color: var(--accent);
+    }
+    .aircraft-market-table td:nth-child(3),
+    .aircraft-market-table td:nth-child(4),
+    .aircraft-market-table td:nth-child(5),
+    .aircraft-market-table td:nth-child(6),
+    .aircraft-market-table td:nth-child(7),
+    .aircraft-market-table td:nth-child(8) {
+      white-space: nowrap;
     }
     .aircraft-toolbar {
       display: grid;

@@ -1186,10 +1186,14 @@ try {
   const initialMarketRows = await page.locator("[data-market-select]").count();
   assert.ok(initialMarketRows > 0);
   assert.equal(await page.locator(".market-toolbar").count(), 0);
-  assert.ok((await page.locator("[data-market-popover-toggle]").count()) >= 4);
+  assert.ok((await page.locator("[data-market-popover-toggle]").count()) >= 8);
   const aircraftMarketTable = page.locator(".aircraft-market-table").first();
   const aircraftHeaderText = (await aircraftMarketTable.locator("thead").textContent()) ?? "";
   assert.equal(/\bSORT\b|\bASC\b|\bDESC\b/.test(aircraftHeaderText), false);
+  assert.equal(aircraftHeaderText.includes("Capability"), false);
+  assert.equal(aircraftHeaderText.includes("Passengers"), true);
+  assert.equal(aircraftHeaderText.includes("Cargo"), true);
+  assert.equal(aircraftHeaderText.includes("Range"), true);
   const aircraftListingHeaderStyle = await aircraftMarketTable.locator("button[aria-label='Listing search']").first().evaluate((button) => {
     const headerControl = button.closest(".table-header-control");
     const label = headerControl?.querySelector(".table-header-label, .table-sort");
@@ -1251,14 +1255,25 @@ try {
   assert.ok(firstListingLabel.length > 0);
   await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("[data-market-popover='listing']") instanceof HTMLElement && !(document.querySelector("[data-market-popover='listing']")).hidden);
-  await page.locator("[data-market-popover='listing'] input[data-market-field='searchText']").fill(firstListingLabel);
+  await page.locator("[data-market-popover='listing'] input[data-market-field='listingSearchText']").fill(firstListingLabel);
   await page.waitForFunction(([expectedLabel, expectedCount]) => {
     const rows = [...document.querySelectorAll("[data-market-select]")];
     return rows.length > 0
       && rows.length <= expectedCount
       && rows.every((row) => (row.textContent ?? "").includes(expectedLabel));
   }, [firstListingLabel, initialMarketRows]);
-  await clickUi(page.locator("[data-market-popover='listing'] [data-market-clear='listing']"));
+  await clickUi(page.locator(".aircraft-market-panel .panel-head h3").first());
+  await page.waitForFunction(() => document.querySelector("[data-market-popover='listing']") instanceof HTMLElement
+    && document.querySelector("[data-market-popover='listing']").hidden);
+  await page.waitForFunction(([expectedLabel, expectedCount]) => {
+    const rows = [...document.querySelectorAll("[data-market-select]")];
+    return rows.length > 0
+      && rows.length <= expectedCount
+      && rows.every((row) => (row.textContent ?? "").includes(expectedLabel));
+  }, [firstListingLabel, initialMarketRows]);
+  await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("[data-market-popover='listing']") instanceof HTMLElement && !(document.querySelector("[data-market-popover='listing']")).hidden);
+  await page.locator("[data-market-popover='listing'] input[data-market-field='listingSearchText']").fill("");
   await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-market-select]").length === expectedCount, initialMarketRows);
   await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Listing search']")?.getAttribute("aria-expanded") === "false");

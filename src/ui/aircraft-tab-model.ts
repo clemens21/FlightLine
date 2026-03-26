@@ -39,7 +39,7 @@ export type AircraftTableStaffingFilter = "all" | "covered" | "tight" | "uncover
 export type AircraftTableSortKey = "attention" | "tail" | "location" | "state" | "condition" | "staffing" | "range" | "payload" | "obligation";
 export type AircraftTableSortDirection = "asc" | "desc";
 export type AircraftMarketConditionBand = "new" | "excellent" | "fair" | "rough";
-export type AircraftMarketSortKey = "asking_price" | "monthly_burden" | "condition" | "range" | "passengers" | "cargo" | "distance";
+export type AircraftMarketSortKey = "listing" | "airport" | "asking_price" | "monthly_burden" | "condition" | "range" | "passengers" | "cargo" | "distance";
 export type AircraftMarketSortDirection = "asc" | "desc";
 export type AircraftDealStructure = "owned" | "financed" | "leased";
 export type AircraftCompareSource = "fleet" | "market";
@@ -238,10 +238,19 @@ export interface AircraftMarketDealOptionView extends AircraftOfferTermsView {
 }
 
 export interface AircraftMarketFilters {
-  searchText: string;
-  conditionBand: string;
-  locationAirportText: string;
-  maxDistanceNm: string;
+  listingSearchText: string;
+  airportSearchText: string;
+  conditionBands: AircraftMarketConditionBand[];
+  passengerMin: string;
+  passengerMax: string;
+  cargoMin: string;
+  cargoMax: string;
+  rangeMin: string;
+  rangeMax: string;
+  askMin: string;
+  askMax: string;
+  distanceMin: string;
+  distanceMax: string;
 }
 
 export interface AircraftMarketSort {
@@ -324,16 +333,32 @@ const defaultFleetSort: AircraftTableSort = {
 };
 
 const defaultMarketFilters: AircraftMarketFilters = {
-  searchText: "",
-  conditionBand: "all",
-  locationAirportText: "",
-  maxDistanceNm: "0",
+  listingSearchText: "",
+  airportSearchText: "",
+  conditionBands: [],
+  passengerMin: "",
+  passengerMax: "",
+  cargoMin: "",
+  cargoMax: "",
+  rangeMin: "",
+  rangeMax: "",
+  askMin: "",
+  askMax: "",
+  distanceMin: "",
+  distanceMax: "",
 };
 
 const defaultMarketSort: AircraftMarketSort = {
   key: "asking_price",
   direction: "asc",
 };
+
+const aircraftMarketConditionFilterOrder: AircraftMarketConditionBand[] = [
+  "rough",
+  "fair",
+  "excellent",
+  "new",
+];
 
 // Public entry points shape raw backend and reference data into stable fleet and market workspaces for the browser client.
 // Use this when the UI needs a single aircraft payload that already reflects fleet posture, market state, and company context.
@@ -426,11 +451,8 @@ export function applyAircraftMarketViewState(
     ...payload.defaultSort,
     ...options.sort,
   };
-  const anchorLocation = resolveMarketAnchorLocation(payload, filters.locationAirportText);
-  const maxDistanceNm = parseMaxDistanceNm(filters.maxDistanceNm);
-
   const visibleOffers = payload.offers
-    .filter((offer) => matchesMarketFilters(offer, filters, anchorLocation, maxDistanceNm))
+    .filter((offer) => matchesMarketFilters(offer, filters))
     .slice()
     .sort((left, right) => compareMarketOffers(left, right, sort));
 
@@ -724,7 +746,7 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
       homeBaseAirportId: companyContext.homeBaseAirportId,
       homeBaseLocation: describeAirport(params.airportReference, companyContext.homeBaseAirportId),
       filterOptions: {
-        conditionBands: [],
+        conditionBands: aircraftMarketConditionFilterOrder,
       },
     };
   }
@@ -821,7 +843,7 @@ function buildMarketWorkspace(params: BuildAircraftTabPayloadParams): AircraftMa
     homeBaseAirportId: companyContext.homeBaseAirportId,
     homeBaseLocation,
     filterOptions: {
-      conditionBands: [...new Set(offers.map((offer) => offer.conditionBand))] as AircraftMarketConditionBand[],
+      conditionBands: aircraftMarketConditionFilterOrder,
     },
   };
 }
@@ -1210,134 +1232,84 @@ function compareFleetAircraft(left: AircraftTabAircraftView, right: AircraftTabA
 function matchesMarketFilters(
   offer: AircraftMarketOfferView,
   filters: AircraftMarketFilters,
-  anchorLocation: AircraftTabLocationView | null,
-  maxDistanceNm: number,
 ): boolean {
-  const searchText = filters.searchText.trim().toLowerCase();
-  if (searchText) {
+  const listingSearchText = filters.listingSearchText.trim().toLowerCase();
+  if (listingSearchText) {
     const haystack = [
       offer.modelDisplayName,
       offer.shortName,
-      offer.roleLabel,
-      offer.marketRolePool,
-      offer.location.code,
-      offer.location.primaryLabel,
-      offer.location.secondaryLabel ?? "",
       offer.displayName,
       offer.registration,
     ].join(" ").toLowerCase();
-    if (!haystack.includes(searchText)) {
+    if (!haystack.includes(listingSearchText)) {
       return false;
     }
   }
 
-  if (!matchesMarketConditionFilter(offer.conditionBand, filters.conditionBand)) {
+  const airportSearchText = filters.airportSearchText.trim().toLowerCase();
+  if (airportSearchText) {
+    const haystack = [
+      offer.location.code,
+      offer.location.primaryLabel,
+      offer.location.secondaryLabel ?? "",
+      offer.location.airportId,
+    ].join(" ").toLowerCase();
+    if (!haystack.includes(airportSearchText)) {
+      return false;
+    }
+  }
+
+  if (!matchesMarketConditionFilter(offer.conditionBand, filters.conditionBands)) {
     return false;
   }
 
-  const locationAirportText = filters.locationAirportText.trim().toLowerCase();
-  if (locationAirportText) {
-    if (anchorLocation && hasCoordinates(anchorLocation) && hasCoordinates(offer.location)) {
-      const distanceFromAnchorNm = haversineDistanceNm(
-        {
-          latitudeDeg: anchorLocation.latitudeDeg,
-          longitudeDeg: anchorLocation.longitudeDeg,
-        } as AirportRecord,
-        {
-          latitudeDeg: offer.location.latitudeDeg,
-          longitudeDeg: offer.location.longitudeDeg,
-        } as AirportRecord,
-      );
-      const allowedDistanceNm = maxDistanceNm > 0 ? maxDistanceNm : 0;
-      if (distanceFromAnchorNm > allowedDistanceNm) {
-        return false;
-      }
-    } else {
-      const haystack = [offer.location.code, offer.location.primaryLabel, offer.location.secondaryLabel ?? ""].join(" ").toLowerCase();
-      if (!haystack.includes(locationAirportText)) {
-        return false;
-      }
-    }
+  if (!matchesOptionalMarketRangeFilter(offer.maxPassengers, filters.passengerMin, filters.passengerMax)) {
+    return false;
+  }
+  if (!matchesOptionalMarketRangeFilter(offer.maxCargoLb, filters.cargoMin, filters.cargoMax)) {
+    return false;
+  }
+  if (!matchesOptionalMarketRangeFilter(offer.rangeNm, filters.rangeMin, filters.rangeMax)) {
+    return false;
+  }
+  if (!matchesOptionalMarketRangeFilter(offer.askingPurchasePriceAmount, filters.askMin, filters.askMax)) {
+    return false;
+  }
+  if (!matchesOptionalMarketRangeFilter(offer.distanceFromHomeBaseNm, filters.distanceMin, filters.distanceMax)) {
+    return false;
   }
 
   return true;
 }
 
-function matchesMarketConditionFilter(conditionBand: AircraftMarketConditionBand, filterValue: string): boolean {
-  if (filterValue === "all") {
+function matchesMarketConditionFilter(conditionBand: AircraftMarketConditionBand, filterValues: AircraftMarketConditionBand[]): boolean {
+  if (filterValues.length === 0) {
     return true;
   }
 
-  return conditionBand === filterValue;
+  return filterValues.includes(conditionBand);
 }
 
-function resolveMarketAnchorLocation(
-  payload: AircraftMarketWorkspacePayload,
-  airportText: string,
-): AircraftTabLocationView | null {
-  const normalizedQuery = airportText.trim().toLowerCase();
-  if (!normalizedQuery) {
+function matchesOptionalMarketRangeFilter(value: number, minimum: string, maximum: string): boolean {
+  const minValue = parseOptionalMarketNumber(minimum);
+  const maxValue = parseOptionalMarketNumber(maximum);
+  if (minValue !== null && value < minValue) {
+    return false;
+  }
+  if (maxValue !== null && value > maxValue) {
+    return false;
+  }
+  return true;
+}
+
+function parseOptionalMarketNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
     return null;
   }
-
-  const candidates = dedupeLocations([payload.homeBaseLocation, ...payload.offers.map((offer) => offer.location)])
-    .filter((location) => hasCoordinates(location));
-
-  const exactCodeMatch = candidates.find((location) => location.code.toLowerCase() === normalizedQuery);
-  if (exactCodeMatch) {
-    return exactCodeMatch;
-  }
-
-  const exactIdMatch = candidates.find((location) => location.airportId.toLowerCase() === normalizedQuery);
-  if (exactIdMatch) {
-    return exactIdMatch;
-  }
-
-  const exactLabelMatch = candidates.find((location) => marketLocationHaystack(location) === normalizedQuery);
-  if (exactLabelMatch) {
-    return exactLabelMatch;
-  }
-
-  const prefixMatch = candidates.find((location) =>
-    location.code.toLowerCase().startsWith(normalizedQuery)
-    || location.primaryLabel.toLowerCase().startsWith(normalizedQuery)
-    || (location.secondaryLabel?.toLowerCase().startsWith(normalizedQuery) ?? false),
-  );
-  if (prefixMatch) {
-    return prefixMatch;
-  }
-
-  const partialMatch = candidates.find((location) => marketLocationHaystack(location).includes(normalizedQuery));
-  return partialMatch ?? null;
-}
-
-function dedupeLocations(locations: AircraftTabLocationView[]): AircraftTabLocationView[] {
-  const byAirportId = new Map<string, AircraftTabLocationView>();
-  for (const location of locations) {
-    if (!byAirportId.has(location.airportId)) {
-      byAirportId.set(location.airportId, location);
-    }
-  }
-  return [...byAirportId.values()];
-}
-
-function marketLocationHaystack(location: AircraftTabLocationView): string {
-  return [location.code, location.airportId, location.primaryLabel, location.secondaryLabel ?? ""]
-    .join(" ")
-    .toLowerCase();
-}
-
-function hasCoordinates(location: AircraftTabLocationView): location is AircraftTabLocationView & {
-  latitudeDeg: number;
-  longitudeDeg: number;
-} {
-  return Number.isFinite(location.latitudeDeg) && Number.isFinite(location.longitudeDeg);
-}
-
-function parseMaxDistanceNm(value: string): number {
-  const parsed = Number.parseFloat(value);
+  const parsed = Number.parseFloat(trimmed);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    return 0;
+    return null;
   }
   return parsed;
 }
@@ -1348,6 +1320,14 @@ function compareMarketOffers(left: AircraftMarketOfferView, right: AircraftMarke
 
   let comparison = 0;
   switch (sort.key) {
+    case "listing":
+      comparison = left.modelDisplayName.localeCompare(right.modelDisplayName, "en-US")
+        || left.registration.localeCompare(right.registration, "en-US");
+      break;
+    case "airport":
+      comparison = left.location.code.localeCompare(right.location.code, "en-US")
+        || left.location.primaryLabel.localeCompare(right.location.primaryLabel, "en-US");
+      break;
     case "asking_price":
       comparison = left.askingPurchasePriceAmount - right.askingPurchasePriceAmount;
       break;
