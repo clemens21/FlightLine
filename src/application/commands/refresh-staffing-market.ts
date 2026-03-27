@@ -9,10 +9,12 @@ import { reconcileStaffingMarket } from "../staffing/staffing-market-reconciler.
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
+import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
 
 interface RefreshStaffingMarketDependencies {
   saveDatabase: SqliteFileDatabase;
   aircraftReference: AircraftReferenceRepository;
+  airportReference: AirportReferenceRepository;
 }
 
 export async function handleRefreshStaffingMarket(
@@ -39,6 +41,7 @@ export async function handleRefreshStaffingMarket(
     saveDatabase: dependencies.saveDatabase,
     companyContext,
     aircraftReference: dependencies.aircraftReference,
+    airportReference: dependencies.airportReference,
     refreshReason,
   });
 

@@ -65,6 +65,8 @@ export interface NamedPilotView {
   sourceOfferId: string | undefined;
   sourceCandidateProfileId: string | undefined;
   rosterSlotNumber: number;
+  firstName: string;
+  lastName: string;
   displayName: string;
   qualificationGroup: string;
   certifications: PilotCertificationCode[];
@@ -74,6 +76,9 @@ export interface NamedPilotView {
   startsAtUtc: UtcIsoString;
   endsAtUtc: UtcIsoString | undefined;
   homeAirportId: string | undefined;
+  homeCity: string | undefined;
+  homeRegionCode: string | undefined;
+  homeCountryCode: string | undefined;
   currentAirportId: string | undefined;
   restingUntilUtc: UtcIsoString | undefined;
   trainingProgramKind: NamedPilotTrainingProgramKind | undefined;

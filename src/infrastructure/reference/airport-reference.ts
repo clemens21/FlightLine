@@ -92,6 +92,7 @@ LEFT JOIN airport_profile AS p ON p.airport_id = a.id`;
 
 export class AirportReferenceRepository {
   private readonly lookupCache = new Map<string, AirportRecord | null>();
+  private readonly airportsByCountryCache = new Map<string, AirportRecord[]>();
 
   private constructor(
     private readonly filePath: string,
@@ -285,6 +286,40 @@ export class AirportReferenceRepository {
     return rows.map((row) => this.mapAirportRow(row));
   }
 
+  listAirportsByCountry(countryCode: string, limit = 240): AirportRecord[] {
+    const normalizedCountryCode = countryCode.trim().toUpperCase();
+    if (!normalizedCountryCode) {
+      return [];
+    }
+
+    const cacheKey = `${normalizedCountryCode}:${limit}`;
+    const cachedAirports = this.airportsByCountryCache.get(cacheKey);
+    if (cachedAirports) {
+      return cachedAirports;
+    }
+
+    const rows = this.database.all<AirportLookupRow>(
+      `${airportLookupSelect}
+      WHERE UPPER(COALESCE(a.iso_country, '')) = $country_code
+        AND COALESCE(a.municipality, '') <> ''
+        AND a.airport_type NOT IN ('heliport', 'seaplane_base', 'balloonport', 'closed')
+      ORDER BY
+        CASE WHEN COALESCE(a.iso_region, '') <> '' THEN 0 ELSE 1 END,
+        COALESCE(p.contract_generation_weight, 1.0) DESC,
+        a.airport_size DESC,
+        a.airport_key ASC
+      LIMIT $limit`,
+      {
+        $country_code: normalizedCountryCode,
+        $limit: limit,
+      },
+    );
+
+    const airports = rows.map((row) => this.mapAirportRow(row));
+    this.airportsByCountryCache.set(cacheKey, airports);
+    return airports;
+  }
+
   async getSnapshotVersion(): Promise<string> {
     const schemaVersionRow = this.database.getOne<{ value: string }>(
       "SELECT value FROM meta WHERE key = 'schema_version' LIMIT 1",
@@ -296,6 +331,7 @@ export class AirportReferenceRepository {
 
   async close(): Promise<void> {
     this.lookupCache.clear();
+    this.airportsByCountryCache.clear();
     await this.database.close();
   }
 

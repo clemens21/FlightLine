@@ -28,6 +28,8 @@ import {
 } from "../../domain/staffing/pilot-certifications.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
+import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
+import { createStaffingIdentityGenerator } from "./staffing-identity-generator.js";
 
 interface AircraftRow extends Record<string, unknown> {
   aircraftModelId: string;
@@ -52,6 +54,8 @@ interface QualificationDemand {
 
 interface GeneratedPilotCandidateOffer {
   candidateProfileId: string;
+  firstName: string;
+  lastName: string;
   displayName: string;
   employmentModel: EmploymentModel;
   qualificationGroup: string;
@@ -60,6 +64,9 @@ interface GeneratedPilotCandidateOffer {
   variableCostRate?: number;
   startsAtUtc: string;
   endsAtUtc?: string;
+  homeCity?: string;
+  homeRegionCode?: string;
+  homeCountryCode?: string;
   currentAirportId: string;
   explanationMetadata: Record<string, unknown>;
   generatedSeed: string;
@@ -81,55 +88,9 @@ export interface StaffingMarketReconcileResult {
   validationMessages: string[];
 }
 
-const FIRST_NAMES = [
-  "Avery",
-  "Blake",
-  "Cameron",
-  "Dakota",
-  "Emerson",
-  "Finley",
-  "Harper",
-  "Jamie",
-  "Jordan",
-  "Kai",
-  "Logan",
-  "Morgan",
-  "Parker",
-  "Quinn",
-  "Reese",
-  "Riley",
-  "Sawyer",
-  "Skyler",
-  "Taylor",
-  "Tatum",
-] as const;
-
-const LAST_NAMES = [
-  "Bennett",
-  "Brooks",
-  "Calloway",
-  "Dalton",
-  "Ellis",
-  "Foster",
-  "Grayson",
-  "Hayes",
-  "Iverson",
-  "Jordan",
-  "Kendall",
-  "Lawson",
-  "Mercer",
-  "Nolan",
-  "Parker",
-  "Quincy",
-  "Sawyer",
-  "Sterling",
-  "Turner",
-  "Walker",
-] as const;
-
 const CONTRACT_DURATION_DAYS = [90, 120, 180] as const;
 const STAFFING_MARKET_REFRESH_HOURS = 24;
-const STAFFING_MARKET_VISIBLE_CANDIDATE_GROUP_LIMIT = 32;
+const STAFFING_MARKET_VISIBLE_CANDIDATE_GROUP_LIMIT = 64;
 const QUALIFICATION_LANE_ORDER = [
   "single_turboprop_utility",
   "single_turboprop_premium",
@@ -886,36 +847,17 @@ function chooseAvailabilityMix(seed: string, marketFitTier: MarketFitTier, candi
 function desiredCandidateCountForLane(lane: GeneratedMarketLane, windowSeed: string): number {
   const pressureGap = Math.max(0, lane.pilotsRequired - lane.coverageUnits);
   const pressureBias = lane.marketFitTier === "core"
-    ? Math.min(2, pressureGap)
-    : Math.min(1, pressureGap);
-  const varietyBias = hashString(`${windowSeed}:${lane.qualificationGroup}:count`) % 2;
-  const tierBase = lane.marketFitTier === "core" ? 7 : lane.marketFitTier === "adjacent" ? 5 : 3;
-  const tierMax = lane.marketFitTier === "core" ? 10 : lane.marketFitTier === "adjacent" ? 7 : 5;
+    ? Math.min(3, pressureGap)
+    : Math.min(2, pressureGap);
+  const varietyBias = hashString(`${windowSeed}:${lane.qualificationGroup}:count`) % 3;
+  const tierBase = lane.marketFitTier === "core" ? 10 : lane.marketFitTier === "adjacent" ? 7 : 4;
+  const tierMax = lane.marketFitTier === "core" ? 14 : lane.marketFitTier === "adjacent" ? 10 : 6;
   return Math.max(tierBase, Math.min(tierMax, tierBase + pressureBias + varietyBias));
 }
 
 function chooseContractEndUtc(startsAtUtc: string, generatedSeed: string): string {
   const durationIndex = hashString(generatedSeed) % CONTRACT_DURATION_DAYS.length;
   return addDaysIso(startsAtUtc, CONTRACT_DURATION_DAYS[durationIndex]!);
-}
-
-function generateCandidateName(seedBase: string, usedNames: Set<string>): string {
-  const seed = hashString(seedBase);
-
-  for (let attempt = 0; attempt < FIRST_NAMES.length * LAST_NAMES.length; attempt += 1) {
-    const firstName = FIRST_NAMES[(seed + attempt) % FIRST_NAMES.length]!;
-    const lastName = LAST_NAMES[(seed * 7 + attempt) % LAST_NAMES.length]!;
-    const candidate = `${firstName} ${lastName}`;
-
-    if (!usedNames.has(candidate)) {
-      usedNames.add(candidate);
-      return candidate;
-    }
-  }
-
-  const fallback = `Pilot ${usedNames.size + 1}`;
-  usedNames.add(fallback);
-  return fallback;
 }
 
 function loadQualificationDemand(
@@ -1003,6 +945,7 @@ export function generateStaffingMarket(
   saveDatabase: SqliteFileDatabase,
   companyContext: CompanyContext,
   aircraftReference: AircraftReferenceRepository,
+  airportReference: AirportReferenceRepository,
   refreshReason: "scheduled" | "manual" | "bootstrap",
 ): GeneratedStaffingMarket {
   const demandLimit = 6;
@@ -1022,7 +965,14 @@ export function generateStaffingMarket(
     })),
   );
   const candidateGroups: GeneratedCandidateGroup[] = [];
-  const usedNames = new Set<string>();
+  const identityGenerator = createStaffingIdentityGenerator({
+    saveDatabase,
+    companyId: companyContext.companyId,
+    homeBaseAirportId: companyContext.homeBaseAirportId,
+    airportReference,
+    includeAvailableMarketOffers: false,
+  });
+  let candidateOrdinal = 0;
 
   demand.forEach((entry, demandIndex) => {
     const desiredCount = desiredCandidateCountForLane(entry, `${windowSeed}:${demandIndex}`);
@@ -1030,12 +980,13 @@ export function generateStaffingMarket(
     for (let candidateIndex = 0; candidateIndex < desiredCount; candidateIndex += 1) {
       const startsAtUtc = companyContext.currentTimeUtc;
       const candidateSeed = `${windowSeed}:${entry.qualificationGroup}:candidate:${candidateIndex}`;
-      const displayName = generateCandidateName(candidateSeed, usedNames);
+      const identity = identityGenerator.generateIdentity(candidateSeed, candidateOrdinal);
+      candidateOrdinal += 1;
       const candidateProfileId = `${entry.qualificationGroup}:${hashString(candidateSeed).toString(36)}`;
       const candidateProfile = buildCandidateProfile(
         entry,
         candidateProfileId,
-        displayName,
+        identity.displayName,
         companyContext.homeBaseAirportId,
         candidateSeed,
       );
@@ -1048,7 +999,9 @@ export function generateStaffingMarket(
       if (availabilityMix.directHire) {
         candidateOffers.push({
           candidateProfileId,
-          displayName,
+          firstName: identity.firstName,
+          lastName: identity.lastName,
+          displayName: identity.displayName,
           employmentModel: "direct_hire",
           qualificationGroup: entry.qualificationGroup,
           certifications: candidateProfile.certifications,
@@ -1057,13 +1010,18 @@ export function generateStaffingMarket(
           currentAirportId: companyContext.homeBaseAirportId,
           explanationMetadata: buildOfferExplanationMetadata(candidateProfile, directPricingExplanation),
           generatedSeed: candidateSeed,
+          ...(identity.homeCity ? { homeCity: identity.homeCity } : {}),
+          ...(identity.homeRegionCode ? { homeRegionCode: identity.homeRegionCode } : {}),
+          ...(identity.homeCountryCode ? { homeCountryCode: identity.homeCountryCode } : {}),
         });
       }
 
       if (availabilityMix.contractHire) {
         candidateOffers.push({
           candidateProfileId,
-          displayName,
+          firstName: identity.firstName,
+          lastName: identity.lastName,
+          displayName: identity.displayName,
           employmentModel: "contract_hire",
           qualificationGroup: entry.qualificationGroup,
           certifications: candidateProfile.certifications,
@@ -1074,6 +1032,9 @@ export function generateStaffingMarket(
           currentAirportId: companyContext.homeBaseAirportId,
           explanationMetadata: buildOfferExplanationMetadata(candidateProfile, contractPricingExplanation),
           generatedSeed: candidateSeed,
+          ...(identity.homeCity ? { homeCity: identity.homeCity } : {}),
+          ...(identity.homeRegionCode ? { homeRegionCode: identity.homeRegionCode } : {}),
+          ...(identity.homeCountryCode ? { homeCountryCode: identity.homeCountryCode } : {}),
         });
       }
 
@@ -1100,10 +1061,17 @@ export function reconcileStaffingMarket(params: {
   saveDatabase: SqliteFileDatabase;
   companyContext: CompanyContext;
   aircraftReference: AircraftReferenceRepository;
+  airportReference: AirportReferenceRepository;
   refreshReason: "scheduled" | "manual" | "bootstrap";
 }): StaffingMarketReconcileResult {
-  const { saveDatabase, companyContext, aircraftReference, refreshReason } = params;
-  const generatedMarket = generateStaffingMarket(saveDatabase, companyContext, aircraftReference, refreshReason);
+  const { saveDatabase, companyContext, aircraftReference, airportReference, refreshReason } = params;
+  const generatedMarket = generateStaffingMarket(
+    saveDatabase,
+    companyContext,
+    aircraftReference,
+    airportReference,
+    refreshReason,
+  );
 
   if (generatedMarket.offers.length === 0) {
     return {
@@ -1193,8 +1161,13 @@ export function reconcileStaffingMarket(params: {
           variable_cost_rate,
           starts_at_utc,
           ends_at_utc,
+          first_name,
+          last_name,
           display_name,
           certifications_json,
+          home_city,
+          home_region_code,
+          home_country_code,
           current_airport_id,
           explanation_metadata_json,
           generated_seed,
@@ -1215,8 +1188,13 @@ export function reconcileStaffingMarket(params: {
           $variable_cost_rate,
           $starts_at_utc,
           $ends_at_utc,
+          $first_name,
+          $last_name,
           $display_name,
           $certifications_json,
+          $home_city,
+          $home_region_code,
+          $home_country_code,
           $current_airport_id,
           $explanation_metadata_json,
           $generated_seed,
@@ -1236,8 +1214,13 @@ export function reconcileStaffingMarket(params: {
           $variable_cost_rate: offer.variableCostRate ?? null,
           $starts_at_utc: offer.startsAtUtc,
           $ends_at_utc: offer.endsAtUtc ?? null,
+          $first_name: offer.firstName,
+          $last_name: offer.lastName,
           $display_name: offer.displayName,
           $certifications_json: pilotCertificationsToJson(offer.certifications),
+          $home_city: offer.homeCity ?? null,
+          $home_region_code: offer.homeRegionCode ?? null,
+          $home_country_code: offer.homeCountryCode ?? null,
           $current_airport_id: offer.currentAirportId,
           $explanation_metadata_json: JSON.stringify(offer.explanationMetadata),
           $generated_seed: offer.generatedSeed,

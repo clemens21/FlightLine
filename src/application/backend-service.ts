@@ -147,6 +147,7 @@ export class FlightLineBackend {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleActivateStaffingPackage(command, {
           saveDatabase: context.saveDatabase,
           aircraftReference: this.aircraftReference,
+          airportReference: this.airportReference,
         }));
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
@@ -234,6 +235,7 @@ export class FlightLineBackend {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshStaffingMarket(command, {
           saveDatabase: context.saveDatabase,
           aircraftReference: this.aircraftReference,
+          airportReference: this.airportReference,
         }));
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }
@@ -379,7 +381,7 @@ export class FlightLineBackend {
       const commandId = `cmd_staffing_market_${Date.now()}`;
       const issuedAtUtc = new Date().toISOString();
 
-      const result = await handleRefreshStaffingMarket({
+        const result = await handleRefreshStaffingMarket({
         commandId,
         saveId,
         commandName: "RefreshStaffingMarket",
@@ -391,6 +393,7 @@ export class FlightLineBackend {
       }, {
         saveDatabase: context.saveDatabase,
         aircraftReference: this.aircraftReference,
+        airportReference: this.airportReference,
       });
 
       return result.success
@@ -527,6 +530,7 @@ export class FlightLineBackend {
           companyContext.companyId,
           companyContext.homeBaseAirportId,
           companyContext.currentTimeUtc,
+          this.airportReference,
         );
 
         if (reconcileResult.changed) {

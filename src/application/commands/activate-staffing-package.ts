@@ -13,10 +13,12 @@ import { parsePilotCertificationsJson, pilotCertificationsToJson } from "../../d
 import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
+import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
 
 interface ActivateStaffingPackageDependencies {
   saveDatabase: SqliteFileDatabase;
   aircraftReference: AircraftReferenceRepository;
+  airportReference: AirportReferenceRepository;
 }
 
 interface StaffingMarketOfferRow extends Record<string, unknown> {
@@ -31,8 +33,13 @@ interface StaffingMarketOfferRow extends Record<string, unknown> {
   variableCostRate: number | null;
   startsAtUtc: string | null;
   endsAtUtc: string | null;
+  firstName: string | null;
+  lastName: string | null;
   displayName: string | null;
   certificationsJson: string | null;
+  homeCity: string | null;
+  homeRegionCode: string | null;
+  homeCountryCode: string | null;
   currentAirportId: string | null;
   explanationMetadataJson: string | null;
   offerStatus: string;
@@ -105,8 +112,13 @@ export async function handleActivateStaffingPackage(
           variable_cost_rate AS variableCostRate,
           starts_at_utc AS startsAtUtc,
           ends_at_utc AS endsAtUtc,
+          first_name AS firstName,
+          last_name AS lastName,
           display_name AS displayName,
           certifications_json AS certificationsJson,
+          home_city AS homeCity,
+          home_region_code AS homeRegionCode,
+          home_country_code AS homeCountryCode,
           current_airport_id AS currentAirportId,
           explanation_metadata_json AS explanationMetadataJson,
           offer_status AS offerStatus
@@ -380,24 +392,35 @@ export async function handleActivateStaffingPackage(
         companyContext!.companyId,
         companyContext!.homeBaseAirportId,
         companyContext!.currentTimeUtc,
+        dependencies.airportReference,
       );
 
       if (marketOffer && marketOffer.displayName) {
         dependencies.saveDatabase.run(
           `UPDATE named_pilot
-          SET display_name = $display_name,
+          SET first_name = $first_name,
+              last_name = $last_name,
+              display_name = $display_name,
               certifications_json = $certifications_json,
               home_airport_id = $home_airport_id,
+              home_city = $home_city,
+              home_region_code = $home_region_code,
+              home_country_code = $home_country_code,
               current_airport_id = $current_airport_id,
               updated_at_utc = $updated_at_utc
           WHERE staffing_package_id = $staffing_package_id
             AND roster_slot_number = 1`,
           {
+            $first_name: marketOffer.firstName ?? marketOffer.displayName,
+            $last_name: marketOffer.lastName ?? marketOffer.displayName,
             $display_name: marketOffer.displayName,
             $certifications_json: pilotCertificationsToJson(
               parsePilotCertificationsJson(marketOffer.certificationsJson, qualificationGroup),
             ),
             $home_airport_id: companyContext!.homeBaseAirportId,
+            $home_city: marketOffer.homeCity ?? null,
+            $home_region_code: marketOffer.homeRegionCode ?? null,
+            $home_country_code: marketOffer.homeCountryCode ?? null,
             $current_airport_id: marketOffer.currentAirportId ?? companyContext!.homeBaseAirportId,
             $updated_at_utc: hiredAtUtc,
             $staffing_package_id: staffingPackageId,

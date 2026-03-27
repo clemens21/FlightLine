@@ -290,6 +290,7 @@ export async function handleCommitAircraftSchedule(
     companyContext.companyId,
     companyContext.homeBaseAirportId,
     companyContext.currentTimeUtc,
+    dependencies.airportReference,
   );
 
   const namedPilotRequirements = deriveNamedPilotRequirements(validation.laborReservations);

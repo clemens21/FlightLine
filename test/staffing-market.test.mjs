@@ -76,11 +76,14 @@ try {
 
   const directMarket = await backend.loadActiveStaffingMarket(directSaveId);
   assert.ok(directMarket);
-  assert.ok(directMarket.offers.length >= 16);
-  assert.ok(countCandidateGroups(directMarket) >= 16);
-  assert.ok(countCandidateGroups(directMarket) <= 32);
+  assert.ok(directMarket.offers.length >= 24);
+  assert.ok(countCandidateGroups(directMarket) >= 24);
+  assert.ok(countCandidateGroups(directMarket) <= 64);
   assert.equal(directMarket.offers.every((offer) => offer.laborCategory === "pilot"), true);
   assert.equal(directMarket.offers.every((offer) => typeof offer.displayName === "string" && offer.displayName.length > 0), true);
+  assert.equal(directMarket.offers.every((offer) => typeof offer.firstName === "string" && offer.firstName.length > 0), true);
+  assert.equal(directMarket.offers.every((offer) => typeof offer.lastName === "string" && offer.lastName.length > 0), true);
+  assert.equal(directMarket.offers.every((offer) => typeof offer.homeCountryCode === "string" && offer.homeCountryCode.length > 0), true);
   assert.equal(directMarket.offers.every((offer) => offer.candidateState === "available_now"), true);
   assert.equal(directMarket.offers.every((offer) => Array.isArray(offer.certifications) && offer.certifications.length >= 1), true);
   assert.equal(directMarket.offers.some((offer) => offer.employmentModel === "direct_hire"), true);
@@ -179,8 +182,8 @@ try {
   const cadenceMarketBeforeAdvance = await backend.loadActiveStaffingMarket(cadenceSaveId);
   assert.ok(cadenceMarketBeforeAdvance);
   const cadenceGroupsBefore = countCandidateGroups(cadenceMarketBeforeAdvance);
-  assert.ok(cadenceGroupsBefore >= 16);
-  assert.ok(cadenceGroupsBefore <= 32);
+  assert.ok(cadenceGroupsBefore >= 24);
+  assert.ok(cadenceGroupsBefore <= 64);
 
   const cadenceShortAdvanceTargetUtc = addMinutes(cadenceStartedAtUtc, 6 * 60);
   const cadenceShortAdvanceResult = await backend.dispatch({
@@ -223,8 +226,8 @@ try {
   assert.notEqual(cadenceMarketAfterRefresh.offerWindowId, cadenceMarketBeforeAdvance.offerWindowId);
   assert.equal(cadenceMarketAfterRefresh.generatedAtUtc, cadenceRefreshTargetUtc);
   assert.equal(cadenceMarketAfterRefresh.expiresAtUtc, addMinutes(cadenceRefreshTargetUtc, 24 * 60));
-  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) >= 16);
-  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) <= 32);
+  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) >= 24);
+  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) <= 64);
 
   const selectedDirectPair = directCandidatePairs.find((pair) => pair.directOffer && pair.contractOffer);
   assert.ok(selectedDirectPair?.directOffer);
@@ -275,6 +278,12 @@ try {
   const directPilot = directStaffingState.namedPilots.find((pilot) => pilot.staffingPackageId === directPackage.staffingPackageId);
   assert.ok(directPilot);
   assert.equal(directPilot.employmentModel, "direct_hire");
+  assert.equal(directPilot.firstName, selectedDirectOffer.firstName);
+  assert.equal(directPilot.lastName, selectedDirectOffer.lastName);
+  assert.equal(directPilot.displayName, selectedDirectOffer.displayName);
+  assert.equal(directPilot.homeCity, selectedDirectOffer.homeCity);
+  assert.equal(directPilot.homeRegionCode, selectedDirectOffer.homeRegionCode);
+  assert.equal(directPilot.homeCountryCode, selectedDirectOffer.homeCountryCode);
   assert.deepEqual(directPilot.candidateProfile, selectedDirectOffer.candidateProfile);
   assert.equal(directPilot.sourceCandidateProfileId, selectedDirectOffer.candidateProfileId);
 
@@ -332,6 +341,11 @@ try {
   assert.ok(reloadedDirectStaffingState);
   const reloadedDirectPilot = reloadedDirectStaffingState.namedPilots.find((pilot) => pilot.staffingPackageId === directPackage.staffingPackageId);
   assert.ok(reloadedDirectPilot);
+  assert.equal(reloadedDirectPilot.firstName, selectedDirectOffer.firstName);
+  assert.equal(reloadedDirectPilot.lastName, selectedDirectOffer.lastName);
+  assert.equal(reloadedDirectPilot.homeCity, selectedDirectOffer.homeCity);
+  assert.equal(reloadedDirectPilot.homeRegionCode, selectedDirectOffer.homeRegionCode);
+  assert.equal(reloadedDirectPilot.homeCountryCode, selectedDirectOffer.homeCountryCode);
   assert.deepEqual(reloadedDirectPilot.candidateProfile, selectedDirectOffer.candidateProfile);
   assert.equal(reloadedDirectPilot.sourceCandidateProfileId, selectedDirectOffer.candidateProfileId);
 
@@ -465,6 +479,12 @@ try {
   assert.ok(hiredPilot);
   assert.equal(hiredPilot.employmentModel, "contract_hire");
   assert.equal(hiredPilot.endsAtUtc, selectedOffer.endsAtUtc);
+  assert.equal(hiredPilot.firstName, selectedOffer.firstName);
+  assert.equal(hiredPilot.lastName, selectedOffer.lastName);
+  assert.equal(hiredPilot.displayName, selectedOffer.displayName);
+  assert.equal(hiredPilot.homeCity, selectedOffer.homeCity);
+  assert.equal(hiredPilot.homeRegionCode, selectedOffer.homeRegionCode);
+  assert.equal(hiredPilot.homeCountryCode, selectedOffer.homeCountryCode);
   assert.deepEqual(hiredPilot.candidateProfile, selectedOffer.candidateProfile);
   assert.equal(hiredPilot.sourceCandidateProfileId, selectedOffer.candidateProfileId);
 
@@ -584,6 +604,11 @@ try {
   assert.ok(reloadedPilot);
   assert.equal(reloadedPilot.employmentModel, "contract_hire");
   assert.equal(reloadedPilot.endsAtUtc, selectedOffer.endsAtUtc);
+  assert.equal(reloadedPilot.firstName, selectedOffer.firstName);
+  assert.equal(reloadedPilot.lastName, selectedOffer.lastName);
+  assert.equal(reloadedPilot.homeCity, selectedOffer.homeCity);
+  assert.equal(reloadedPilot.homeRegionCode, selectedOffer.homeRegionCode);
+  assert.equal(reloadedPilot.homeCountryCode, selectedOffer.homeCountryCode);
   assert.deepEqual(reloadedPilot.candidateProfile, selectedOffer.candidateProfile);
 
   const contractEndUtc = selectedOffer.endsAtUtc;

@@ -33,8 +33,13 @@ interface StaffingOfferRow extends Record<string, unknown> {
   variableCostRate: number | null;
   startsAtUtc: string | null;
   endsAtUtc: string | null;
+  firstName: string | null;
+  lastName: string | null;
   displayName: string | null;
   certificationsJson: string | null;
+  homeCity: string | null;
+  homeRegionCode: string | null;
+  homeCountryCode: string | null;
   currentAirportId: string | null;
   explanationMetadataJson: string;
   generatedSeed: string;
@@ -57,8 +62,13 @@ export interface StaffingOfferView {
   variableCostRate: number | undefined;
   startsAtUtc: string | undefined;
   endsAtUtc: string | undefined;
+  firstName: string | undefined;
+  lastName: string | undefined;
   displayName: string | undefined;
   certifications: PilotCertificationCode[];
+  homeCity: string | undefined;
+  homeRegionCode: string | undefined;
+  homeCountryCode: string | undefined;
   currentAirportId: string | undefined;
   candidateState: StaffingCandidateState;
   explanationMetadata: JsonObject;
@@ -137,8 +147,13 @@ export function loadActiveStaffingMarket(
       variable_cost_rate AS variableCostRate,
       starts_at_utc AS startsAtUtc,
       ends_at_utc AS endsAtUtc,
+      first_name AS firstName,
+      last_name AS lastName,
       display_name AS displayName,
       certifications_json AS certificationsJson,
+      home_city AS homeCity,
+      home_region_code AS homeRegionCode,
+      home_country_code AS homeCountryCode,
       current_airport_id AS currentAirportId,
       explanation_metadata_json AS explanationMetadataJson,
       generated_seed AS generatedSeed,
@@ -177,8 +192,13 @@ export function loadActiveStaffingMarket(
         variableCostRate: offer.variableCostRate ?? undefined,
         startsAtUtc: offer.startsAtUtc ?? undefined,
         endsAtUtc: offer.endsAtUtc ?? undefined,
+        firstName: offer.firstName ?? undefined,
+        lastName: offer.lastName ?? undefined,
         displayName: offer.displayName ?? undefined,
         certifications: parsePilotCertificationsJson(offer.certificationsJson, offer.qualificationGroup),
+        homeCity: offer.homeCity ?? undefined,
+        homeRegionCode: offer.homeRegionCode ?? undefined,
+        homeCountryCode: offer.homeCountryCode ?? undefined,
         currentAirportId: offer.currentAirportId ?? undefined,
         candidateState:
           offer.startsAtUtc && compareUtc(offer.startsAtUtc, companyContext.currentTimeUtc) > 0

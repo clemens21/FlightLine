@@ -92,9 +92,14 @@ export interface NamedPilot {
   companyId: string;
   staffingPackageId: StaffingPackageId;
   rosterSlotNumber: number;
+  firstName: string;
+  lastName: string;
   displayName: string;
   certifications: PilotCertificationCode[];
   homeAirportId?: string;
+  homeCity?: string;
+  homeRegionCode?: string;
+  homeCountryCode?: string;
   currentAirportId?: string;
   restingUntilUtc?: UtcIsoString;
   trainingProgramKind?: NamedPilotTrainingProgramKind;

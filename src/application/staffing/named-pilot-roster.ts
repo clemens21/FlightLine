@@ -23,6 +23,7 @@ import {
 import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibility.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AirportReferenceRepository, AirportRecord } from "../../infrastructure/reference/airport-reference.js";
+import { createStaffingIdentityGenerator } from "./staffing-identity-generator.js";
 
 interface PilotStaffingPackageRow extends Record<string, unknown> {
   staffingPackageId: string;
@@ -39,9 +40,14 @@ interface NamedPilotRow extends Record<string, unknown> {
   staffingPackageId: string;
   sourceOfferId: string | null;
   rosterSlotNumber: number;
+  firstName: string | null;
+  lastName: string | null;
   displayName: string;
   certificationsJson: string | null;
   homeAirportId: string | null;
+  homeCity: string | null;
+  homeRegionCode: string | null;
+  homeCountryCode: string | null;
   currentAirportId: string | null;
   restingUntilUtc: string | null;
   trainingProgramKind: NamedPilotTrainingProgramKind | null;
@@ -128,6 +134,8 @@ export interface NamedPilotRosterView {
   sourceOfferId: string | undefined;
   sourceCandidateProfileId: string | undefined;
   rosterSlotNumber: number;
+  firstName: string;
+  lastName: string;
   displayName: string;
   qualificationGroup: string;
   certifications: PilotCertificationCode[];
@@ -137,6 +145,9 @@ export interface NamedPilotRosterView {
   startsAtUtc: string;
   endsAtUtc: string | undefined;
   homeAirportId: string | undefined;
+  homeCity: string | undefined;
+  homeRegionCode: string | undefined;
+  homeCountryCode: string | undefined;
   currentAirportId: string | undefined;
   restingUntilUtc: string | undefined;
   trainingProgramKind: NamedPilotTrainingProgramKind | undefined;
@@ -186,52 +197,6 @@ export interface NamedPilotRequirementAssessment {
   assignedToUtc: string;
 }
 
-const FIRST_NAMES = [
-  "Avery",
-  "Blake",
-  "Cameron",
-  "Dakota",
-  "Emerson",
-  "Finley",
-  "Harper",
-  "Jamie",
-  "Jordan",
-  "Kai",
-  "Logan",
-  "Morgan",
-  "Parker",
-  "Quinn",
-  "Reese",
-  "Riley",
-  "Sawyer",
-  "Skyler",
-  "Taylor",
-  "Tatum",
-] as const;
-
-const LAST_NAMES = [
-  "Bennett",
-  "Brooks",
-  "Calloway",
-  "Dalton",
-  "Ellis",
-  "Foster",
-  "Grayson",
-  "Hayes",
-  "Iverson",
-  "Jordan",
-  "Kendall",
-  "Lawson",
-  "Mercer",
-  "Nolan",
-  "Parker",
-  "Quincy",
-  "Sawyer",
-  "Sterling",
-  "Turner",
-  "Walker",
-] as const;
-
 export const NAMED_PILOT_REST_HOURS = 10;
 export const NAMED_PILOT_RECURRENT_TRAINING_HOURS = 48;
 export const NAMED_PILOT_CERTIFICATION_TRAINING_HOURS = 72;
@@ -276,35 +241,6 @@ function haversineDistanceNm(origin: AirportRecord, destination: AirportRecord):
   return earthRadiusNm * c;
 }
 
-function hashString(value: string): number {
-  let hash = 0;
-
-  for (const character of value) {
-    hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
-  }
-
-  return Math.abs(hash);
-}
-
-function generatePilotName(staffingPackageId: string, rosterSlotNumber: number, usedNames: Set<string>): string {
-  const seed = hashString(`${staffingPackageId}:${rosterSlotNumber}`);
-
-  for (let attempt = 0; attempt < FIRST_NAMES.length * LAST_NAMES.length; attempt += 1) {
-    const firstName = FIRST_NAMES[(seed + attempt) % FIRST_NAMES.length]!;
-    const lastName = LAST_NAMES[(seed * 7 + attempt) % LAST_NAMES.length]!;
-    const candidate = `${firstName} ${lastName}`;
-
-    if (!usedNames.has(candidate)) {
-      usedNames.add(candidate);
-      return candidate;
-    }
-  }
-
-  const fallback = `Pilot ${rosterSlotNumber}`;
-  usedNames.add(fallback);
-  return fallback;
-}
-
 function pickRelevantAssignment(
   assignments: NamedPilotAssignmentRow[],
   currentTimeUtc: string,
@@ -330,6 +266,29 @@ function describeRequirementLabel(
   requiredCertificationCode: PilotCertificationCode | undefined,
 ): string {
   return requiredCertificationCode ? `${requiredCertificationCode} certification` : qualificationGroup;
+}
+
+function deriveFallbackNameParts(displayName: string): { firstName: string; lastName: string } {
+  const collapsed = displayName.trim().replace(/\s+/gu, " ");
+  if (!collapsed) {
+    return {
+      firstName: "Pilot",
+      lastName: "Pilot",
+    };
+  }
+
+  const parts = collapsed.split(" ");
+  if (parts.length === 1) {
+    return {
+      firstName: collapsed,
+      lastName: collapsed,
+    };
+  }
+
+  return {
+    firstName: parts[0] ?? collapsed,
+    lastName: parts.slice(1).join(" ") || collapsed,
+  };
 }
 
 export function deriveNamedPilotRequirements(
@@ -394,6 +353,7 @@ export function reconcileNamedPilots(
   companyId: string,
   homeBaseAirportId: string,
   currentTimeUtc: string,
+  airportReference: AirportReferenceRepository,
 ): ReconcileNamedPilotsResult {
   const packages = saveDatabase.all<PilotStaffingPackageRow>(
     `SELECT
@@ -425,9 +385,14 @@ export function reconcileNamedPilots(
       np.staffing_package_id AS staffingPackageId,
       sp.source_offer_id AS sourceOfferId,
       np.roster_slot_number AS rosterSlotNumber,
+      np.first_name AS firstName,
+      np.last_name AS lastName,
       np.display_name AS displayName,
       np.certifications_json AS certificationsJson,
       np.home_airport_id AS homeAirportId,
+      np.home_city AS homeCity,
+      np.home_region_code AS homeRegionCode,
+      np.home_country_code AS homeCountryCode,
       np.current_airport_id AS currentAirportId,
       np.resting_until_utc AS restingUntilUtc,
       np.training_program_kind AS trainingProgramKind,
@@ -451,8 +416,14 @@ export function reconcileNamedPilots(
     { $company_id: companyId },
   );
 
-  const usedNames = new Set(existingPilots.map((pilot) => pilot.displayName));
   const pilotsByPackageId = new Map<string, Set<number>>();
+  const identityGenerator = createStaffingIdentityGenerator({
+    saveDatabase,
+    companyId,
+    homeBaseAirportId,
+    airportReference,
+    includeAvailableMarketOffers: true,
+  });
 
   for (const pilot of existingPilots) {
     const slots = pilotsByPackageId.get(pilot.staffingPackageId) ?? new Set<number>();
@@ -471,16 +442,24 @@ export function reconcileNamedPilots(
       }
 
       const namedPilotId = createPrefixedId("pilot");
-      const displayName = generatePilotName(staffingPackage.staffingPackageId, rosterSlotNumber, usedNames);
+      const identity = identityGenerator.generateIdentity(
+        `${staffingPackage.staffingPackageId}:${rosterSlotNumber}`,
+        createdPilotCount + rosterSlotNumber,
+      );
       saveDatabase.run(
         `INSERT INTO named_pilot (
           named_pilot_id,
           company_id,
           staffing_package_id,
           roster_slot_number,
+          first_name,
+          last_name,
           display_name,
           certifications_json,
           home_airport_id,
+          home_city,
+          home_region_code,
+          home_country_code,
           current_airport_id,
           resting_until_utc,
           travel_origin_airport_id,
@@ -494,9 +473,14 @@ export function reconcileNamedPilots(
           $company_id,
           $staffing_package_id,
           $roster_slot_number,
+          $first_name,
+          $last_name,
           $display_name,
           $certifications_json,
           $home_airport_id,
+          $home_city,
+          $home_region_code,
+          $home_country_code,
           $current_airport_id,
           NULL,
           NULL,
@@ -511,11 +495,16 @@ export function reconcileNamedPilots(
           $company_id: companyId,
           $staffing_package_id: staffingPackage.staffingPackageId,
           $roster_slot_number: rosterSlotNumber,
-          $display_name: displayName,
+          $first_name: identity.firstName,
+          $last_name: identity.lastName,
+          $display_name: identity.displayName,
           $certifications_json: pilotCertificationsToJson(
             certificationsForQualificationGroup(staffingPackage.qualificationGroup),
           ),
           $home_airport_id: homeBaseAirportId,
+          $home_city: identity.homeCity ?? null,
+          $home_region_code: identity.homeRegionCode ?? null,
+          $home_country_code: identity.homeCountryCode ?? null,
           $current_airport_id: homeBaseAirportId,
           $created_at_utc: currentTimeUtc,
           $updated_at_utc: currentTimeUtc,
@@ -806,9 +795,14 @@ export function loadNamedPilotRoster(
       np.staffing_package_id AS staffingPackageId,
       sp.source_offer_id AS sourceOfferId,
       np.roster_slot_number AS rosterSlotNumber,
+      np.first_name AS firstName,
+      np.last_name AS lastName,
       np.display_name AS displayName,
       np.certifications_json AS certificationsJson,
       np.home_airport_id AS homeAirportId,
+      np.home_city AS homeCity,
+      np.home_region_code AS homeRegionCode,
+      np.home_country_code AS homeCountryCode,
       np.current_airport_id AS currentAirportId,
       np.resting_until_utc AS restingUntilUtc,
       np.training_program_kind AS trainingProgramKind,
@@ -895,9 +889,10 @@ export function loadNamedPilotRoster(
         ? "resting"
         : isTraveling
           ? "traveling"
-        : relevantAssignment?.status === "reserved"
+      : relevantAssignment?.status === "reserved"
           ? "reserved"
           : "ready";
+    const fallbackNameParts = deriveFallbackNameParts(pilot.displayName);
 
     return {
       namedPilotId: pilot.namedPilotId,
@@ -905,6 +900,8 @@ export function loadNamedPilotRoster(
       sourceOfferId: pilot.sourceOfferId ?? undefined,
       sourceCandidateProfileId: visibility.candidateProfileId,
       rosterSlotNumber: pilot.rosterSlotNumber,
+      firstName: pilot.firstName ?? fallbackNameParts.firstName,
+      lastName: pilot.lastName ?? fallbackNameParts.lastName,
       displayName: pilot.displayName,
       qualificationGroup: pilot.qualificationGroup,
       certifications,
@@ -914,6 +911,9 @@ export function loadNamedPilotRoster(
       startsAtUtc: pilot.startsAtUtc,
       endsAtUtc: pilot.endsAtUtc ?? undefined,
       homeAirportId: pilot.homeAirportId ?? undefined,
+      homeCity: pilot.homeCity ?? undefined,
+      homeRegionCode: pilot.homeRegionCode ?? undefined,
+      homeCountryCode: pilot.homeCountryCode ?? undefined,
       currentAirportId: pilot.currentAirportId ?? undefined,
       restingUntilUtc: pilot.restingUntilUtc ?? undefined,
       trainingProgramKind: pilot.trainingProgramKind ?? undefined,
