@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.10.0`
+- `0.10.1`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -47,6 +47,7 @@ The aircraft market filtered clipping follow-up advances the release to `0.9.4`.
 The aircraft market filtered single-row detail-pane viewport fix advances the release to `0.9.5`.
 The aircraft market detail-pane top-line alignment follow-up advances the release to `0.9.6`.
 The contracts available-board square-map, table-model, row-interaction, and test-save cleanup landing advances the release to `0.10.0`.
+The UI browser smoke decomposition, targeted suite runner, and test-hardening follow-up advances the release to `0.10.1`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

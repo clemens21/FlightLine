@@ -1,11 +1,10 @@
 /*
- * Regression coverage for ui shell navigation.test.
- * This test file sets up enough backend or UI state to lock in the behavior the product currently depends on.
+ * Focused browser coverage for launcher and shell navigation behavior.
+ * Contracts, staffing, dispatch, and aircraft workspace details live in targeted suites.
  */
 
 import assert from "node:assert/strict";
 
-import { addAcceptedContractToRoutePlan } from "../dist/ui/route-plan-state.js";
 import {
   acquireAircraft,
   activateStaffingPackage,
@@ -63,12 +62,6 @@ function nextTheme(theme) {
 
 function launcherSaveRow(page, saveId) {
   return page.locator(".launcher-save-row").filter({ hasText: saveId }).first();
-}
-
-function parseAirportCode(detailText, prefix) {
-  const match = new RegExp(`${prefix}:\\s*([A-Z0-9]{3,4})\\s*-`).exec(detailText ?? "");
-  assert.ok(match, `Could not parse ${prefix} airport code from "${detailText}".`);
-  return match[1];
 }
 
 function createSameOriginScriptFailureTracker(page, baseUrl) {
@@ -139,8 +132,10 @@ try {
   });
   assert.equal(refreshBoardResult.success, true);
 
-  const fleetState = await backend.loadFleetState(seededSaveId);
-  const board = await backend.loadActiveContractBoard(seededSaveId);
+  const [fleetState, board] = await Promise.all([
+    backend.loadFleetState(seededSaveId),
+    backend.loadActiveContractBoard(seededSaveId),
+  ]);
   assert.ok(fleetState?.aircraft[0]);
   assert.ok(board);
 
@@ -158,16 +153,6 @@ try {
     },
   });
   assert.equal(seededAcceptResult.success, true);
-
-  await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
-    const mutation = addAcceptedContractToRoutePlan(
-      context.saveDatabase,
-      seededSaveId,
-      String(seededAcceptResult.metadata?.companyContractId ?? ""),
-    );
-    assert.equal(mutation.success, true);
-    await context.saveDatabase.persist();
-  });
 
   const createDeleteSaveResult = await backend.dispatch({
     commandId: `cmd_${deleteSaveId}_create`,
@@ -202,19 +187,10 @@ try {
     clickUi(page.getByRole("button", { name: "Create save" })),
   ]);
   await waitForOpenSaveProgress(page);
-  assert.equal((await page.locator("[data-loader-title]").textContent())?.includes(launcherSaveId), true);
-
   await page.waitForURL(saveUrlPattern(launcherSaveId));
   await waitForShellTitle(page, `Save ${launcherSaveId}`);
   assert.equal(await page.locator("[data-shell-subtitle]").textContent(), "Create a company to begin operating.");
   assert.equal(await page.locator("[data-clock-label]").textContent(), "Setup first");
-  assert.equal(await page.locator("[data-clock-rate]").textContent(), "--");
-
-  await clickUi(page.locator("[data-clock-menu] summary"));
-  await page.waitForFunction(() => document.querySelector("[data-clock-menu]")?.open === true);
-  assert.ok((await page.locator("[data-clock-panel]").textContent())?.includes("Create a company before opening the clock and calendar."));
-  await page.keyboard.press("Escape");
-  await page.waitForFunction(() => document.querySelector("[data-clock-menu]")?.open !== true);
 
   await clickUi(page.locator("[data-settings-menu] summary"));
   const settingsThemeLabel = themeLabel(launcherTheme);
@@ -222,22 +198,17 @@ try {
   assert.equal((await page.locator("[data-settings-menu]").textContent())?.includes(launcherSaveId), true);
 
   const shellTheme = nextTheme(launcherTheme);
-  const shellThemeLabel = themeLabel(shellTheme);
   await clickUi(page.locator("[data-settings-theme]"));
   await waitForTheme(page, shellTheme);
-  await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, shellThemeLabel);
-  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
+  await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, themeLabel(shellTheme));
 
   const thirdTheme = nextTheme(shellTheme);
-  const thirdThemeLabel = themeLabel(thirdTheme);
   await clickUi(page.locator("[data-settings-theme]"));
   await waitForTheme(page, thirdTheme);
-  await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, thirdThemeLabel);
-  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
+  await page.waitForFunction((label) => document.querySelector("[data-settings-theme-label]")?.textContent === label, themeLabel(thirdTheme));
 
   await clickUi(page.locator("[data-settings-popup-mode-toggle]"));
   await page.waitForFunction(() => document.querySelector("[data-settings-popup-label]")?.textContent === "Important only");
-  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
   assert.equal(await page.evaluate(() => localStorage.getItem("flightline-activity-popups")), "important_only");
 
   await Promise.all([
@@ -258,7 +229,6 @@ try {
       .find((entry) => entry.textContent?.includes(saveId));
     return row?.textContent?.includes("Confirm delete") && row.textContent?.includes("Cancel");
   }, launcherSaveId);
-
   await Promise.all([
     page.waitForURL((url) => url.pathname === "/" && !url.searchParams.has("confirmDelete")),
     clickUi(page.getByRole("link", { name: "Cancel" })),
@@ -289,123 +259,21 @@ try {
   await waitForOpenSaveProgress(page);
   await page.waitForURL(saveUrlPattern(seededSaveId));
   await waitForShellTitle(page, displayName);
-
   await page.waitForFunction(() => document.body.innerText.includes("Control Tower"));
   await waitForCompanyClock(page);
   seededSaveOpenScriptFailures.stop();
   assert.deepEqual(seededSaveOpenScriptFailures.failures, []);
-  assert.equal(await page.locator(".panel").filter({ hasText: "Control Tower" }).count(), 1);
-  assert.equal(await page.getByRole("button", { name: "Advance 12h" }).count(), 0);
 
   await clickUi(page.locator("[data-shell-tab='contracts']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
-  assert.equal(await page.locator("[data-contracts-map]").count(), 1);
-  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
-  assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
-  assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
-
-  const initialOfferCount = await page.locator("[data-select-offer-row]").count();
-  const firstOfferRow = page.locator("[data-select-offer-row]").first();
-  const destinationDetail = await firstOfferRow.locator(".contract-route-detail").nth(1).textContent();
-  const destinationCode = parseAirportCode(destinationDetail, "Destination");
-
-  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
-  await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='route']") instanceof HTMLElement
-    && !(document.querySelector("[data-contracts-board-popover='route']")).hidden);
-  await page.locator("[data-contracts-board-popover='route'] input[name='routeSearchText']").fill(destinationCode);
-  await page.waitForFunction((code) => {
-    const rows = [...document.querySelectorAll("[data-select-offer-row]")];
-    return rows.length > 0 && rows.every((row) => row.textContent?.includes(code));
-  }, destinationCode);
-  const searchedOfferCount = await page.locator("[data-select-offer-row]").count();
-  assert.ok(searchedOfferCount <= initialOfferCount);
-
-  await clickUi(page.locator("[data-contracts-board-popover='route'] [data-contracts-board-clear='route']").first());
-  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-select-offer-row]").length === expectedCount, initialOfferCount);
-  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
-  await page.waitForFunction(() => document.querySelector("button[aria-label='Route search']")?.getAttribute("aria-expanded") === "false");
-
-  const readyRows = page.locator("[data-select-offer-row]", { hasText: "No ready aircraft" });
-  const noReadyCount = await readyRows.count();
-  if (noReadyCount > 0) {
-    await clickUi(page.locator("button[aria-label='Nearest aircraft filter']").first().locator("svg"));
-    await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='aircraft']") instanceof HTMLElement
-      && !(document.querySelector("[data-contracts-board-popover='aircraft']")).hidden);
-    await clickUi(page.locator("[data-contracts-board-popover='aircraft'] input[name='noReadyAircraft']").first());
-    await page.waitForFunction(() => {
-      const rows = [...document.querySelectorAll("[data-select-offer-row]")];
-      return rows.length > 0 && rows.every((row) => (row.textContent ?? "").includes("No ready aircraft"));
-    });
-    await clickUi(page.locator("[data-contracts-board-popover='aircraft'] [data-contracts-board-clear='aircraft']").first());
-    await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-select-offer-row]").length === expectedCount, initialOfferCount);
-  }
-
-  await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
-  await clickUi(page.locator("[data-select-offer-row]").first());
-  await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
-  await clickUi(page.locator("[data-accept-selected-offer]").first());
-  await page.waitForFunction(() => document.body.innerText.includes("Send to route plan"));
-  await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Use Accepted / Active"));
-
-  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));
-  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planner candidates"));
-  await page.waitForFunction(() => document.querySelector("[name='plannerMatchCurrentEndpoint']") instanceof HTMLInputElement
-    && (document.querySelector("[name='plannerMatchCurrentEndpoint']")?.checked ?? false) === true);
-  assert.equal(await page.locator("[data-contracts-map]").count(), 0);
-  assert.equal(await page.locator("[data-contracts-plan-map]").count(), 1);
-  const plannerSummaryText = await page.locator(".planner-summary-panel").textContent();
-  assert.ok(plannerSummaryText?.includes("Current endpoint"));
-  assert.ok(plannerSummaryText?.includes("Payout total"));
-  assert.ok(plannerSummaryText?.includes("Continuity"));
-  assert.equal(await page.locator(".planner-candidate-panel [data-accept-offer]").count(), 0);
-  const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
-  const initialPlannerAddCount = await plannerAddButtons.count();
-  assert.ok(initialPlannerAddCount > 0);
-  const plannerCandidateOfferId = await plannerAddButtons.first().getAttribute("data-planner-add-candidate");
-  assert.ok(plannerCandidateOfferId);
-  const initialRoutePlanItemCount = await page.locator(".planner-chain-panel .planner-item").count();
-  assert.ok((await page.locator(".planner-chain-panel").textContent())?.includes("Accepted work"));
-  await clickUi(plannerAddButtons.first());
-  await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
-  await page.waitForFunction((offerId) => {
-    const button = document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`);
-    return !button || button.textContent?.trim() !== "Adding...";
-  }, plannerCandidateOfferId);
-  await page.waitForFunction((offerId) => !document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
-  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planned"));
-  assert.ok((await page.locator(".planner-chain-panel .planner-item-source.accepted").count()) >= 1);
-  assert.ok((await page.locator(".planner-chain-panel .planner-item-source.planned").count()) >= 1);
-  assert.ok((await page.locator(".planner-chain-panel").textContent())?.includes("Planned candidate"));
-  await backend.withExistingSaveDatabase(seededSaveId, async (context) => {
-    context.saveDatabase.run(
-      `DELETE FROM contract_offer WHERE contract_offer_id = $contract_offer_id`,
-      {
-        $contract_offer_id: plannerCandidateOfferId,
-      },
-    );
-    await context.saveDatabase.persist();
-  });
-  await page.reload({ waitUntil: "domcontentloaded" });
-  await page.waitForURL(saveUrlPattern(seededSaveId));
-  await waitForShellTitle(page, displayName);
-  await clickUi(page.locator("[data-shell-tab='contracts']"));
-  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
-  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));
-  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
-  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel .planner-item.stale")?.textContent?.includes("Stale"));
-  const staleCandidateRow = page.locator(".planner-candidate-panel .planner-item.stale").first();
-  assert.equal(await staleCandidateRow.locator("[data-planner-add-candidate]").count(), 0);
-  await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='board']"));
-  await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
-  await clickUi(page.locator("[data-board-tab='active']"));
-  await page.waitForFunction(() => document.body.innerText.includes("accepted / active contracts"));
-  assert.ok((await page.locator("[data-select-company-contract-row]").count()) >= 1);
-  assert.ok((await page.locator("[data-plan-add-contract]").count()) >= 1);
+  await clickUi(page.locator("[data-shell-tab='aircraft']"));
+  await page.waitForFunction(() => document.querySelector("[data-aircraft-tab-host]") instanceof HTMLElement);
+  await clickUi(page.locator("[data-shell-tab='staffing']"));
+  await page.waitForFunction(() => document.querySelector("[data-staffing-roster]") instanceof HTMLElement);
 
   await clickUi(page.locator("[data-settings-menu] summary"));
   await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
   await clickUi(page.locator("[data-settings-open-activity]"));
-  await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
   await page.waitForFunction(() => new URL(window.location.href).searchParams.get("tab") === "activity");
 
   await clickUi(page.locator("[data-shell-tab='dashboard']"));

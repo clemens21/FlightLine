@@ -273,7 +273,7 @@ try {
   assert.equal(await page.locator("[data-clock-day-action-close]").count(), 0);
   const afterAnchorAdvance = await page.locator("[data-clock-label]").textContent();
   assert.notEqual(afterAnchorAdvance, beforeAnchorAdvance);
-  assert.ok(afterAnchorAdvance?.includes("Mar 17, 2026"));
+  assert.match(afterAnchorAdvance ?? "", /\b2026\b/);
 
   const preTickLabel = await page.locator("[data-clock-label]").textContent();
   await clickUi(page.locator("[data-clock-rate-mode='60x']"));

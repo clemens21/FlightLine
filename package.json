@@ -1,6 +1,6 @@
 {
   "name": "flightline",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "FlightLine airline management simulation",
   "main": "dist/desktop/main.js",
   "scripts": {
@@ -12,7 +12,15 @@
     "desktop": "npm run build && electron dist/desktop/main.js",
     "test:unit": "npm run build && node test/run-tests.mjs",
     "test:ui:setup": "node test/setup-playwright.mjs",
-    "test:ui": "npm run build && node test/run-ui-tests.mjs",
+    "test:ui": "npm run build && node test/run-ui-tests.mjs core",
+    "test:ui:all": "npm run build && node test/run-ui-tests.mjs all",
+    "test:ui:smoke": "npm run build && node test/run-ui-tests.mjs smoke",
+    "test:ui:shell": "npm run build && node test/run-ui-tests.mjs shell",
+    "test:ui:contracts": "npm run build && node test/run-ui-tests.mjs contracts",
+    "test:ui:dispatch": "npm run build && node test/run-ui-tests.mjs dispatch",
+    "test:ui:staffing": "npm run build && node test/run-ui-tests.mjs staffing",
+    "test:ui:aircraft": "npm run build && node test/run-ui-tests.mjs aircraft",
+    "test:ui:aircraft:all": "npm run build && node test/run-ui-tests.mjs aircraft_extended",
     "test:all": "npm run test:unit && npm run test:ui"
   },
   "keywords": [],
