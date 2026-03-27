@@ -3017,11 +3017,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       z-index: 1;
       width: min(1380px, calc(100vw - 36px));
       max-width: calc(100vw - 36px);
-      max-height: calc(100vh - 48px);
+      max-height: var(--aircraft-market-overlay-max-height, calc(100vh - 48px));
       box-sizing: border-box;
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
+      transform: translateY(var(--aircraft-market-overlay-nudge, 0px));
     }
     .aircraft-market-overlay-close {
       position: static;

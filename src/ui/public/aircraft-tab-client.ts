@@ -141,6 +141,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       marketList.scrollTop = marketListScrollTop;
     }
     positionActiveMarketPopover();
+    positionMarketOverlay();
   }
 
   function focusMarketField(fieldName: string): void {
@@ -247,6 +248,34 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
 
     overlay.hidden = !isVisible;
     stage.classList.toggle("overlay-open", isVisible);
+    if (!isVisible) {
+      overlay.style.removeProperty("--aircraft-market-overlay-max-height");
+      const overlayCard = overlay.querySelector<HTMLElement>(".aircraft-market-overlay-card");
+      overlayCard?.style.removeProperty("--aircraft-market-overlay-nudge");
+    }
+  }
+
+  function positionMarketOverlay(): void {
+    if (!marketOverlayOpen || workspaceTab !== "market") {
+      return;
+    }
+
+    const overlay = host.querySelector<HTMLElement>("[data-aircraft-market-overlay]");
+    const panel = host.querySelector<HTMLElement>(".aircraft-market-panel");
+    const overlayCard = overlay?.querySelector<HTMLElement>(".aircraft-market-overlay-card");
+    if (!overlay || overlay.hidden || !panel || !overlayCard) {
+      return;
+    }
+
+    const panelRect = panel.getBoundingClientRect();
+    const topOffset = Math.max(12, Math.round(panelRect.top));
+    const bottomPadding = 12;
+    const maxHeight = Math.max(320, Math.round(window.innerHeight - topOffset - bottomPadding));
+    overlay.style.setProperty("--aircraft-market-overlay-max-height", `${maxHeight}px`);
+    overlayCard.style.removeProperty("--aircraft-market-overlay-nudge");
+    const cardRect = overlayCard.getBoundingClientRect();
+    const nudge = Math.round(topOffset - cardRect.top);
+    overlayCard.style.setProperty("--aircraft-market-overlay-nudge", `${nudge}px`);
   }
 
   function closeMarketOverlay(): void {
@@ -626,10 +655,12 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
 
   function handleWindowResize(): void {
     positionActiveMarketPopover();
+    positionMarketOverlay();
   }
 
   function handleMarketScroll(): void {
     positionActiveMarketPopover();
+    positionMarketOverlay();
   }
 
   function saveCompareSelectionState(): void {

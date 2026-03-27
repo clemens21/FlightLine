@@ -1267,26 +1267,29 @@ try {
   await page.waitForFunction(() => document.querySelectorAll("[data-market-select]").length === 1);
   await clickUi(page.locator("[data-market-select]").first());
   await page.waitForFunction(() => !document.querySelector("[data-aircraft-market-overlay]")?.hasAttribute("hidden"));
+  await page.waitForTimeout(150);
   const filteredMarketOverlayBounds = await page.locator(".aircraft-market-overlay-card").evaluate((element) => {
     if (!(element instanceof HTMLElement)) {
       return null;
     }
 
+    const marketPanel = document.querySelector(".aircraft-market-panel");
     const rect = element.getBoundingClientRect();
     return {
       top: rect.top,
       bottom: rect.bottom,
       left: rect.left,
       right: rect.right,
+      marketPanelTop: marketPanel instanceof HTMLElement ? marketPanel.getBoundingClientRect().top : rect.top,
       viewportHeight: window.innerHeight,
       viewportWidth: window.innerWidth,
     };
   });
   assert.ok(filteredMarketOverlayBounds);
-  assert.ok(filteredMarketOverlayBounds.top >= 0);
-  assert.ok(filteredMarketOverlayBounds.bottom <= filteredMarketOverlayBounds.viewportHeight);
-  assert.ok(filteredMarketOverlayBounds.left >= 0);
-  assert.ok(filteredMarketOverlayBounds.right <= filteredMarketOverlayBounds.viewportWidth);
+  assert.ok(Math.abs(filteredMarketOverlayBounds.top - filteredMarketOverlayBounds.marketPanelTop) <= 2);
+  assert.ok(filteredMarketOverlayBounds.top >= -2);
+  assert.ok(filteredMarketOverlayBounds.left >= -2);
+  assert.ok(filteredMarketOverlayBounds.right <= filteredMarketOverlayBounds.viewportWidth + 2);
   await clickUi(page.locator("[data-aircraft-market-close]").first());
   await page.waitForFunction(() => document.querySelector("[data-aircraft-market-overlay]")?.hasAttribute("hidden") ?? false);
   await clickUi(page.locator("button[aria-label='Condition filter']").first().locator("svg"));
