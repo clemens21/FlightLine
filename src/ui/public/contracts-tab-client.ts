@@ -83,7 +83,15 @@ interface PlannerChainSummary {
   continuityIssues: string[];
 }
 
-type ContractsBoardPopoverKey = "route" | "payload" | "aircraft" | "distance" | "hours" | "due" | "payout";
+type ContractsBoardPopoverKey =
+  | "routeSearch"
+  | "payloadFilter"
+  | "aircraftSearch"
+  | "aircraftFilter"
+  | "distanceFilter"
+  | "hoursFilter"
+  | "dueFilter"
+  | "payoutFilter";
 
 interface ContractsUiState {
   payload: ContractsViewPayload;
@@ -141,8 +149,8 @@ export interface ContractsTabController {
   syncCurrentTime(nextCurrentTimeUtc: string): Promise<void>;
 }
 
-const boardMapViewWidthPx = 560;
-const boardMapViewHeightPx = 560;
+const boardMapViewWidthPx = 600;
+const boardMapViewHeightPx = 600;
 const plannerMapViewWidthPx = 1000;
 const plannerMapViewHeightPx = 560;
 const mapTileSizePx = 256;
@@ -312,76 +320,6 @@ export function mountContractsTab(
         focusSelectedRoute(state);
         render();
       }
-      return;
-    }
-
-    const boardPopoverClearButton = target.closest<HTMLElement>("[data-contracts-board-clear]");
-    if (boardPopoverClearButton) {
-      event.preventDefault();
-      event.stopPropagation();
-      switch (normalizeContractsBoardPopoverKey(boardPopoverClearButton.dataset.contractsBoardClear)) {
-        case "route":
-          state.filters = {
-            ...state.filters,
-            routeSearchText: "",
-          };
-          state.appliedTextFilters = {
-            ...state.appliedTextFilters,
-            routeSearchText: "",
-          };
-          break;
-        case "payload":
-          state.filters = {
-            ...state.filters,
-            payloadMin: "",
-            payloadMax: "",
-          };
-          break;
-        case "aircraft":
-          state.filters = {
-            ...state.filters,
-            nearestAircraftSearchText: "",
-            readyAircraft: false,
-            noReadyAircraft: false,
-          };
-          state.appliedTextFilters = {
-            ...state.appliedTextFilters,
-            nearestAircraftSearchText: "",
-          };
-          break;
-        case "distance":
-          state.filters = {
-            ...state.filters,
-            distanceMin: "",
-            distanceMax: "",
-          };
-          break;
-        case "hours":
-          state.filters = {
-            ...state.filters,
-            hoursRemainingMin: "",
-            hoursRemainingMax: "",
-          };
-          break;
-        case "due":
-          state.filters = {
-            ...state.filters,
-            dueHoursMin: "",
-            dueHoursMax: "",
-          };
-          break;
-        case "payout":
-          state.filters = {
-            ...state.filters,
-            payoutMin: "",
-            payoutMax: "",
-          };
-          break;
-        default:
-          break;
-      }
-      ensureActiveTabSelection(state);
-      render();
       return;
     }
 
@@ -1119,10 +1057,13 @@ export function mountContractsTab(
               ? renderAcceptanceCallout(state)
               : ""}
 
-            <div class="contracts-board-wrap">
-              ${state.boardTab === "available"
-                ? renderOffersTable(sortedOffers, state.selectedOfferId, state, activeBoardPopover)
-                : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state, selectedRoute, activeBoardPopover)}
+            <div class="contracts-board-stage" data-contracts-board-stage>
+              <div class="contracts-board-wrap">
+                ${state.boardTab === "available"
+                  ? renderOffersTable(sortedOffers, state.selectedOfferId, state, activeBoardPopover)
+                  : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state, selectedRoute, activeBoardPopover)}
+              </div>
+              ${renderContractsBoardActivePopover(state, activeBoardPopover)}
             </div>
           </div>
         </section>
@@ -1136,7 +1077,7 @@ export function mountContractsTab(
               <button type="button" class="button-secondary" data-map-reset>Refocus</button>
             </div>
             <div class="panel-body contracts-map-body">
-              <svg class="contracts-map" data-contracts-map viewBox="0 0 560 560" role="img" aria-label="Selected contract route map"></svg>
+              <svg class="contracts-map" data-contracts-map viewBox="0 0 600 600" role="img" aria-label="Selected contract route map"></svg>
               <div class="map-attribution">Base map data from OpenStreetMap contributors. Aviation chart overlays can come later.</div>
             </div>
           </section>
@@ -1191,6 +1132,7 @@ export function mountContractsTab(
     renderVisibleMap(root, state, selectedRoute);
     restoreFocusState(root, focusState);
     positionActiveBoardPopover();
+    focusActiveBoardPopoverField(focusState);
   }
 
   function positionActiveBoardPopover(): void {
@@ -1199,35 +1141,96 @@ export function mountContractsTab(
     }
 
     const popover = root.querySelector<HTMLElement>(`[data-contracts-board-popover="${activeBoardPopover}"]`);
-    const boardRegion = root.querySelector<HTMLElement>(".contracts-board-wrap");
-    if (!popover || popover.hidden || !boardRegion) {
+    const toggle = root.querySelector<HTMLElement>(`[data-contracts-board-popover-toggle="${activeBoardPopover}"]`);
+    const stage = root.querySelector<HTMLElement>("[data-contracts-board-stage]");
+    if (!popover || popover.hidden || !toggle || !stage) {
       return;
     }
 
-    popover.dataset.tableHeaderPopoverSide = "start";
-    popover.style.removeProperty("--table-header-popover-nudge");
-
     const viewportPadding = 12;
-    const boardRect = boardRegion.getBoundingClientRect();
-    const allowedLeft = Math.max(viewportPadding, boardRect.left + viewportPadding);
-    const allowedRight = Math.min(window.innerWidth - viewportPadding, boardRect.right - viewportPadding);
+    const toggleRect = toggle.getBoundingClientRect();
+    const headerRect = toggle.closest("th")?.getBoundingClientRect() ?? toggleRect;
+    const stageRect = stage.getBoundingClientRect();
+    const viewportLeft = viewportPadding;
+    const viewportRight = window.innerWidth - viewportPadding;
+    const viewportTop = viewportPadding;
+    const viewportBottom = window.innerHeight - viewportPadding;
+    const controlType = popover.dataset.contractsBoardControlType ?? "filter";
+    const clampViewportLeft = (left: number, width: number): number => {
+      const maxLeft = Math.max(viewportLeft, viewportRight - width);
+      return Math.max(viewportLeft, Math.min(left, maxLeft));
+    };
 
-    let popoverRect = popover.getBoundingClientRect();
-    if (popoverRect.right > allowedRight) {
-      popover.dataset.tableHeaderPopoverSide = "end";
-      popoverRect = popover.getBoundingClientRect();
+    popover.style.removeProperty("--contracts-board-popover-width");
+    popover.style.removeProperty("--contracts-board-popover-left");
+    popover.style.removeProperty("--contracts-board-popover-top");
+    delete popover.dataset.contractsBoardPopoverVertical;
+
+    if (controlType === "search") {
+      const preferredWidth = Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
+      const width = Math.min(preferredWidth, window.innerWidth - (viewportPadding * 2));
+      const left = clampViewportLeft(toggleRect.right - width, width);
+      const top = Math.max(viewportTop, Math.min(
+        Math.round(toggleRect.top + (toggleRect.height / 2)),
+        viewportBottom,
+      ));
+      popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
+      popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
+      popover.style.setProperty("--contracts-board-popover-top", `${Math.round(top - stageRect.top)}px`);
+      return;
     }
 
-    let nudge = 0;
-    if (popoverRect.right > allowedRight) {
-      nudge -= popoverRect.right - allowedRight;
+    const preferredWidth = Math.min(236, window.innerWidth - (viewportPadding * 2));
+    const width = Math.max(180, preferredWidth);
+    const left = clampViewportLeft(toggleRect.right - width, width);
+    popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
+    popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
+
+    const previousHidden = popover.hidden;
+    const previousVisibility = popover.style.visibility;
+    if (previousHidden) {
+      popover.hidden = false;
+      popover.style.visibility = "hidden";
     }
-    if (popoverRect.left < allowedLeft) {
-      nudge += allowedLeft - popoverRect.left;
+    const popoverHeight = Math.max(120, Math.ceil(popover.getBoundingClientRect().height));
+    if (previousHidden) {
+      popover.hidden = true;
+      popover.style.visibility = previousVisibility;
     }
-    if (nudge !== 0) {
-      popover.style.setProperty("--table-header-popover-nudge", `${Math.round(nudge)}px`);
+
+    let top = Math.round(toggleRect.bottom + 8);
+    if (top + popoverHeight > viewportBottom) {
+      top = Math.max(viewportTop, Math.round(toggleRect.top - popoverHeight - 8));
+      popover.dataset.contractsBoardPopoverVertical = "above";
+    } else {
+      popover.dataset.contractsBoardPopoverVertical = "below";
     }
+    const maxTop = Math.max(viewportTop, viewportBottom - popoverHeight);
+    const clampedTop = Math.max(viewportTop, Math.min(top, maxTop));
+    popover.style.setProperty("--contracts-board-popover-top", `${Math.round(clampedTop - stageRect.top)}px`);
+  }
+
+  function focusActiveBoardPopoverField(focusState: FocusState | null): void {
+    if (activeBoardPopover === null || focusState !== null) {
+      return;
+    }
+
+    const firstField = root.querySelector<HTMLElement>(
+      `[data-contracts-board-popover="${activeBoardPopover}"] [data-contracts-board-field]`,
+    );
+    if (!firstField) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!(firstField instanceof HTMLInputElement || firstField instanceof HTMLSelectElement || firstField instanceof HTMLTextAreaElement)) {
+        return;
+      }
+      firstField.focus();
+      if (firstField instanceof HTMLInputElement && firstField.type === "search") {
+        firstField.selectionStart = firstField.selectionEnd = firstField.value.length;
+      }
+    });
   }
 }
 
@@ -1309,37 +1312,53 @@ function renderOffersTable(
     <table class="contracts-board-table">
       <thead>
         <tr>
-          ${renderContractsBoardHeaderCell("route", "Route", state, activePopover, {
-            searchLabel: "Route search",
-            popoverBody: renderContractsRoutePopover(state),
+          ${renderContractsBoardHeaderCell("Route", state, activePopover, {
+            search: {
+              key: "routeSearch",
+              label: "Route search",
+            },
           })}
-          ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
-            filterLabel: "Payload filter",
-            popoverBody: renderContractsPayloadPopover(state),
+          ${renderContractsBoardHeaderCell("Payload", state, activePopover, {
+            filter: {
+              key: "payloadFilter",
+              label: "Payload filter",
+            },
           })}
-          ${renderContractsBoardHeaderCell("aircraft", "Nearest Aircraft", state, activePopover, {
-            searchLabel: "Nearest aircraft search",
-            filterLabel: "Nearest aircraft filter",
-            popoverBody: renderContractsAircraftPopover(state),
+          ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
+            search: {
+              key: "aircraftSearch",
+              label: "Nearest Aircraft search",
+            },
+            filter: {
+              key: "aircraftFilter",
+              label: "Nearest Aircraft filter",
+            },
           })}
-          ${renderContractsBoardHeaderCell("distance", "Distance", state, activePopover, {
-            filterLabel: "Distance filter",
-            popoverBody: renderContractsRangePopover("Distance (nm)", "distanceMin", "distanceMax", state.filters.distanceMin, state.filters.distanceMax),
+          ${renderContractsBoardHeaderCell("Distance", state, activePopover, {
+            filter: {
+              key: "distanceFilter",
+              label: "Distance filter",
+            },
             sortField: "distanceNm",
           })}
-          ${renderContractsBoardHeaderCell("hours", "Hours Left", state, activePopover, {
-            filterLabel: "Hours remaining filter",
-            popoverBody: renderContractsRangePopover("Hours left", "hoursRemainingMin", "hoursRemainingMax", state.filters.hoursRemainingMin, state.filters.hoursRemainingMax),
+          ${renderContractsBoardHeaderCell("Hours Left", state, activePopover, {
+            filter: {
+              key: "hoursFilter",
+              label: "Hours remaining filter",
+            },
             sortField: "hoursRemaining",
           })}
-          ${renderContractsBoardHeaderCell("due", "Due", state, activePopover, {
-            filterLabel: "Due filter",
-            popoverBody: renderContractsRangePopover("Due in (hours)", "dueHoursMin", "dueHoursMax", state.filters.dueHoursMin, state.filters.dueHoursMax),
+          ${renderContractsBoardHeaderCell("Due", state, activePopover, {
+            filter: {
+              key: "dueFilter",
+              label: "Due filter",
+            },
           })}
-          ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
-            filterLabel: "Payout filter",
-            popoverSide: "end",
-            popoverBody: renderContractsPayoutPopover(state),
+          ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
+            filter: {
+              key: "payoutFilter",
+              label: "Payout filter",
+            },
           })}
         </tr>
       </thead>
@@ -1372,38 +1391,54 @@ function renderCompanyContractsTable(
     <table class="contracts-board-table">
       <thead>
         <tr>
-          ${renderContractsBoardHeaderCell("route", "Route", state, activePopover, {
-            searchLabel: "Route search",
-            popoverBody: renderContractsRoutePopover(state),
+          ${renderContractsBoardHeaderCell("Route", state, activePopover, {
+            search: {
+              key: "routeSearch",
+              label: "Route search",
+            },
           })}
           ${renderContractsStaticHeaderCell("State")}
-          ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
-            filterLabel: "Payload filter",
-            popoverBody: renderContractsPayloadPopover(state),
+          ${renderContractsBoardHeaderCell("Payload", state, activePopover, {
+            filter: {
+              key: "payloadFilter",
+              label: "Payload filter",
+            },
           })}
-          ${renderContractsBoardHeaderCell("aircraft", "Nearest Aircraft", state, activePopover, {
-            searchLabel: "Nearest aircraft search",
-            filterLabel: "Nearest aircraft filter",
-            popoverBody: renderContractsAircraftPopover(state),
+          ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
+            search: {
+              key: "aircraftSearch",
+              label: "Nearest Aircraft search",
+            },
+            filter: {
+              key: "aircraftFilter",
+              label: "Nearest Aircraft filter",
+            },
           })}
-          ${renderContractsBoardHeaderCell("distance", "Distance", state, activePopover, {
-            filterLabel: "Distance filter",
-            popoverBody: renderContractsRangePopover("Distance (nm)", "distanceMin", "distanceMax", state.filters.distanceMin, state.filters.distanceMax),
+          ${renderContractsBoardHeaderCell("Distance", state, activePopover, {
+            filter: {
+              key: "distanceFilter",
+              label: "Distance filter",
+            },
             sortField: "distanceNm",
           })}
-          ${renderContractsBoardHeaderCell("hours", "Hours Left", state, activePopover, {
-            filterLabel: "Hours remaining filter",
-            popoverBody: renderContractsRangePopover("Hours left", "hoursRemainingMin", "hoursRemainingMax", state.filters.hoursRemainingMin, state.filters.hoursRemainingMax),
+          ${renderContractsBoardHeaderCell("Hours Left", state, activePopover, {
+            filter: {
+              key: "hoursFilter",
+              label: "Hours remaining filter",
+            },
             sortField: "hoursRemaining",
           })}
-          ${renderContractsBoardHeaderCell("due", "Due", state, activePopover, {
-            filterLabel: "Due filter",
-            popoverBody: renderContractsRangePopover("Due in (hours)", "dueHoursMin", "dueHoursMax", state.filters.dueHoursMin, state.filters.dueHoursMax),
+          ${renderContractsBoardHeaderCell("Due", state, activePopover, {
+            filter: {
+              key: "dueFilter",
+              label: "Due filter",
+            },
           })}
-          ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
-            filterLabel: "Payout filter",
-            popoverSide: "end",
-            popoverBody: renderContractsPayoutPopover(state),
+          ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
+            filter: {
+              key: "payoutFilter",
+              label: "Payout filter",
+            },
           })}
           <th></th>
         </tr>
@@ -2018,86 +2053,228 @@ function renderContractsHeaderIcon(kind: "search" | "filter"): string {
   return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 6.56l-5.2 5.58v6.11a1.5 1.5 0 0 1-2.44 1.17l-2.4-1.95a1.5 1.5 0 0 1-.56-1.17v-4.16L4.34 6.56A1.5 1.5 0 0 1 4 5.5Z"/></svg>`;
 }
 
+function renderContractsBoardIconButton(
+  popoverKey: ContractsBoardPopoverKey,
+  kind: "search" | "filter",
+  label: string,
+  isExpanded: boolean,
+): string {
+  return `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(popoverKey)}" aria-label="${escapeHtml(label)}" aria-expanded="${isExpanded ? "true" : "false"}">${renderContractsHeaderIcon(kind)}</button>`;
+}
+
 function renderContractsBoardHeaderCell(
-  key: ContractsBoardPopoverKey,
   label: string,
   state: ContractsUiState,
   activePopover: ContractsBoardPopoverKey | null,
   options: {
-    searchLabel?: string;
-    filterLabel?: string;
-    popoverBody: string;
-    popoverSide?: "start" | "end";
+    search?: {
+      key: ContractsBoardPopoverKey;
+      label: string;
+    };
+    filter?: {
+      key: ContractsBoardPopoverKey;
+      label: string;
+    };
     sortField?: SortField;
   },
 ): string {
-  const popoverOpen = activePopover === key;
   const isSorted = options.sortField ? state.sortField === options.sortField : false;
   const ariaSort = options.sortField
     ? isSorted
       ? state.sortDirection === "asc" ? "ascending" : "descending"
       : "none"
     : undefined;
-  const searchButton = options.searchLabel
-    ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.searchLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("search")}</button>`
+  const searchButton = options.search
+    ? renderContractsBoardIconButton(options.search.key, "search", options.search.label, activePopover === options.search.key)
     : "";
-  const filterButton = options.filterLabel
-    ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.filterLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("filter")}</button>`
+  const filterButton = options.filter
+    ? renderContractsBoardIconButton(options.filter.key, "filter", options.filter.label, activePopover === options.filter.key)
     : "";
   const labelHtml = options.sortField
     ? renderSortButton(options.sortField, label, state)
     : `<span class="table-header-label">${escapeHtml(label)}</span>`;
-  return `<th class="table-header-column${options.sortField ? " sortable" : ""}${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control">${labelHtml}<span class="table-header-actions">${searchButton}${filterButton}</span></div><div class="table-header-popover" data-contracts-board-popover="${escapeHtml(key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button compact" data-contracts-board-clear="${escapeHtml(key)}">Clear</button></div><div class="table-header-popover-body">${options.popoverBody}</div></div></th>`;
+  return `<th class="table-header-column${options.sortField ? " sortable" : ""}${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control">${labelHtml}<span class="table-header-actions">${searchButton}${filterButton}</span></div></th>`;
 }
 
 function renderContractsStaticHeaderCell(label: string): string {
   return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
 }
 
-function renderContractsRoutePopover(state: ContractsUiState): string {
-  return `<label class="table-header-popover-field"><span>Search route</span><input name="routeSearchText" value="${escapeHtml(state.filters.routeSearchText)}" placeholder="Airport, city, or route code" /></label>`;
+function renderContractsBoardActivePopover(
+  state: ContractsUiState,
+  activePopover: ContractsBoardPopoverKey | null,
+): string {
+  if (activePopover === null) {
+    return "";
+  }
+
+  switch (activePopover) {
+    case "routeSearch":
+      return renderContractsBoardSearchControl(
+        "routeSearch",
+        "routeSearchText",
+        "Airport, city, or route code",
+        "Search route",
+        state.filters.routeSearchText,
+      );
+    case "aircraftSearch":
+      return renderContractsBoardSearchControl(
+        "aircraftSearch",
+        "nearestAircraftSearchText",
+        "Search aircraft tail",
+        "Search nearest aircraft tail number",
+        state.filters.nearestAircraftSearchText,
+      );
+    case "payloadFilter":
+      return renderContractsBoardFilterControl(
+        "payloadFilter",
+        renderContractsCompactField(
+          "Payload",
+          renderContractsRangeFields("payloadMin", "payloadMax", {
+            minimum: 0,
+            step: 1,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.filters.payloadMin,
+            maxValue: state.filters.payloadMax,
+          }),
+        ),
+      );
+    case "aircraftFilter":
+      return renderContractsBoardFilterControl(
+        "aircraftFilter",
+        renderContractsCompactField(
+          "Availability",
+          renderContractsAircraftAvailabilityFieldset(state),
+        ),
+      );
+    case "distanceFilter":
+      return renderContractsBoardFilterControl(
+        "distanceFilter",
+        renderContractsCompactField(
+          "Distance (nm)",
+          renderContractsRangeFields("distanceMin", "distanceMax", {
+            minimum: 0,
+            step: 25,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.filters.distanceMin,
+            maxValue: state.filters.distanceMax,
+          }),
+        ),
+      );
+    case "hoursFilter":
+      return renderContractsBoardFilterControl(
+        "hoursFilter",
+        renderContractsCompactField(
+          "Hours left",
+          renderContractsRangeFields("hoursRemainingMin", "hoursRemainingMax", {
+            minimum: 0,
+            step: 1,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.filters.hoursRemainingMin,
+            maxValue: state.filters.hoursRemainingMax,
+          }),
+        ),
+      );
+    case "dueFilter":
+      return renderContractsBoardFilterControl(
+        "dueFilter",
+        renderContractsCompactField(
+          "Due in (hours)",
+          renderContractsRangeFields("dueHoursMin", "dueHoursMax", {
+            minimum: 0,
+            step: 1,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.filters.dueHoursMin,
+            maxValue: state.filters.dueHoursMax,
+          }),
+        ),
+      );
+    case "payoutFilter":
+      return renderContractsBoardFilterControl(
+        "payoutFilter",
+        renderContractsCompactField(
+          "Payout",
+          renderContractsRangeFields("payoutMin", "payoutMax", {
+            minimum: 0,
+            step: 1000,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.filters.payoutMin,
+            maxValue: state.filters.payoutMax,
+          }),
+        ),
+      );
+    default:
+      return "";
+  }
 }
 
-function renderContractsPayloadPopover(state: ContractsUiState): string {
-  return renderContractsRangePopover("Payload", "payloadMin", "payloadMax", state.filters.payloadMin, state.filters.payloadMax);
+function renderContractsBoardSearchControl(
+  popoverKey: ContractsBoardPopoverKey,
+  fieldName: keyof FilterState,
+  placeholder: string,
+  ariaLabel: string,
+  value: string,
+): string {
+  return `<div class="contracts-board-header-popover contracts-board-header-popover--search" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="search"><input type="search" class="contracts-board-inline-search" name="${escapeHtml(String(fieldName))}" value="${escapeHtml(value)}" data-contracts-board-field="${escapeHtml(String(fieldName))}" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(ariaLabel)}" /></div>`;
 }
 
-function renderContractsAircraftPopover(state: ContractsUiState): string {
-  return `
-    <label class="table-header-popover-field"><span>Tail number</span><input name="nearestAircraftSearchText" value="${escapeHtml(state.filters.nearestAircraftSearchText)}" placeholder="Search aircraft tail" /></label>
-    <div class="table-header-range-field">
-      <span>Availability</span>
-      <div class="contracts-aircraft-filter-list">
-        <label class="contracts-aircraft-filter-option"><input name="readyAircraft" type="checkbox" ${state.filters.readyAircraft ? "checked" : ""} /><span>Ready aircraft</span></label>
-        <label class="contracts-aircraft-filter-option"><input name="noReadyAircraft" type="checkbox" ${state.filters.noReadyAircraft ? "checked" : ""} /><span>No ready aircraft</span></label>
-      </div>
-    </div>
-  `;
+function renderContractsBoardFilterControl(popoverKey: ContractsBoardPopoverKey, bodyMarkup: string): string {
+  return `<div class="contracts-board-header-popover contracts-board-header-popover--filter" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="filter"><div class="contracts-board-popover-body">${bodyMarkup}</div></div>`;
 }
 
-function renderContractsPayoutPopover(state: ContractsUiState): string {
-  return renderContractsRangePopover("Payout", "payoutMin", "payoutMax", state.filters.payoutMin, state.filters.payoutMax);
+function renderContractsCompactField(label: string, controlMarkup: string): string {
+  return `<label class="contracts-board-popover-field"><span class="eyebrow">${escapeHtml(label)}</span>${controlMarkup}</label>`;
 }
 
-function renderContractsRangePopover(
-  label: string,
+function renderContractsRangeFields(
   minName: keyof FilterState,
   maxName: keyof FilterState,
-  minValue: string,
-  maxValue: string,
+  options: {
+    minimum?: number;
+    step?: number;
+    minPlaceholder?: string;
+    maxPlaceholder?: string;
+    minValue?: string;
+    maxValue?: string;
+  } = {},
 ): string {
-  return `<div class="table-header-range-field"><span>${escapeHtml(label)}</span><div class="table-header-range-inputs"><input name="${escapeHtml(String(minName))}" type="number" min="0" value="${escapeHtml(minValue)}" placeholder="Min" /><input name="${escapeHtml(String(maxName))}" type="number" min="0" value="${escapeHtml(maxValue)}" placeholder="Max" /></div></div>`;
+  const minimum = options.minimum ?? 0;
+  const step = options.step ?? 1;
+  const minPlaceholder = options.minPlaceholder ?? "Min";
+  const maxPlaceholder = options.maxPlaceholder ?? "Max";
+  return `<div class="contracts-board-range-fields"><label class="contracts-board-range-field"><span class="eyebrow">Min</span><input name="${escapeHtml(String(minName))}" type="number" min="${escapeHtml(String(minimum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-contracts-board-field="${escapeHtml(String(minName))}" placeholder="${escapeHtml(minPlaceholder)}" value="${escapeHtml(options.minValue ?? "")}" /></label><label class="contracts-board-range-field"><span class="eyebrow">Max</span><input name="${escapeHtml(String(maxName))}" type="number" min="${escapeHtml(String(minimum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-contracts-board-field="${escapeHtml(String(maxName))}" placeholder="${escapeHtml(maxPlaceholder)}" value="${escapeHtml(options.maxValue ?? "")}" /></label></div>`;
+}
+
+function renderContractsAircraftAvailabilityFieldset(state: ContractsUiState): string {
+  return `<div class="contracts-board-checkbox-list">${[
+    {
+      name: "readyAircraft",
+      label: "Ready aircraft",
+      checked: state.filters.readyAircraft,
+    },
+    {
+      name: "noReadyAircraft",
+      label: "No ready aircraft",
+      checked: state.filters.noReadyAircraft,
+    },
+  ].map((option) => `<label class="contracts-board-checkbox-option"><input name="${escapeHtml(option.name)}" type="checkbox" data-contracts-board-field="${escapeHtml(option.name)}"${option.checked ? " checked" : ""} /><span>${escapeHtml(option.label)}</span></label>`).join("")}</div>`;
 }
 
 function normalizeContractsBoardPopoverKey(value: string | undefined): ContractsBoardPopoverKey | null {
   switch (value) {
-    case "route":
-    case "payload":
-    case "aircraft":
-    case "distance":
-    case "hours":
-    case "due":
-    case "payout":
+    case "routeSearch":
+    case "payloadFilter":
+    case "aircraftSearch":
+    case "aircraftFilter":
+    case "distanceFilter":
+    case "hoursFilter":
+    case "dueFilter":
+    case "payoutFilter":
       return value;
     default:
       return null;

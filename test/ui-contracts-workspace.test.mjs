@@ -61,7 +61,7 @@ try {
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
   assert.equal(await page.locator(".contracts-main-body > .contracts-filters").count(), 0);
   assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
-  assert.ok((await page.locator("[data-contracts-board-popover-toggle]").count()) >= 4);
+  assert.ok((await page.locator("[data-contracts-board-popover-toggle]").count()) >= 7);
 
   const contractsBoardTable = page.locator(".contracts-board-table").first();
   const headerText = (await contractsBoardTable.locator("thead").textContent()) ?? "";
@@ -89,6 +89,7 @@ try {
   const mapBounds = await page.locator(".contracts-map-panel .contracts-map").boundingBox();
   assert.ok(mapBounds);
   assert.equal(Math.abs(mapBounds.width - mapBounds.height) <= 1, true);
+  assert.ok(mapBounds.width >= 565);
 
   const firstRouteCellText = (await page.locator(".contracts-board-table tbody tr").first().locator("td").nth(0).textContent()) ?? "";
   assert.equal(firstRouteCellText.includes("Nearest aircraft:"), false);
@@ -109,14 +110,15 @@ try {
       const popover = document.querySelector(`[data-contracts-board-popover="${expectedColumn}"]`);
       const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
       return popover instanceof HTMLElement
-        && !popover.hidden
         && toggle instanceof HTMLElement
         && toggle.getAttribute("aria-expanded") === "true";
     }, [column, label]);
     await clickUi(buttonLocator.locator("svg").first());
     await page.waitForFunction((expectedLabel) => {
       const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
-      return toggle instanceof HTMLElement && toggle.getAttribute("aria-expanded") === "false";
+      return toggle instanceof HTMLElement
+        && toggle.getAttribute("aria-expanded") === "false"
+        && !document.querySelector(`[data-contracts-board-popover="${toggle.getAttribute("data-contracts-board-popover-toggle") ?? ""}"]`);
     }, label);
   }
 
@@ -125,18 +127,40 @@ try {
   assert.ok(firstRouteCode.length > 0);
   await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
   await page.waitForFunction(() => {
-    const popover = document.querySelector("[data-contracts-board-popover='route']");
-    return popover instanceof HTMLElement && !popover.hidden;
+    const popover = document.querySelector("[data-contracts-board-popover='routeSearch']");
+    return popover instanceof HTMLElement
+      && popover.classList.contains("contracts-board-header-popover--search")
+      && popover.querySelector(".contracts-board-inline-search") instanceof HTMLInputElement;
   });
-  await page.locator("[data-contracts-board-popover='route'] input[name='routeSearchText']").fill(firstRouteCode);
+  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='routeSearchText']").fill(firstRouteCode);
   await page.waitForFunction(([expectedCode, expectedCount]) => {
     const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
     return rows.length > 0
       && rows.length <= expectedCount
       && rows.every((row) => (row.textContent ?? "").includes(expectedCode));
   }, [firstRouteCode, baselineContractRows]);
-  await page.locator("[data-contracts-board-popover='route'] input[name='routeSearchText']").fill("");
+  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='routeSearchText']").fill("");
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".contracts-board-table tbody tr").length === expectedCount, baselineContractRows);
+  await page.keyboard.press("Escape");
+
+  await clickUi(page.locator("button[aria-label='Nearest Aircraft search']").first().locator("svg"));
+  await page.waitForFunction(() => {
+    const popover = document.querySelector("[data-contracts-board-popover='aircraftSearch']");
+    return popover instanceof HTMLElement
+      && popover.classList.contains("contracts-board-header-popover--search")
+      && popover.querySelector("input[name='nearestAircraftSearchText']") instanceof HTMLInputElement;
+  });
+  await page.keyboard.press("Escape");
+
+  await clickUi(page.locator("button[aria-label='Nearest Aircraft filter']").first().locator("svg"));
+  await page.waitForFunction(() => {
+    const popover = document.querySelector("[data-contracts-board-popover='aircraftFilter']");
+    return popover instanceof HTMLElement
+      && popover.classList.contains("contracts-board-header-popover--filter")
+      && popover.querySelector("input[name='readyAircraft']") instanceof HTMLInputElement
+      && popover.querySelector("input[name='noReadyAircraft']") instanceof HTMLInputElement;
+  });
+  assert.equal(await page.locator("[data-contracts-board-clear]").count(), 0);
   await page.keyboard.press("Escape");
 
   const firstAvailableRow = page.locator("[data-select-offer-row]").first();

@@ -2105,7 +2105,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       height: 100%;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 560px;
+      grid-template-columns: minmax(0, 1fr) 628px;
       gap: 18px;
       overflow: hidden;
     }
@@ -2153,6 +2153,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .filter-shortcut .button-secondary {
       justify-self: start;
+    }
+    .contracts-board-stage {
+      position: relative;
+      min-height: 0;
+      overflow: visible;
     }
     .contracts-board-wrap {
       min-height: 0;
@@ -2297,23 +2302,88 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 4px;
       min-width: 0;
     }
-    .contracts-aircraft-filter-list {
+    .contracts-board-header-popover {
+      position: absolute;
+      top: var(--contracts-board-popover-top, 0);
+      left: var(--contracts-board-popover-left, 0);
+      z-index: 16;
+    }
+    .contracts-board-header-popover--search {
+      width: var(--contracts-board-popover-width, 240px);
+      max-width: calc(100vw - 24px);
+      transform: translateY(-50%);
+    }
+    .contracts-board-inline-search,
+    .contracts-board-inline-search:is(input) {
+      width: 100%;
+      height: 34px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--line));
+      background: color-mix(in srgb, var(--panel-strong) 92%, var(--accent-soft));
+      color: var(--text);
+      box-shadow: var(--shadow);
+    }
+    .contracts-board-inline-search::placeholder {
+      color: color-mix(in srgb, var(--muted) 80%, var(--text));
+    }
+    .contracts-board-inline-search:focus {
+      outline: none;
+      border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow);
+    }
+    .contracts-board-header-popover--filter {
+      width: var(--contracts-board-popover-width, min(236px, calc(100vw - 48px)));
+      max-width: calc(100vw - 24px);
+      padding: 10px;
       display: grid;
+      gap: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .contracts-board-popover-body {
+      display: grid;
+      gap: 8px;
+    }
+    .contracts-board-popover-field {
+      display: grid;
+      gap: 8px;
+    }
+    .contracts-board-range-fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .contracts-board-range-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+    .contracts-board-range-field input {
+      width: 100%;
+    }
+    .contracts-board-checkbox-list {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
       justify-items: start;
     }
-    .contracts-aircraft-filter-option {
+    .contracts-board-checkbox-option {
       display: inline-grid;
       grid-template-columns: 16px minmax(0, 1fr);
-      gap: 10px;
+      gap: 6px;
       align-items: center;
+      width: 100%;
       min-width: 0;
       color: var(--text);
+      font-size: 12px;
+      line-height: 1.2;
     }
-    .contracts-aircraft-filter-option input {
-      width: 16px;
-      height: 16px;
+    .contracts-board-checkbox-option input {
       margin: 0;
+      accent-color: var(--accent);
     }
      .contracts-planner-panel {
       min-height: 0;
