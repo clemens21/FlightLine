@@ -2585,7 +2585,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       position: relative;
       min-height: 0;
       height: 100%;
-      overflow: hidden;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: visible;
     }
     .aircraft-fleet-panel,
     .aircraft-detail-panel,
@@ -2619,6 +2621,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-market-body .aircraft-table-wrap {
       height: 100%;
+      min-height: 280px;
     }
     .aircraft-table-wrap {
       min-height: 0;
@@ -2642,15 +2645,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .aircraft-market-header-popover {
       position: absolute;
-      z-index: 6;
-      transform: translateX(var(--aircraft-market-popover-nudge, 0px));
+      top: var(--aircraft-market-popover-top, 0);
+      left: var(--aircraft-market-popover-left, 0);
+      z-index: 16;
     }
     .aircraft-market-header-popover--search {
-      top: 50%;
-      right: 34px;
-      width: max(180px, min(320px, calc(100% - 44px)));
-      max-width: min(320px, calc(100vw - 24px));
-      transform: translateX(var(--aircraft-market-popover-nudge, 0px)) translateY(-50%);
+      width: var(--aircraft-market-popover-width, 240px);
+      max-width: calc(100vw - 24px);
+      transform: translateY(-50%);
     }
     .aircraft-market-inline-search,
     .aircraft-market-inline-search:is(input) {
@@ -2672,9 +2674,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent), var(--shadow);
     }
     .aircraft-market-header-popover--filter {
-      top: calc(100% + 8px);
-      right: 0;
-      width: min(236px, calc(100vw - 48px));
+      width: var(--aircraft-market-popover-width, min(236px, calc(100vw - 48px)));
       max-width: calc(100vw - 24px);
       padding: 10px;
       display: grid;
@@ -2683,10 +2683,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-radius: 14px;
       background: var(--panel-strong);
       box-shadow: var(--shadow);
-    }
-    .aircraft-market-header-popover--filter[data-market-popover-side="start"] {
-      left: 0;
-      right: auto;
     }
     .aircraft-market-popover-body {
       display: grid;
@@ -2983,11 +2979,13 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel-strong));
     }
     .aircraft-market-overlay {
-      position: fixed;
+      position: absolute;
       inset: 0;
       display: grid;
-      place-items: center;
+      align-items: start;
+      justify-items: center;
       padding: 18px;
+      overflow: auto;
       z-index: 12;
     }
     .aircraft-market-overlay[hidden] {
@@ -3018,7 +3016,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       position: relative;
       z-index: 1;
       width: min(1380px, calc(100vw - 36px));
-      max-height: calc(100vh - 36px);
+      max-width: calc(100vw - 36px);
+      max-height: calc(100vh - 48px);
+      box-sizing: border-box;
       overflow: hidden;
       display: grid;
       grid-template-rows: auto minmax(0, 1fr);
@@ -3669,7 +3669,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
       .aircraft-market-overlay-card {
         width: calc(100vw - 24px);
-        max-height: calc(100vh - 24px);
+        max-width: calc(100vw - 24px);
+        max-height: calc(100vh - 32px);
       }
       .staffing-hire-overlay-card {
         width: min(980px, calc(100% - 32px));

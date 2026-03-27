@@ -168,36 +168,74 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     }
 
     const popover = host.querySelector<HTMLElement>(`[data-market-popover="${activeMarketPopover}"]`);
-    const marketRegion = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
-    if (!popover || popover.hidden || !marketRegion) {
+    const toggle = host.querySelector<HTMLElement>(`[data-market-popover-toggle="${activeMarketPopover}"]`);
+    const stage = host.querySelector<HTMLElement>("[data-aircraft-market-stage]");
+    if (!popover || popover.hidden || !toggle || !stage) {
       return;
     }
 
     const controlType = popover.dataset.marketControlType ?? "filter";
-    popover.dataset.marketPopoverSide = controlType === "search" ? "overlay" : "end";
-    popover.style.removeProperty("--aircraft-market-popover-nudge");
-
     const viewportPadding = 12;
-    const marketRect = marketRegion.getBoundingClientRect();
-    const allowedLeft = Math.max(viewportPadding, marketRect.left + viewportPadding);
-    const allowedRight = Math.min(window.innerWidth - viewportPadding, marketRect.right - viewportPadding);
+    const toggleRect = toggle.getBoundingClientRect();
+    const headerRect = toggle.closest("th")?.getBoundingClientRect() ?? toggleRect;
+    const stageRect = stage.getBoundingClientRect();
+    const viewportLeft = viewportPadding;
+    const viewportRight = window.innerWidth - viewportPadding;
+    const viewportTop = viewportPadding;
+    const viewportBottom = window.innerHeight - viewportPadding;
+    const clampViewportLeft = (left: number, width: number): number => {
+      const maxLeft = Math.max(viewportLeft, viewportRight - width);
+      return Math.max(viewportLeft, Math.min(left, maxLeft));
+    };
 
-    let popoverRect = popover.getBoundingClientRect();
-    if (controlType !== "search" && popoverRect.left < allowedLeft) {
-      popover.dataset.marketPopoverSide = "start";
-      popoverRect = popover.getBoundingClientRect();
+    popover.style.removeProperty("--aircraft-market-popover-width");
+    popover.style.removeProperty("--aircraft-market-popover-left");
+    popover.style.removeProperty("--aircraft-market-popover-top");
+    delete popover.dataset.marketPopoverSide;
+    delete popover.dataset.marketPopoverVertical;
+
+    if (controlType === "search") {
+      const preferredWidth = Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
+      const width = Math.min(preferredWidth, window.innerWidth - (viewportPadding * 2));
+      const left = clampViewportLeft(toggleRect.right - width, width);
+      const top = Math.max(viewportTop, Math.min(
+        Math.round(toggleRect.top + (toggleRect.height / 2)),
+        viewportBottom,
+      ));
+      popover.style.setProperty("--aircraft-market-popover-width", `${width}px`);
+      popover.style.setProperty("--aircraft-market-popover-left", `${Math.round(left - stageRect.left)}px`);
+      popover.style.setProperty("--aircraft-market-popover-top", `${Math.round(top - stageRect.top)}px`);
+      return;
     }
 
-    let nudge = 0;
-    if (popoverRect.right > allowedRight) {
-      nudge -= popoverRect.right - allowedRight;
+    const preferredWidth = Math.min(236, window.innerWidth - (viewportPadding * 2));
+    const width = Math.max(180, preferredWidth);
+    const left = clampViewportLeft(toggleRect.right - width, width);
+    popover.style.setProperty("--aircraft-market-popover-width", `${width}px`);
+    popover.style.setProperty("--aircraft-market-popover-left", `${Math.round(left - stageRect.left)}px`);
+
+    const previousHidden = popover.hidden;
+    const previousVisibility = popover.style.visibility;
+    if (previousHidden) {
+      popover.hidden = false;
+      popover.style.visibility = "hidden";
     }
-    if (popoverRect.left < allowedLeft) {
-      nudge += allowedLeft - popoverRect.left;
+    const popoverHeight = Math.max(120, Math.ceil(popover.getBoundingClientRect().height));
+    if (previousHidden) {
+      popover.hidden = true;
+      popover.style.visibility = previousVisibility;
     }
-    if (nudge !== 0) {
-      popover.style.setProperty("--aircraft-market-popover-nudge", `${Math.round(nudge)}px`);
+
+    let top = Math.round(toggleRect.bottom + 8);
+    if (top + popoverHeight > viewportBottom) {
+      top = Math.max(viewportTop, Math.round(toggleRect.top - popoverHeight - 8));
+      popover.dataset.marketPopoverVertical = "above";
+    } else {
+      popover.dataset.marketPopoverVertical = "below";
     }
+    const maxTop = Math.max(viewportTop, viewportBottom - popoverHeight);
+    const clampedTop = Math.max(viewportTop, Math.min(top, maxTop));
+    popover.style.setProperty("--aircraft-market-popover-top", `${Math.round(clampedTop - stageRect.top)}px`);
   }
 
   function setMarketOverlayVisible(isVisible: boolean): void {
@@ -586,6 +624,14 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     render();
   }
 
+  function handleWindowResize(): void {
+    positionActiveMarketPopover();
+  }
+
+  function handleMarketScroll(): void {
+    positionActiveMarketPopover();
+  }
+
   function saveCompareSelectionState(): void {
     saveCompareState(payload.saveId, compareState);
   }
@@ -705,6 +751,8 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
   host.addEventListener("change", handleFieldEvent);
   host.addEventListener("keydown", handleKeydown);
   document.addEventListener("click", handleDocumentClick, true);
+  window.addEventListener("resize", handleWindowResize);
+  host.addEventListener("scroll", handleMarketScroll, true);
   render();
 
   return {
@@ -714,6 +762,8 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       host.removeEventListener("change", handleFieldEvent);
       host.removeEventListener("keydown", handleKeydown);
       document.removeEventListener("click", handleDocumentClick, true);
+      window.removeEventListener("resize", handleWindowResize);
+      host.removeEventListener("scroll", handleMarketScroll, true);
     },
   };
 }
@@ -839,6 +889,7 @@ function renderMarketWorkspace(
           ${renderMarketTable(payload, viewState, compareState, activePopover)}
         </div>
       </section>
+      ${renderAircraftMarketActivePopover(payload, viewState, activePopover)}
       <div class="aircraft-market-overlay" data-aircraft-market-overlay hidden>
         <button
           type="button"
@@ -898,91 +949,6 @@ function renderMarketTable(
   if (viewState.visibleOffers.length === 0) {
     return `<div class="empty-state">No aircraft listings match the current market filters.</div>`;
   }
-
-  const conditionPopover = renderAircraftMarketFilterControl(
-    "condition",
-    renderAircraftMarketCompactField(
-      "Condition",
-      renderAircraftMarketCheckboxFieldset(
-        "conditionBands",
-        payload.marketWorkspace.filterOptions.conditionBands.map((value) => ({
-          value,
-          label: marketConditionLabel(value),
-        })),
-        viewState.filters.conditionBands,
-      ),
-    ),
-  );
-  const passengersPopover = renderAircraftMarketFilterControl(
-    "passengers",
-    renderAircraftMarketCompactField(
-      "Passengers",
-      renderAircraftMarketRangeFields("passengerMin", "passengerMax", {
-        minimum: 0,
-        step: 1,
-        minPlaceholder: "Min",
-        maxPlaceholder: "Max",
-        minValue: viewState.filters.passengerMin,
-        maxValue: viewState.filters.passengerMax,
-      }),
-    ),
-  );
-  const cargoPopover = renderAircraftMarketFilterControl(
-    "cargo",
-    renderAircraftMarketCompactField(
-      "Cargo (lb)",
-      renderAircraftMarketRangeFields("cargoMin", "cargoMax", {
-        minimum: 0,
-        step: 250,
-        minPlaceholder: "Min",
-        maxPlaceholder: "Max",
-        minValue: viewState.filters.cargoMin,
-        maxValue: viewState.filters.cargoMax,
-      }),
-    ),
-  );
-  const rangePopover = renderAircraftMarketFilterControl(
-    "range",
-    renderAircraftMarketCompactField(
-      "Range (nm)",
-      renderAircraftMarketRangeFields("rangeMin", "rangeMax", {
-        minimum: 0,
-        step: 25,
-        minPlaceholder: "Min",
-        maxPlaceholder: "Max",
-        minValue: viewState.filters.rangeMin,
-        maxValue: viewState.filters.rangeMax,
-      }),
-    ),
-  );
-  const askPopover = renderAircraftMarketFilterControl(
-    "ask",
-    renderAircraftMarketCompactField(
-      "Ask",
-      renderAircraftMarketRangeFields("askMin", "askMax", {
-        minimum: 0,
-        step: 25000,
-        minPlaceholder: "Min",
-        maxPlaceholder: "Max",
-        minValue: viewState.filters.askMin,
-        maxValue: viewState.filters.askMax,
-      }),
-    ),
-  );
-  const distancePopover = renderAircraftMarketFilterControl(
-    "distance",
-    renderAircraftMarketCompactField(
-      "Distance (nm)",
-      renderAircraftMarketRangeFields("distanceMin", "distanceMax", {
-        minimum: 0,
-        step: 25,
-        minPlaceholder: "Min",
-        maxPlaceholder: "Max",
-        minValue: viewState.filters.distanceMin,
-        maxValue: viewState.filters.distanceMax,
-      }),
-    ),
-  );
   const columnGroup = `<colgroup><col style="width:340px" /><col style="width:220px" /><col style="width:170px" /><col style="width:120px" /><col style="width:130px" /><col style="width:120px" /><col style="width:150px" /><col style="width:120px" /><col style="width:110px" /></colgroup>`;
 
   return `
@@ -991,14 +957,14 @@ function renderMarketTable(
         ${columnGroup}
         <thead>
           <tr>
-            ${renderAircraftMarketHeaderCell("listing", "Listing", viewState.sort, "listing", renderAircraftMarketSearchControl("listing", "listingSearchText", "Model or registration", "Search listing model or registration", viewState.filters.listingSearchText), ["search"], activePopover)}
-            ${renderAircraftMarketHeaderCell("airport", "Airport", viewState.sort, "airport", renderAircraftMarketSearchControl("airport", "airportSearchText", "Airport code or name", "Search airport code or name", viewState.filters.airportSearchText), ["search"], activePopover)}
-            ${renderAircraftMarketHeaderCell("condition", "Condition", viewState.sort, "condition", conditionPopover, ["filter"], activePopover)}
-            ${renderAircraftMarketHeaderCell("passengers", "Passengers", viewState.sort, "passengers", passengersPopover, ["filter"], activePopover)}
-            ${renderAircraftMarketHeaderCell("cargo", "Cargo", viewState.sort, "cargo", cargoPopover, ["filter"], activePopover)}
-            ${renderAircraftMarketHeaderCell("range", "Range", viewState.sort, "range", rangePopover, ["filter"], activePopover)}
-            ${renderAircraftMarketHeaderCell("ask", "Ask", viewState.sort, "asking_price", askPopover, ["filter"], activePopover)}
-            ${renderAircraftMarketHeaderCell("distance", "Distance", viewState.sort, "distance", distancePopover, ["filter"], activePopover)}
+            ${renderAircraftMarketHeaderCell("listing", "Listing", viewState.sort, "listing", ["search"], activePopover)}
+            ${renderAircraftMarketHeaderCell("airport", "Airport", viewState.sort, "airport", ["search"], activePopover)}
+            ${renderAircraftMarketHeaderCell("condition", "Condition", viewState.sort, "condition", ["filter"], activePopover)}
+            ${renderAircraftMarketHeaderCell("passengers", "Passengers", viewState.sort, "passengers", ["filter"], activePopover)}
+            ${renderAircraftMarketHeaderCell("cargo", "Cargo", viewState.sort, "cargo", ["filter"], activePopover)}
+            ${renderAircraftMarketHeaderCell("range", "Range", viewState.sort, "range", ["filter"], activePopover)}
+            ${renderAircraftMarketHeaderCell("ask", "Ask", viewState.sort, "asking_price", ["filter"], activePopover)}
+            ${renderAircraftMarketHeaderCell("distance", "Distance", viewState.sort, "distance", ["filter"], activePopover)}
             ${renderAircraftMarketStaticHeaderCell("Compare")}
           </tr>
         </thead>
@@ -1008,6 +974,115 @@ function renderMarketTable(
       </table>
     </div>
   `;
+}
+
+function renderAircraftMarketActivePopover(
+  payload: AircraftTabPayload,
+  viewState: ReturnType<typeof applyAircraftMarketViewState>,
+  activePopover: AircraftMarketPopoverKey | null,
+): string {
+  if (activePopover === null) {
+    return "";
+  }
+
+  switch (activePopover) {
+    case "listing":
+      return renderAircraftMarketSearchControl("listing", "listingSearchText", "Model or registration", "Search listing model or registration", viewState.filters.listingSearchText).replace(" hidden", "");
+    case "airport":
+      return renderAircraftMarketSearchControl("airport", "airportSearchText", "Airport code or name", "Search airport code or name", viewState.filters.airportSearchText).replace(" hidden", "");
+    case "condition":
+      return renderAircraftMarketFilterControl(
+        "condition",
+        renderAircraftMarketCompactField(
+          "Condition",
+          renderAircraftMarketCheckboxFieldset(
+            "conditionBands",
+            payload.marketWorkspace.filterOptions.conditionBands.map((value) => ({
+              value,
+              label: marketConditionLabel(value),
+            })),
+            viewState.filters.conditionBands,
+          ),
+        ),
+      ).replace(" hidden", "");
+    case "passengers":
+      return renderAircraftMarketFilterControl(
+        "passengers",
+        renderAircraftMarketCompactField(
+          "Passengers",
+          renderAircraftMarketRangeFields("passengerMin", "passengerMax", {
+            minimum: 0,
+            step: 1,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: viewState.filters.passengerMin,
+            maxValue: viewState.filters.passengerMax,
+          }),
+        ),
+      ).replace(" hidden", "");
+    case "cargo":
+      return renderAircraftMarketFilterControl(
+        "cargo",
+        renderAircraftMarketCompactField(
+          "Cargo (lb)",
+          renderAircraftMarketRangeFields("cargoMin", "cargoMax", {
+            minimum: 0,
+            step: 250,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: viewState.filters.cargoMin,
+            maxValue: viewState.filters.cargoMax,
+          }),
+        ),
+      ).replace(" hidden", "");
+    case "range":
+      return renderAircraftMarketFilterControl(
+        "range",
+        renderAircraftMarketCompactField(
+          "Range (nm)",
+          renderAircraftMarketRangeFields("rangeMin", "rangeMax", {
+            minimum: 0,
+            step: 25,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: viewState.filters.rangeMin,
+            maxValue: viewState.filters.rangeMax,
+          }),
+        ),
+      ).replace(" hidden", "");
+    case "ask":
+      return renderAircraftMarketFilterControl(
+        "ask",
+        renderAircraftMarketCompactField(
+          "Ask",
+          renderAircraftMarketRangeFields("askMin", "askMax", {
+            minimum: 0,
+            step: 25000,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: viewState.filters.askMin,
+            maxValue: viewState.filters.askMax,
+          }),
+        ),
+      ).replace(" hidden", "");
+    case "distance":
+      return renderAircraftMarketFilterControl(
+        "distance",
+        renderAircraftMarketCompactField(
+          "Distance (nm)",
+          renderAircraftMarketRangeFields("distanceMin", "distanceMax", {
+            minimum: 0,
+            step: 25,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: viewState.filters.distanceMin,
+            maxValue: viewState.filters.distanceMax,
+          }),
+        ),
+      ).replace(" hidden", "");
+    default:
+      return "";
+  }
 }
 
 function renderFleetSortButton(sort: AircraftTableSort, key: AircraftTableSortKey, label: string): string {
@@ -1083,7 +1158,6 @@ function renderAircraftMarketHeaderCell(
   label: string,
   sort: AircraftMarketSort,
   sortKey: AircraftMarketSortKey,
-  popoverMarkup: string,
   iconKinds: Array<"search" | "filter">,
   activePopover: AircraftMarketPopoverKey | null,
 ): string {
@@ -1093,7 +1167,7 @@ function renderAircraftMarketHeaderCell(
     : "none";
   const popoverOpen = activePopover === columnKey;
   const iconButtons = iconKinds.map((kind) => renderAircraftMarketIconButton(columnKey, kind, `${label} ${kind === "search" ? "search" : "filter"}`, popoverOpen)).join("");
-  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}" data-aircraft-market-column="${escapeHtml(columnKey)}"><div class="table-header-control">${renderMarketSortButton(sort, sortKey, label)}<span class="table-header-actions">${iconButtons}</span></div>${popoverMarkup.replace(" hidden", popoverOpen ? "" : " hidden")}</th>`;
+  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}" data-aircraft-market-column="${escapeHtml(columnKey)}"><div class="table-header-control">${renderMarketSortButton(sort, sortKey, label)}<span class="table-header-actions">${iconButtons}</span></div></th>`;
 }
 
 function renderAircraftMarketStaticHeaderCell(label: string): string {
