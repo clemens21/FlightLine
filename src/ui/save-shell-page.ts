@@ -2979,12 +2979,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel-strong));
     }
     .aircraft-market-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
       display: grid;
       align-items: start;
       justify-items: center;
-      padding: 18px;
+      padding: 12px;
       overflow: auto;
       z-index: 12;
     }

@@ -813,6 +813,9 @@ function renderAircraftTab(
         </div>
       </div>
     </section>
+    ${workspaceTab === "market"
+      ? renderAircraftMarketOverlay(payload, marketViewState, reviewState, compareState)
+      : ""}
   `;
 }
 
@@ -890,20 +893,30 @@ function renderMarketWorkspace(
         </div>
       </section>
       ${renderAircraftMarketActivePopover(payload, viewState, activePopover)}
-      <div class="aircraft-market-overlay" data-aircraft-market-overlay hidden>
-        <button
-          type="button"
-          class="aircraft-market-overlay-backdrop"
-          data-aircraft-market-close
-          aria-label="Close aircraft listing detail"
-        ></button>
-        <section class="panel aircraft-market-overlay-card" role="dialog" aria-modal="true" aria-label="Aircraft listing detail">
-          <button type="button" class="ghost-button aircraft-market-overlay-close" data-aircraft-market-close>Close</button>
-          <div class="panel-body aircraft-detail-body" data-aircraft-market-detail-body>
-            ${renderMarketDetail(payload, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState, compareState)}
-          </div>
-        </section>
-      </div>
+    </div>
+  `;
+}
+
+function renderAircraftMarketOverlay(
+  payload: AircraftTabPayload,
+  viewState: ReturnType<typeof applyAircraftMarketViewState>,
+  reviewState: AcquisitionReviewState | null,
+  compareState: AircraftCompareState,
+): string {
+  return `
+    <div class="aircraft-market-overlay" data-aircraft-market-overlay hidden>
+      <button
+        type="button"
+        class="aircraft-market-overlay-backdrop"
+        data-aircraft-market-close
+        aria-label="Close aircraft listing detail"
+      ></button>
+      <section class="panel aircraft-market-overlay-card" role="dialog" aria-modal="true" aria-label="Aircraft listing detail">
+        <button type="button" class="ghost-button aircraft-market-overlay-close" data-aircraft-market-close>Close</button>
+        <div class="panel-body aircraft-detail-body" data-aircraft-market-detail-body>
+          ${renderMarketDetail(payload, payload.marketWorkspace.currentCashAmount, viewState.selectedOffer, reviewState, compareState)}
+        </div>
+      </section>
     </div>
   `;
 }

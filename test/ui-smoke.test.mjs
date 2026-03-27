@@ -1264,6 +1264,31 @@ try {
       && rows.length <= expectedCount
       && rows.every((row) => (row.textContent ?? "").includes(expectedRegistration));
   }, [firstListingRegistration, initialMarketRows]);
+  await page.waitForFunction(() => document.querySelectorAll("[data-market-select]").length === 1);
+  await clickUi(page.locator("[data-market-select]").first());
+  await page.waitForFunction(() => !document.querySelector("[data-aircraft-market-overlay]")?.hasAttribute("hidden"));
+  const filteredMarketOverlayBounds = await page.locator(".aircraft-market-overlay-card").evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+
+    const rect = element.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      left: rect.left,
+      right: rect.right,
+      viewportHeight: window.innerHeight,
+      viewportWidth: window.innerWidth,
+    };
+  });
+  assert.ok(filteredMarketOverlayBounds);
+  assert.ok(filteredMarketOverlayBounds.top >= 0);
+  assert.ok(filteredMarketOverlayBounds.bottom <= filteredMarketOverlayBounds.viewportHeight);
+  assert.ok(filteredMarketOverlayBounds.left >= 0);
+  assert.ok(filteredMarketOverlayBounds.right <= filteredMarketOverlayBounds.viewportWidth);
+  await clickUi(page.locator("[data-aircraft-market-close]").first());
+  await page.waitForFunction(() => document.querySelector("[data-aircraft-market-overlay]")?.hasAttribute("hidden") ?? false);
   await clickUi(page.locator("button[aria-label='Condition filter']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("[data-market-popover='condition']") instanceof HTMLElement
     && !(document.querySelector("[data-market-popover='condition']")).hidden);
