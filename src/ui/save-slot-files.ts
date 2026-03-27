@@ -7,6 +7,8 @@ import { access, readdir, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const saveIdPattern = /^[A-Za-z0-9_-]+$/;
+const generatedSavePrefixMaxLength = 32;
+const generatedSaveSuffixMaxLength = 12;
 const deleteRetryOptions = {
   force: true,
   maxRetries: 8,
@@ -15,6 +17,39 @@ const deleteRetryOptions = {
 
 export function sanitizeSaveId(rawValue: string): string {
   return rawValue.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function trimSaveIdToken(rawValue: string, maxLength: number): string {
+  return sanitizeSaveId(rawValue)
+    .replace(/^_+|_+$/g, "")
+    .slice(0, maxLength);
+}
+
+function formatSaveIdTimestamp(date: Date): string {
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(date.getUTCSeconds()).padStart(2, "0");
+  const milliseconds = String(date.getUTCMilliseconds()).padStart(3, "0");
+  return `${year}${month}${day}_${hours}${minutes}${seconds}_${milliseconds}`;
+}
+
+export function buildGeneratedSaveId(
+  prefix: string,
+  options: {
+    date?: Date;
+    suffix?: string | number | null | undefined;
+  } = {},
+): string {
+  const basePrefix = trimSaveIdToken(prefix.trim() || "save", generatedSavePrefixMaxLength) || "save";
+  const timestamp = formatSaveIdTimestamp(options.date ?? new Date());
+  const suffix = options.suffix === undefined || options.suffix === null
+    ? ""
+    : trimSaveIdToken(String(options.suffix), generatedSaveSuffixMaxLength);
+
+  return [basePrefix, timestamp, suffix].filter((value) => value.length > 0).join("_");
 }
 
 export function resolveRequestedSaveId(rawValue: string | null | undefined, fallbackSaveId: string): string {

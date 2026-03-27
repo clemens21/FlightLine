@@ -18,17 +18,20 @@ import type {
 import type { NotificationLevel, ShellSummaryPayload } from "../save-shell-model.js";
 
 interface FilterState {
-  searchText: string;
-  originCode: string;
-  destinationCode: string;
-  volumeType: string;
-  fitBucket: string;
+  routeSearchText: string;
+  nearestAircraftSearchText: string;
+  readyAircraft: boolean;
+  noReadyAircraft: boolean;
+  payloadMin: string;
+  payloadMax: string;
+  distanceMin: string;
+  distanceMax: string;
+  hoursRemainingMin: string;
+  hoursRemainingMax: string;
+  dueHoursMin: string;
+  dueHoursMax: string;
   payoutMin: string;
   payoutMax: string;
-  passengerCountMin: string;
-  passengerCountMax: string;
-  cargoWeightMin: string;
-  cargoWeightMax: string;
 }
 
 interface MapState {
@@ -38,9 +41,8 @@ interface MapState {
 }
 
 interface AppliedTextFilters {
-  searchText: string;
-  originCode: string;
-  destinationCode: string;
+  routeSearchText: string;
+  nearestAircraftSearchText: string;
 }
 
 interface PlannerFilterState {
@@ -81,7 +83,7 @@ interface PlannerChainSummary {
   continuityIssues: string[];
 }
 
-type ContractsBoardPopoverKey = "route" | "fit" | "payload" | "payout";
+type ContractsBoardPopoverKey = "route" | "payload" | "aircraft" | "distance" | "hours" | "due" | "payout";
 
 interface ContractsUiState {
   payload: ContractsViewPayload;
@@ -117,10 +119,9 @@ type SortField = "distanceNm" | "hoursRemaining";
 type SortDirection = "asc" | "desc";
 type RouteLike = ContractsViewOffer | ContractsViewCompanyContract;
 
-interface SelectedRoute {
-  kind: "offer" | "company_contract";
-  route: RouteLike;
-}
+type SelectedRoute =
+  | { kind: "offer"; route: ContractsViewOffer }
+  | { kind: "company_contract"; route: ContractsViewCompanyContract };
 
 export interface MountContractsTabOptions {
   viewUrl: string;
@@ -140,14 +141,17 @@ export interface ContractsTabController {
   syncCurrentTime(nextCurrentTimeUtc: string): Promise<void>;
 }
 
-const mapViewWidthPx = 1000;
-const mapViewHeightPx = 560;
+const boardMapViewWidthPx = 560;
+const boardMapViewHeightPx = 560;
+const plannerMapViewWidthPx = 1000;
+const plannerMapViewHeightPx = 560;
 const mapTileSizePx = 256;
 const minMapZoom = 1;
 const maxMapZoom = 6;
-const mapPaddingPx = 96;
+const boardMapPaddingPx = 72;
+const plannerMapPaddingPx = 96;
 const openStreetMapTileUrl = "https://tile.openstreetmap.org";
-const debouncedTextFilterNames = new Set(["searchText", "originCode", "destinationCode", "plannerSearchText", "plannerDestinationCode"]);
+const debouncedTextFilterNames = new Set(["routeSearchText", "nearestAircraftSearchText", "plannerSearchText", "plannerDestinationCode"]);
 const textFilterDebounceMs = 300;
 const defaultMapState: MapState = {
   zoom: 2,
@@ -195,22 +199,24 @@ export function mountContractsTab(
   const state: ContractsUiState = {
     payload: initialPayload,
     filters: {
-      searchText: "",
-      originCode: "",
-      destinationCode: "",
-      volumeType: "all",
-      fitBucket: "all",
+      routeSearchText: "",
+      nearestAircraftSearchText: "",
+      readyAircraft: false,
+      noReadyAircraft: false,
+      payloadMin: "",
+      payloadMax: "",
+      distanceMin: "",
+      distanceMax: "",
+      hoursRemainingMin: "",
+      hoursRemainingMax: "",
+      dueHoursMin: "",
+      dueHoursMax: "",
       payoutMin: "",
       payoutMax: "",
-      passengerCountMin: "",
-      passengerCountMax: "",
-      cargoWeightMin: "",
-      cargoWeightMax: "",
     },
     appliedTextFilters: {
-      searchText: "",
-      originCode: "",
-      destinationCode: "",
+      routeSearchText: "",
+      nearestAircraftSearchText: "",
     },
     plannerFilters: {
       plannerSearchText: "",
@@ -317,31 +323,51 @@ export function mountContractsTab(
         case "route":
           state.filters = {
             ...state.filters,
-            searchText: "",
-            originCode: "",
-            destinationCode: "",
+            routeSearchText: "",
           };
           state.appliedTextFilters = {
             ...state.appliedTextFilters,
-            searchText: "",
-            originCode: "",
-            destinationCode: "",
-          };
-          break;
-        case "fit":
-          state.filters = {
-            ...state.filters,
-            fitBucket: "all",
+            routeSearchText: "",
           };
           break;
         case "payload":
           state.filters = {
             ...state.filters,
-            volumeType: "all",
-            passengerCountMin: "",
-            passengerCountMax: "",
-            cargoWeightMin: "",
-            cargoWeightMax: "",
+            payloadMin: "",
+            payloadMax: "",
+          };
+          break;
+        case "aircraft":
+          state.filters = {
+            ...state.filters,
+            nearestAircraftSearchText: "",
+            readyAircraft: false,
+            noReadyAircraft: false,
+          };
+          state.appliedTextFilters = {
+            ...state.appliedTextFilters,
+            nearestAircraftSearchText: "",
+          };
+          break;
+        case "distance":
+          state.filters = {
+            ...state.filters,
+            distanceMin: "",
+            distanceMax: "",
+          };
+          break;
+        case "hours":
+          state.filters = {
+            ...state.filters,
+            hoursRemainingMin: "",
+            hoursRemainingMax: "",
+          };
+          break;
+        case "due":
+          state.filters = {
+            ...state.filters,
+            dueHoursMin: "",
+            dueHoursMax: "",
           };
           break;
         case "payout":
@@ -550,6 +576,15 @@ export function mountContractsTab(
       return;
     }
 
+    const acceptSelectedButton = target.closest<HTMLButtonElement>("[data-accept-selected-offer]");
+    if (acceptSelectedButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const contractOfferId = acceptSelectedButton.dataset.acceptSelectedOffer ?? "";
+      void acceptOffer(contractOfferId, acceptSelectedButton);
+      return;
+    }
+
     const cancelButton = target.closest<HTMLButtonElement>("[data-cancel-contract]");
     if (cancelButton) {
       event.preventDefault();
@@ -577,25 +612,6 @@ export function mountContractsTab(
       return;
     }
 
-    const selectedDestinationButton = target.closest<HTMLButtonElement>("[data-use-selected-destination]");
-    if (selectedDestinationButton) {
-      event.preventDefault();
-      const selectedRoute = resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state));
-      const destinationCode = selectedRoute?.route.destination.code ?? "";
-      state.filters = {
-        ...state.filters,
-        originCode: destinationCode,
-      };
-      state.appliedTextFilters = {
-        ...state.appliedTextFilters,
-        originCode: destinationCode,
-      };
-      activeBoardPopover = null;
-      ensureActiveTabSelection(state);
-      render();
-      return;
-    }
-
     if (activeBoardPopover !== null && !target.closest("[data-contracts-board-popover]") && !target.closest("[data-contracts-board-popover-toggle]")) {
       activeBoardPopover = null;
       render();
@@ -607,6 +623,24 @@ export function mountContractsTab(
       focusSelectedRoute(state);
       render();
     }
+  };
+
+  const handleDoubleClick = (event: MouseEvent) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) {
+      return;
+    }
+
+    const offerRow = target.closest<HTMLElement>("[data-select-offer-row]");
+    if (!offerRow || target.closest("button, input, select, textarea, a, label")) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const contractOfferId = offerRow.dataset.selectOfferRow ?? "";
+    const detailButton = root.querySelector<HTMLButtonElement>(`[data-accept-selected-offer="${contractOfferId}"]`);
+    void acceptOffer(contractOfferId, detailButton ?? null);
   };
 
   // Filter changes stay client-side; text fields debounce so typing does not constantly reset the user's selection.
@@ -661,9 +695,8 @@ export function mountContractsTab(
       textFilterDebounceTimeout = setTimeout(() => {
         textFilterDebounceTimeout = null;
         state.appliedTextFilters = {
-          searchText: state.filters.searchText,
-          originCode: state.filters.originCode,
-          destinationCode: state.filters.destinationCode,
+          routeSearchText: state.filters.routeSearchText,
+          nearestAircraftSearchText: state.filters.nearestAircraftSearchText,
         };
         state.appliedPlannerTextFilters = {
           plannerSearchText: state.plannerFilters.plannerSearchText,
@@ -757,6 +790,7 @@ export function mountContractsTab(
   };
 
   root.addEventListener("click", handleClick);
+  root.addEventListener("dblclick", handleDoubleClick);
   root.addEventListener("input", handleFilterChange);
   root.addEventListener("change", handleFilterChange);
   root.addEventListener("keydown", handleKeydown);
@@ -810,6 +844,7 @@ export function mountContractsTab(
         textFilterDebounceTimeout = null;
       }
       root.removeEventListener("click", handleClick);
+      root.removeEventListener("dblclick", handleDoubleClick);
       root.removeEventListener("input", handleFilterChange);
       root.removeEventListener("change", handleFilterChange);
       root.removeEventListener("keydown", handleKeydown);
@@ -822,14 +857,16 @@ export function mountContractsTab(
       root.replaceChildren();
     },
   };
-  async function acceptOffer(contractOfferId: string, button: HTMLButtonElement): Promise<void> {
+  async function acceptOffer(contractOfferId: string, button: HTMLButtonElement | null): Promise<void> {
     if (!contractOfferId || !options.acceptUrl) {
       return;
     }
 
-    const originalLabel = button.textContent ?? "Accept";
-    button.disabled = true;
-    button.textContent = "Accepting...";
+    const originalLabel = button?.textContent ?? "Accept";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Accepting...";
+    }
 
     try {
       const response = await fetch(options.acceptUrl, {
@@ -893,8 +930,10 @@ export function mountContractsTab(
       options.onMessage?.(state.message);
       render();
     } finally {
-      button.disabled = false;
-      button.textContent = originalLabel;
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
     }
   }
 
@@ -1045,7 +1084,7 @@ export function mountContractsTab(
     const closedCount = getClosedContracts(state.payload).length;
     const routePlanCount = state.payload.routePlan?.items.length ?? 0;
     const selectedLabel = selectedRoute
-      ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}${selectedRoute.route.nearestRelevantAircraft ? ` | nearest ${selectedRoute.route.nearestRelevantAircraft.registration}` : ""}`
+      ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
       : "Select a row to focus the route map.";
     const toolbarHeadline = state.workspaceTab === "planning"
       ? renderPlannerHeadline(state.payload, plannerCandidates.length)
@@ -1082,7 +1121,7 @@ export function mountContractsTab(
 
             <div class="contracts-board-wrap">
               ${state.boardTab === "available"
-                ? renderOffersTable(sortedOffers, state.selectedOfferId, state, selectedRoute, activeBoardPopover)
+                ? renderOffersTable(sortedOffers, state.selectedOfferId, state, activeBoardPopover)
                 : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state, selectedRoute, activeBoardPopover)}
             </div>
           </div>
@@ -1097,10 +1136,11 @@ export function mountContractsTab(
               <button type="button" class="button-secondary" data-map-reset>Refocus</button>
             </div>
             <div class="panel-body contracts-map-body">
-              <svg class="contracts-map" data-contracts-map viewBox="0 0 1000 560" role="img" aria-label="Selected contract route map"></svg>
+              <svg class="contracts-map" data-contracts-map viewBox="0 0 560 560" role="img" aria-label="Selected contract route map"></svg>
               <div class="map-attribution">Base map data from OpenStreetMap contributors. Aviation chart overlays can come later.</div>
             </div>
           </section>
+          ${renderSelectedRoutePanel(selectedRoute, state)}
         </div>
       </div>
     `;
@@ -1259,7 +1299,6 @@ function renderOffersTable(
   offers: ContractsViewOffer[],
   selectedOfferId: string | null,
   state: ContractsUiState,
-  selectedRoute: SelectedRoute | null,
   activePopover: ContractsBoardPopoverKey | null,
 ): string {
   if (offers.length === 0) {
@@ -1272,30 +1311,40 @@ function renderOffersTable(
         <tr>
           ${renderContractsBoardHeaderCell("route", "Route", state, activePopover, {
             searchLabel: "Route search",
-            popoverBody: renderContractsRoutePopover(state, selectedRoute),
-          })}
-          ${renderContractsBoardHeaderCell("fit", "Fit", state, activePopover, {
-            filterLabel: "Fit filter",
-            popoverBody: renderContractsFitPopover(state),
+            popoverBody: renderContractsRoutePopover(state),
           })}
           ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
             filterLabel: "Payload filter",
             popoverBody: renderContractsPayloadPopover(state),
           })}
-          ${renderContractsStaticHeaderCell("Aircraft")}
-          ${renderContractsSortHeaderCell("distanceNm", "Distance", state)}
-          ${renderContractsSortHeaderCell("hoursRemaining", "Hours Left", state)}
-          ${renderContractsStaticHeaderCell("Due")}
+          ${renderContractsBoardHeaderCell("aircraft", "Nearest Aircraft", state, activePopover, {
+            searchLabel: "Nearest aircraft search",
+            filterLabel: "Nearest aircraft filter",
+            popoverBody: renderContractsAircraftPopover(state),
+          })}
+          ${renderContractsBoardHeaderCell("distance", "Distance", state, activePopover, {
+            filterLabel: "Distance filter",
+            popoverBody: renderContractsRangePopover("Distance (nm)", "distanceMin", "distanceMax", state.filters.distanceMin, state.filters.distanceMax),
+            sortField: "distanceNm",
+          })}
+          ${renderContractsBoardHeaderCell("hours", "Hours Left", state, activePopover, {
+            filterLabel: "Hours remaining filter",
+            popoverBody: renderContractsRangePopover("Hours left", "hoursRemainingMin", "hoursRemainingMax", state.filters.hoursRemainingMin, state.filters.hoursRemainingMax),
+            sortField: "hoursRemaining",
+          })}
+          ${renderContractsBoardHeaderCell("due", "Due", state, activePopover, {
+            filterLabel: "Due filter",
+            popoverBody: renderContractsRangePopover("Due in (hours)", "dueHoursMin", "dueHoursMax", state.filters.dueHoursMin, state.filters.dueHoursMax),
+          })}
           ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
             filterLabel: "Payout filter",
             popoverSide: "end",
             popoverBody: renderContractsPayoutPopover(state),
           })}
-          <th></th>
         </tr>
       </thead>
       <tbody>
-        ${offers.map((offer) => renderOfferRow(offer, selectedOfferId === offer.contractOfferId)).join("")}
+        ${offers.map((offer) => renderOfferRow(offer, selectedOfferId === offer.contractOfferId, state.payload.currentTimeUtc)).join("")}
       </tbody>
     </table>
   `;
@@ -1325,17 +1374,32 @@ function renderCompanyContractsTable(
         <tr>
           ${renderContractsBoardHeaderCell("route", "Route", state, activePopover, {
             searchLabel: "Route search",
-            popoverBody: renderContractsRoutePopover(state, selectedRoute),
+            popoverBody: renderContractsRoutePopover(state),
           })}
           ${renderContractsStaticHeaderCell("State")}
           ${renderContractsBoardHeaderCell("payload", "Payload", state, activePopover, {
             filterLabel: "Payload filter",
             popoverBody: renderContractsPayloadPopover(state),
           })}
-          ${renderContractsStaticHeaderCell("Aircraft")}
-          ${renderContractsSortHeaderCell("distanceNm", "Distance", state)}
-          ${renderContractsSortHeaderCell("hoursRemaining", "Hours Left", state)}
-          ${renderContractsStaticHeaderCell("Due")}
+          ${renderContractsBoardHeaderCell("aircraft", "Nearest Aircraft", state, activePopover, {
+            searchLabel: "Nearest aircraft search",
+            filterLabel: "Nearest aircraft filter",
+            popoverBody: renderContractsAircraftPopover(state),
+          })}
+          ${renderContractsBoardHeaderCell("distance", "Distance", state, activePopover, {
+            filterLabel: "Distance filter",
+            popoverBody: renderContractsRangePopover("Distance (nm)", "distanceMin", "distanceMax", state.filters.distanceMin, state.filters.distanceMax),
+            sortField: "distanceNm",
+          })}
+          ${renderContractsBoardHeaderCell("hours", "Hours Left", state, activePopover, {
+            filterLabel: "Hours remaining filter",
+            popoverBody: renderContractsRangePopover("Hours left", "hoursRemainingMin", "hoursRemainingMax", state.filters.hoursRemainingMin, state.filters.hoursRemainingMax),
+            sortField: "hoursRemaining",
+          })}
+          ${renderContractsBoardHeaderCell("due", "Due", state, activePopover, {
+            filterLabel: "Due filter",
+            popoverBody: renderContractsRangePopover("Due in (hours)", "dueHoursMin", "dueHoursMax", state.filters.dueHoursMin, state.filters.dueHoursMax),
+          })}
           ${renderContractsBoardHeaderCell("payout", "Payout", state, activePopover, {
             filterLabel: "Payout filter",
             popoverSide: "end",
@@ -1370,7 +1434,6 @@ function renderCompanyContractRow(
     <tr class="contract-row ${isSelected ? "selected" : ""}" data-select-company-contract-row="${escapeHtml(contract.companyContractId)}" data-contract-board-tab="${escapeHtml(boardTab)}">
       <td>
         ${renderRouteColumn(contract.origin, contract.destination)}
-        ${renderAircraftCueLine(contract.nearestRelevantAircraft)}
       </td>
       <td>
         <div class="meta-stack">
@@ -1383,35 +1446,25 @@ function renderCompanyContractRow(
       <td>${renderAircraftCueCell(contract.nearestRelevantAircraft)}</td>
       <td>${escapeHtml(formatDistance(routeDistanceNm(contract)))}</td>
       <td>${escapeHtml(formatHoursLeft(remainingHours))}</td>
-      <td>${escapeHtml(formatDate(contract.deadlineUtc))}</td>
+      <td>${renderDueCell(contract.deadlineUtc, currentTimeUtc)}</td>
       <td>${escapeHtml(formatMoney(contract.payoutAmount))}</td>
       <td>${actionsHtml ? `<div class="contract-row-actions">${actionsHtml}</div>` : ``}</td>
     </tr>
   `;
 }
 
-function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean): string {
+function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean, currentTimeUtc: string): string {
   return `
     <tr class="contract-row ${isSelected ? "selected" : ""} ${offer.matchesPlannerEndpoint ? "matches-endpoint" : ""}" data-select-offer-row="${escapeHtml(offer.contractOfferId)}">
       <td>
         ${renderRouteColumn(offer.origin, offer.destination)}
-        ${renderAircraftCueLine(offer.nearestRelevantAircraft)}
-      </td>
-      <td>
-        <div class="meta-stack">
-          ${renderBadge(offer.fitBucket ?? offer.offerStatus)}
-          <span class="muted">${escapeHtml(offer.likelyRole.replaceAll("_", " "))} | ${escapeHtml(offer.difficultyBand)}</span>
-        </div>
       </td>
       <td>${escapeHtml(formatPayload(offer))}</td>
       <td>${renderAircraftCueCell(offer.nearestRelevantAircraft)}</td>
       <td>${escapeHtml(formatDistance(routeDistanceNm(offer)))}</td>
       <td>${escapeHtml(formatHoursLeft(offer.timeRemainingHours))}</td>
-      <td>${escapeHtml(formatDate(offer.latestCompletionUtc))}</td>
+      <td>${renderDueCell(offer.latestCompletionUtc, currentTimeUtc)}</td>
       <td>${escapeHtml(formatMoney(offer.payoutAmount))}</td>
-      <td>
-        <button type="button" data-accept-offer="${escapeHtml(offer.contractOfferId)}">Accept now</button>
-      </td>
     </tr>
   `;
 }
@@ -1728,6 +1781,129 @@ function renderAcceptanceCallout(state: ContractsUiState): string {
   return `<div class="panel-inline-callout contracts-next-step"><div><strong>${escapeHtml(state.message?.text ?? "Contract accepted.")}</strong><div class="muted">Use Accepted / Active to inspect the newly accepted work, or switch to Route Planning to stage the next step.${acceptedOffer ? ` ${escapeHtml(acceptedOffer.directDispatchReason)}` : ""}</div></div><div class="pill-row"><button type="button" class="button-secondary" data-next-step-dismiss>Keep browsing</button><button type="button" class="button-secondary" data-open-route-plan="${acceptedOffer ? escapeHtml(acceptedOffer.contractOfferId) : ""}">Send to route plan</button><button type="button" ${acceptedOffer?.directDispatchEligible ? "" : "disabled"} data-next-step-dispatch>Accept and dispatch</button></div></div>`;
 }
 
+function renderSelectedRoutePanel(selectedRoute: SelectedRoute | null, state: ContractsUiState): string {
+  if (!selectedRoute) {
+    return `
+      <section class="panel contracts-selected-panel">
+        <div class="panel-head">
+          <div>
+            <h3>Selected Contract</h3>
+            <span class="muted">Select a row to inspect the contract details.</span>
+          </div>
+        </div>
+        <div class="panel-body contracts-selected-body">
+          <div class="empty-state compact">Contract details appear here once a row is selected.</div>
+        </div>
+      </section>
+    `;
+  }
+
+  if (selectedRoute.kind === "offer") {
+    return renderSelectedOfferPanel(selectedRoute.route, state.payload.currentTimeUtc);
+  }
+
+  return renderSelectedCompanyContractPanel(selectedRoute.route, state.payload.currentTimeUtc, state.boardTab);
+}
+
+function renderSelectedOfferPanel(offer: ContractsViewOffer, currentTimeUtc: string): string {
+  return `
+    <section class="panel contracts-selected-panel" data-contracts-selected-panel>
+      <div class="panel-head">
+        <div>
+          <h3>Selected Contract</h3>
+          <span class="muted">${escapeHtml(`${offer.origin.code} -> ${offer.destination.code}`)}</span>
+        </div>
+        <div class="pill-row">
+          ${renderBadge(offer.fitBucket ?? offer.offerStatus)}
+        </div>
+      </div>
+      <div class="panel-body contracts-selected-body">
+        <div class="contracts-selected-grid">
+          ${renderSelectedMetric("Route", `${offer.origin.code} -> ${offer.destination.code}`, `${offer.origin.name} | ${offer.destination.name}`)}
+          ${renderSelectedMetric("Payload", formatPayload(offer), `${offer.likelyRole.replaceAll("_", " ")} | ${offer.difficultyBand}`)}
+          ${renderSelectedMetric("Nearest Aircraft", formatSelectedAircraftPrimary(offer.nearestRelevantAircraft), formatSelectedAircraftSecondary(offer.nearestRelevantAircraft))}
+          ${renderSelectedMetric("Distance", formatDistance(routeDistanceNm(offer)), `Origin to destination`)}
+          ${renderSelectedMetric("Due", formatDate(offer.latestCompletionUtc), formatDeadlineCountdown(offer.latestCompletionUtc, currentTimeUtc))}
+          ${renderSelectedMetric("Payout", formatMoney(offer.payoutAmount), offer.directDispatchReason)}
+        </div>
+        <div class="contracts-selected-actions">
+          <button type="button" data-accept-selected-offer="${escapeHtml(offer.contractOfferId)}">Accept contract</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderDueCell(deadlineUtc: string, currentTimeUtc: string): string {
+  return `
+    <div class="contracts-due-cell">
+      <strong>${escapeHtml(formatDate(deadlineUtc))}</strong>
+      <span class="muted">${escapeHtml(formatDeadlineCountdown(deadlineUtc, currentTimeUtc))}</span>
+    </div>
+  `;
+}
+
+function renderSelectedCompanyContractPanel(
+  contract: ContractsViewCompanyContract,
+  currentTimeUtc: string,
+  boardTab: ContractsBoardTab,
+): string {
+  const primaryAction = boardTab === "active" ? renderCompanyContractPrimaryAction(contract) : "";
+  const cancelAction = boardTab === "active" && contract.contractState === "accepted"
+    ? `<button type="button" class="button-secondary" data-cancel-contract="${escapeHtml(contract.companyContractId)}">Cancel (${escapeHtml(formatMoney(contract.cancellationPenaltyAmount))})</button>`
+    : "";
+  return `
+    <section class="panel contracts-selected-panel" data-contracts-selected-panel>
+      <div class="panel-head">
+        <div>
+          <h3>Selected Contract</h3>
+          <span class="muted">${escapeHtml(`${contract.origin.code} -> ${contract.destination.code}`)}</span>
+        </div>
+        <div class="pill-row">
+          ${renderBadge(resolveCompanyContractBadgeState(contract, boardTab))}
+          ${renderContractWorkStateBadge(contract.workState)}
+          ${contract.urgencyBand === "stable" ? "" : renderUrgencyBadge(contract.urgencyBand)}
+        </div>
+      </div>
+      <div class="panel-body contracts-selected-body">
+        <div class="contracts-selected-grid">
+          ${renderSelectedMetric("Route", `${contract.origin.code} -> ${contract.destination.code}`, `${contract.origin.name} | ${contract.destination.name}`)}
+          ${renderSelectedMetric("Payload", formatPayload(contract), contract.primaryActionLabel)}
+          ${renderSelectedMetric("Nearest Aircraft", formatSelectedAircraftPrimary(contract.nearestRelevantAircraft), formatSelectedAircraftSecondary(contract.nearestRelevantAircraft))}
+          ${renderSelectedMetric("Distance", formatDistance(routeDistanceNm(contract)), `Origin to destination`)}
+          ${renderSelectedMetric("Due", formatDate(contract.deadlineUtc), formatDeadlineCountdown(contract.deadlineUtc, currentTimeUtc))}
+          ${renderSelectedMetric("Payout", formatMoney(contract.payoutAmount), `Penalty ${formatMoney(contract.cancellationPenaltyAmount)}`)}
+        </div>
+        ${primaryAction || cancelAction ? `<div class="contracts-selected-actions">${primaryAction}${cancelAction}</div>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderSelectedMetric(label: string, primary: string, secondary: string): string {
+  return `
+    <article class="contracts-selected-card">
+      <span class="eyebrow">${escapeHtml(label)}</span>
+      <strong>${escapeHtml(primary)}</strong>
+      <span class="muted">${escapeHtml(secondary)}</span>
+    </article>
+  `;
+}
+
+function formatSelectedAircraftPrimary(
+  cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"],
+): string {
+  return cue ? cue.registration : "No ready aircraft";
+}
+
+function formatSelectedAircraftSecondary(
+  cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"],
+): string {
+  return cue
+    ? `${cue.modelDisplayName} | ${cue.currentAirport.code} | ${formatDistance(cue.distanceNm)}`
+    : "No ready aircraft can cover this route right now.";
+}
+
 function renderPlannerReviewSection(
   title: string,
   items: ContractsRoutePlanItem[],
@@ -1852,51 +2028,75 @@ function renderContractsBoardHeaderCell(
     filterLabel?: string;
     popoverBody: string;
     popoverSide?: "start" | "end";
+    sortField?: SortField;
   },
 ): string {
   const popoverOpen = activePopover === key;
+  const isSorted = options.sortField ? state.sortField === options.sortField : false;
+  const ariaSort = options.sortField
+    ? isSorted
+      ? state.sortDirection === "asc" ? "ascending" : "descending"
+      : "none"
+    : undefined;
   const searchButton = options.searchLabel
     ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.searchLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("search")}</button>`
     : "";
   const filterButton = options.filterLabel
     ? `<button type="button" class="table-header-icon-button" data-contracts-board-popover-toggle="${escapeHtml(key)}" aria-label="${escapeHtml(options.filterLabel)}" aria-expanded="${popoverOpen ? "true" : "false"}">${renderContractsHeaderIcon("filter")}</button>`
     : "";
-  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions">${searchButton}${filterButton}</span></div><div class="table-header-popover" data-contracts-board-popover="${escapeHtml(key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button compact" data-contracts-board-clear="${escapeHtml(key)}">Clear</button></div><div class="table-header-popover-body">${options.popoverBody}</div></div></th>`;
-}
-
-function renderContractsSortHeaderCell(field: SortField, label: string, state: ContractsUiState): string {
-  const isCurrent = state.sortField === field;
-  const ariaSort = isCurrent
-    ? state.sortDirection === "asc" ? "ascending" : "descending"
-    : "none";
-  return `<th class="sortable table-header-column${isCurrent ? " is-sorted" : ""}" aria-sort="${ariaSort}"><div class="table-header-control">${renderSortButton(field, label, state)}<span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+  const labelHtml = options.sortField
+    ? renderSortButton(options.sortField, label, state)
+    : `<span class="table-header-label">${escapeHtml(label)}</span>`;
+  return `<th class="table-header-column${options.sortField ? " sortable" : ""}${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control">${labelHtml}<span class="table-header-actions">${searchButton}${filterButton}</span></div><div class="table-header-popover" data-contracts-board-popover="${escapeHtml(key)}"${options.popoverSide === "end" ? ` data-table-header-popover-side="end"` : ""}${popoverOpen ? "" : " hidden"}><div class="table-header-popover-head"><strong>${escapeHtml(label)}</strong><button type="button" class="ghost-button compact" data-contracts-board-clear="${escapeHtml(key)}">Clear</button></div><div class="table-header-popover-body">${options.popoverBody}</div></div></th>`;
 }
 
 function renderContractsStaticHeaderCell(label: string): string {
   return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
 }
 
-function renderContractsRoutePopover(state: ContractsUiState, selectedRoute: SelectedRoute | null): string {
-  return `<label class="table-header-popover-field"><span>Search</span><input name="searchText" value="${escapeHtml(state.filters.searchText)}" placeholder="Airport, city, or route code" /></label><label class="table-header-popover-field"><span>Departure airport</span><input name="originCode" value="${escapeHtml(state.filters.originCode)}" placeholder="Type code or airport" /></label><label class="table-header-popover-field"><span>Destination airport</span><input name="destinationCode" value="${escapeHtml(state.filters.destinationCode)}" placeholder="Type code or airport" /></label>${selectedRoute ? `<div class="table-header-shortcut"><span class="muted">Selected destination: ${escapeHtml(selectedRoute.route.destination.code)}</span><button type="button" class="button-secondary" data-use-selected-destination>Use as departure filter</button></div>` : `<div class="table-header-shortcut"><span class="muted">Select a contract row to use its destination as the next departure filter.</span></div>`}`;
-}
-
-function renderContractsFitPopover(state: ContractsUiState): string {
-  return `<label class="table-header-popover-field"><span>Fit</span><select name="fitBucket"><option value="all">All</option><option value="flyable_now" ${state.filters.fitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option><option value="flyable_with_reposition" ${state.filters.fitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option><option value="stretch_growth" ${state.filters.fitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option><option value="blocked_now" ${state.filters.fitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option></select></label>`;
+function renderContractsRoutePopover(state: ContractsUiState): string {
+  return `<label class="table-header-popover-field"><span>Search route</span><input name="routeSearchText" value="${escapeHtml(state.filters.routeSearchText)}" placeholder="Airport, city, or route code" /></label>`;
 }
 
 function renderContractsPayloadPopover(state: ContractsUiState): string {
-  return `<label class="table-header-popover-field"><span>Payload type</span><select name="volumeType"><option value="all">All</option><option value="passenger" ${state.filters.volumeType === "passenger" ? "selected" : ""}>Passenger</option><option value="cargo" ${state.filters.volumeType === "cargo" ? "selected" : ""}>Cargo</option></select></label><div class="table-header-range-field"><span>Passengers</span><div class="table-header-range-inputs"><input name="passengerCountMin" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMin)}" placeholder="Min" /><input name="passengerCountMax" type="number" min="0" value="${escapeHtml(state.filters.passengerCountMax)}" placeholder="Max" /></div></div><div class="table-header-range-field"><span>Cargo (lb)</span><div class="table-header-range-inputs"><input name="cargoWeightMin" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMin)}" placeholder="Min" /><input name="cargoWeightMax" type="number" min="0" value="${escapeHtml(state.filters.cargoWeightMax)}" placeholder="Max" /></div></div>`;
+  return renderContractsRangePopover("Payload", "payloadMin", "payloadMax", state.filters.payloadMin, state.filters.payloadMax);
+}
+
+function renderContractsAircraftPopover(state: ContractsUiState): string {
+  return `
+    <label class="table-header-popover-field"><span>Tail number</span><input name="nearestAircraftSearchText" value="${escapeHtml(state.filters.nearestAircraftSearchText)}" placeholder="Search aircraft tail" /></label>
+    <div class="table-header-range-field">
+      <span>Availability</span>
+      <div class="contracts-aircraft-filter-list">
+        <label class="contracts-aircraft-filter-option"><input name="readyAircraft" type="checkbox" ${state.filters.readyAircraft ? "checked" : ""} /><span>Ready aircraft</span></label>
+        <label class="contracts-aircraft-filter-option"><input name="noReadyAircraft" type="checkbox" ${state.filters.noReadyAircraft ? "checked" : ""} /><span>No ready aircraft</span></label>
+      </div>
+    </div>
+  `;
 }
 
 function renderContractsPayoutPopover(state: ContractsUiState): string {
-  return `<div class="table-header-range-field"><span>Payout</span><div class="table-header-range-inputs"><input name="payoutMin" type="number" min="0" value="${escapeHtml(state.filters.payoutMin)}" placeholder="Min" /><input name="payoutMax" type="number" min="0" value="${escapeHtml(state.filters.payoutMax)}" placeholder="Max" /></div></div>`;
+  return renderContractsRangePopover("Payout", "payoutMin", "payoutMax", state.filters.payoutMin, state.filters.payoutMax);
+}
+
+function renderContractsRangePopover(
+  label: string,
+  minName: keyof FilterState,
+  maxName: keyof FilterState,
+  minValue: string,
+  maxValue: string,
+): string {
+  return `<div class="table-header-range-field"><span>${escapeHtml(label)}</span><div class="table-header-range-inputs"><input name="${escapeHtml(String(minName))}" type="number" min="0" value="${escapeHtml(minValue)}" placeholder="Min" /><input name="${escapeHtml(String(maxName))}" type="number" min="0" value="${escapeHtml(maxValue)}" placeholder="Max" /></div></div>`;
 }
 
 function normalizeContractsBoardPopoverKey(value: string | undefined): ContractsBoardPopoverKey | null {
   switch (value) {
     case "route":
-    case "fit":
     case "payload":
+    case "aircraft":
+    case "distance":
+    case "hours":
+    case "due":
     case "payout":
       return value;
     default:
@@ -2074,6 +2274,14 @@ function formatDate(value: string): string {
   });
 }
 
+function formatDeadlineCountdown(deadlineUtc: string, currentTimeUtc: string): string {
+  const remainingMinutes = Math.max(0, Math.ceil((Date.parse(deadlineUtc) - Date.parse(currentTimeUtc)) / 60_000));
+  const days = Math.floor(remainingMinutes / (24 * 60));
+  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+  const minutes = remainingMinutes % 60;
+  return `${String(days).padStart(2, "0")}D:${String(hours).padStart(2, "0")}H:${String(minutes).padStart(2, "0")}M`;
+}
+
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
@@ -2111,50 +2319,56 @@ function getClosedContracts(payload: ContractsViewPayload): ContractsViewCompany
 
 // Derived collections centralize filter rules so selection, counts, and rendering all agree on the same visible set.
 function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
+  const payloadMin = Number.parseInt(state.filters.payloadMin, 10);
+  const payloadMax = Number.parseInt(state.filters.payloadMax, 10);
+  const distanceMin = Number.parseInt(state.filters.distanceMin, 10);
+  const distanceMax = Number.parseInt(state.filters.distanceMax, 10);
+  const hoursRemainingMin = Number.parseInt(state.filters.hoursRemainingMin, 10);
+  const hoursRemainingMax = Number.parseInt(state.filters.hoursRemainingMax, 10);
+  const dueHoursMin = Number.parseInt(state.filters.dueHoursMin, 10);
+  const dueHoursMax = Number.parseInt(state.filters.dueHoursMax, 10);
   const minPayout = Number.parseInt(state.filters.payoutMin, 10);
   const maxPayout = Number.parseInt(state.filters.payoutMax, 10);
-
-  const passengerCountMin = Number.parseInt(state.filters.passengerCountMin, 10);
-  const passengerCountMax = Number.parseInt(state.filters.passengerCountMax, 10);
-  const cargoWeightMin = Number.parseInt(state.filters.cargoWeightMin, 10);
-  const cargoWeightMax = Number.parseInt(state.filters.cargoWeightMax, 10);
-  const searchText = state.appliedTextFilters.searchText.trim().toLowerCase();
+  const routeSearchText = state.appliedTextFilters.routeSearchText.trim().toLowerCase();
+  const nearestAircraftSearchText = state.appliedTextFilters.nearestAircraftSearchText.trim().toLowerCase();
 
   return state.payload.offers.filter((offer) => {
+    const distanceNm = routeDistanceNm(offer);
+    const hoursRemaining = routeHoursRemaining(offer, state.payload.currentTimeUtc);
+
     if (offer.offerStatus !== "available") {
       return false;
     }
 
-    if (searchText && !buildAirportSearchHaystack(offer).includes(searchText)) {
+    if (routeSearchText && !buildRouteSearchHaystack(offer).includes(routeSearchText)) {
       return false;
     }
 
-    if (!matchesAirportFilter(offer.origin, state.appliedTextFilters.originCode)) {
+    if (nearestAircraftSearchText && !buildAircraftSearchHaystack(offer.nearestRelevantAircraft).includes(nearestAircraftSearchText)) {
       return false;
     }
 
-    if (!matchesAirportFilter(offer.destination, state.appliedTextFilters.destinationCode)) {
+    if (!matchesNearestAircraftFilter(offer.nearestRelevantAircraft, state.filters.readyAircraft, state.filters.noReadyAircraft)) {
       return false;
     }
 
-    if (state.filters.volumeType !== "all" && offer.volumeType !== state.filters.volumeType) {
+    if (!matchesNumericRange(routePayloadAmount(offer), payloadMin, payloadMax)) {
       return false;
     }
 
-    if (state.filters.fitBucket !== "all" && offer.fitBucket !== state.filters.fitBucket) {
+    if (!matchesNumericRange(distanceNm, distanceMin, distanceMax)) {
       return false;
     }
 
-    if (!Number.isNaN(minPayout) && offer.payoutAmount < minPayout) {
+    if (!matchesNumericRange(hoursRemaining, hoursRemainingMin, hoursRemainingMax)) {
       return false;
     }
 
-    if (!Number.isNaN(maxPayout) && offer.payoutAmount > maxPayout) {
+    if (!matchesNumericRange(hoursRemaining, dueHoursMin, dueHoursMax)) {
       return false;
     }
 
-
-    if (!matchesVolumeRangeFilters(offer, passengerCountMin, passengerCountMax, cargoWeightMin, cargoWeightMax)) {
+    if (!matchesNumericRange(offer.payoutAmount, minPayout, maxPayout)) {
       return false;
     }
 
@@ -2166,46 +2380,56 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
   const source = state.boardTab === "closed"
     ? getClosedContracts(state.payload)
     : getActiveContracts(state.payload);
+  const payloadMin = Number.parseInt(state.filters.payloadMin, 10);
+  const payloadMax = Number.parseInt(state.filters.payloadMax, 10);
+  const distanceMin = Number.parseInt(state.filters.distanceMin, 10);
+  const distanceMax = Number.parseInt(state.filters.distanceMax, 10);
+  const hoursRemainingMin = Number.parseInt(state.filters.hoursRemainingMin, 10);
+  const hoursRemainingMax = Number.parseInt(state.filters.hoursRemainingMax, 10);
+  const dueHoursMin = Number.parseInt(state.filters.dueHoursMin, 10);
+  const dueHoursMax = Number.parseInt(state.filters.dueHoursMax, 10);
   const minPayout = Number.parseInt(state.filters.payoutMin, 10);
   const maxPayout = Number.parseInt(state.filters.payoutMax, 10);
-
-  const passengerCountMin = Number.parseInt(state.filters.passengerCountMin, 10);
-  const passengerCountMax = Number.parseInt(state.filters.passengerCountMax, 10);
-  const cargoWeightMin = Number.parseInt(state.filters.cargoWeightMin, 10);
-  const cargoWeightMax = Number.parseInt(state.filters.cargoWeightMax, 10);
-  const searchText = state.appliedTextFilters.searchText.trim().toLowerCase();
+  const routeSearchText = state.appliedTextFilters.routeSearchText.trim().toLowerCase();
+  const nearestAircraftSearchText = state.appliedTextFilters.nearestAircraftSearchText.trim().toLowerCase();
 
   return source.filter((contract) => {
+    const distanceNm = routeDistanceNm(contract);
+    const hoursRemaining = routeHoursRemaining(contract, state.payload.currentTimeUtc);
+
     if (state.boardTab === "active" && state.boardScope === "my_contracts" && contract.urgencyBand === "stable") {
       return false;
     }
 
-    if (searchText && !buildAirportSearchHaystack(contract).includes(searchText)) {
+    if (routeSearchText && !buildRouteSearchHaystack(contract).includes(routeSearchText)) {
       return false;
     }
 
-    if (!matchesAirportFilter(contract.origin, state.appliedTextFilters.originCode)) {
+    if (nearestAircraftSearchText && !buildAircraftSearchHaystack(contract.nearestRelevantAircraft).includes(nearestAircraftSearchText)) {
       return false;
     }
 
-    if (!matchesAirportFilter(contract.destination, state.appliedTextFilters.destinationCode)) {
+    if (!matchesNearestAircraftFilter(contract.nearestRelevantAircraft, state.filters.readyAircraft, state.filters.noReadyAircraft)) {
       return false;
     }
 
-    if (state.filters.volumeType !== "all" && contract.volumeType !== state.filters.volumeType) {
+    if (!matchesNumericRange(routePayloadAmount(contract), payloadMin, payloadMax)) {
       return false;
     }
 
-    if (!Number.isNaN(minPayout) && contract.payoutAmount < minPayout) {
+    if (!matchesNumericRange(distanceNm, distanceMin, distanceMax)) {
       return false;
     }
 
-    if (!Number.isNaN(maxPayout) && contract.payoutAmount > maxPayout) {
+    if (!matchesNumericRange(hoursRemaining, hoursRemainingMin, hoursRemainingMax)) {
       return false;
     }
 
+    if (!matchesNumericRange(hoursRemaining, dueHoursMin, dueHoursMax)) {
+      return false;
+    }
 
-    if (!matchesVolumeRangeFilters(contract, passengerCountMin, passengerCountMax, cargoWeightMin, cargoWeightMax)) {
+    if (!matchesNumericRange(contract.payoutAmount, minPayout, maxPayout)) {
       return false;
     }
 
@@ -2299,7 +2523,7 @@ function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidate
 
   return [...availableOfferCandidates, ...stalePlannedCandidates]
     .filter((candidate) => {
-      if (searchText && !buildAirportSearchHaystack(candidate.offer).includes(searchText)) {
+      if (searchText && !buildRouteSearchHaystack(candidate.offer).includes(searchText)) {
         return false;
       }
 
@@ -2323,47 +2547,56 @@ function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidate
     });
 }
 
-function matchesVolumeRangeFilters(
-  route: Pick<RouteLike, "volumeType" | "passengerCount" | "cargoWeightLb">,
-  passengerCountMin: number,
-  passengerCountMax: number,
-  cargoWeightMin: number,
-  cargoWeightMax: number,
-): boolean {
-  const hasPassengerRange = !Number.isNaN(passengerCountMin) || !Number.isNaN(passengerCountMax);
-  const hasCargoRange = !Number.isNaN(cargoWeightMin) || !Number.isNaN(cargoWeightMax);
-
-  if (hasPassengerRange) {
-    if (route.volumeType !== "passenger") {
-      return false;
-    }
-
-    const passengerCount = route.passengerCount ?? 0;
-    if (!Number.isNaN(passengerCountMin) && passengerCount < passengerCountMin) {
-      return false;
-    }
-
-    if (!Number.isNaN(passengerCountMax) && passengerCount > passengerCountMax) {
-      return false;
-    }
+function matchesNumericRange(value: number, min: number, max: number): boolean {
+  if (!Number.isNaN(min) && value < min) {
+    return false;
   }
 
-  if (hasCargoRange) {
-    if (route.volumeType !== "cargo") {
-      return false;
-    }
-
-    const cargoWeight = route.cargoWeightLb ?? 0;
-    if (!Number.isNaN(cargoWeightMin) && cargoWeight < cargoWeightMin) {
-      return false;
-    }
-
-    if (!Number.isNaN(cargoWeightMax) && cargoWeight > cargoWeightMax) {
-      return false;
-    }
+  if (!Number.isNaN(max) && value > max) {
+    return false;
   }
 
   return true;
+}
+
+function routePayloadAmount(route: Pick<RouteLike, "volumeType" | "passengerCount" | "cargoWeightLb">): number {
+  return route.volumeType === "cargo"
+    ? route.cargoWeightLb ?? 0
+    : route.passengerCount ?? 0;
+}
+
+function matchesNearestAircraftFilter(
+  cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"],
+  readyAircraft: boolean,
+  noReadyAircraft: boolean,
+): boolean {
+  if (!readyAircraft && !noReadyAircraft) {
+    return true;
+  }
+
+  if (cue && readyAircraft) {
+    return true;
+  }
+
+  return !cue && noReadyAircraft;
+}
+
+function buildRouteSearchHaystack(route: RouteLike): string {
+  return [
+    route.origin.code,
+    route.origin.name,
+    route.origin.municipality,
+    route.destination.code,
+    route.destination.name,
+    route.destination.municipality,
+    `${route.origin.code} ${route.destination.code}`,
+  ].filter((value): value is string => Boolean(value)).join(" ").toLowerCase();
+}
+
+function buildAircraftSearchHaystack(
+  cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"],
+): string {
+  return cue?.registration.toLowerCase() ?? "";
 }
 
 function matchesAirportFilter(airport: ContractsViewAirport, query: string): boolean {
@@ -2376,18 +2609,6 @@ function matchesAirportFilter(airport: ContractsViewAirport, query: string): boo
   return [airport.code, airport.name, airport.municipality]
     .filter((value): value is string => Boolean(value))
     .some((value) => value.toLowerCase().includes(normalizedQuery));
-}
-
-function buildAirportSearchHaystack(route: RouteLike): string {
-  return [
-    route.origin.code,
-    route.origin.name,
-    route.origin.municipality,
-    route.destination.code,
-    route.destination.name,
-    route.destination.municipality,
-    `${route.origin.code} ${route.destination.code}`,
-  ].filter((value): value is string => Boolean(value)).join(" ").toLowerCase();
 }
 
 function buildAirportOptions(...airportCollections: ContractsViewAirport[][]): Array<{ code: string; label: string }> {
@@ -2465,8 +2686,8 @@ function focusSelectedRoute(state: ContractsUiState): void {
   const maxLatitudeNorm = Math.max(...points.map((point) => point.latitudeNorm));
   const widthNorm = Math.max(0.015, maxLongitudeNorm - minLongitudeNorm);
   const heightNorm = Math.max(0.015, maxLatitudeNorm - minLatitudeNorm);
-  const zoomX = Math.log2((mapViewWidthPx - mapPaddingPx * 2) / Math.max(widthNorm * mapTileSizePx, 1));
-  const zoomY = Math.log2((mapViewHeightPx - mapPaddingPx * 2) / Math.max(heightNorm * mapTileSizePx, 1));
+  const zoomX = Math.log2((boardMapViewWidthPx - boardMapPaddingPx * 2) / Math.max(widthNorm * mapTileSizePx, 1));
+  const zoomY = Math.log2((boardMapViewHeightPx - boardMapPaddingPx * 2) / Math.max(heightNorm * mapTileSizePx, 1));
   const zoom = clamp(Math.floor(Math.min(zoomX, zoomY)), minMapZoom, maxMapZoom);
 
   state.map = {
@@ -2490,8 +2711,8 @@ function focusPlannerChain(state: ContractsUiState): void {
   const maxLatitudeNorm = Math.max(...points.map((point) => point.latitudeNorm));
   const widthNorm = Math.max(0.015, maxLongitudeNorm - minLongitudeNorm);
   const heightNorm = Math.max(0.015, maxLatitudeNorm - minLatitudeNorm);
-  const zoomX = Math.log2((mapViewWidthPx - mapPaddingPx * 2) / Math.max(widthNorm * mapTileSizePx, 1));
-  const zoomY = Math.log2((mapViewHeightPx - mapPaddingPx * 2) / Math.max(heightNorm * mapTileSizePx, 1));
+  const zoomX = Math.log2((plannerMapViewWidthPx - plannerMapPaddingPx * 2) / Math.max(widthNorm * mapTileSizePx, 1));
+  const zoomY = Math.log2((plannerMapViewHeightPx - plannerMapPaddingPx * 2) / Math.max(heightNorm * mapTileSizePx, 1));
   const zoom = clamp(Math.floor(Math.min(zoomX, zoomY)), minMapZoom, maxMapZoom);
 
   state.map = {
@@ -2508,9 +2729,9 @@ function renderMap(root: HTMLElement, state: ContractsUiState, selectedRoute: Se
     return;
   }
 
-  renderRouteMapSvg(svg, state.map, selectedRoute
+  renderRouteMapSvg(svg, state.map, { width: boardMapViewWidthPx, height: boardMapViewHeightPx }, selectedRoute
     ? (viewportLeftPx, viewportTopPx, worldSizePx) => renderSelectedOverlay(selectedRoute, viewportLeftPx, viewportTopPx, worldSizePx)
-    : () => `<text x="500" y="280" text-anchor="middle" class="map-label muted">Select a contract row to draw the route.</text>`);
+    : () => `<text x="${boardMapViewWidthPx / 2}" y="${boardMapViewHeightPx / 2}" text-anchor="middle" class="map-label muted">Select a contract row to draw the route.</text>`);
 }
 
 function renderPlannerMap(root: HTMLElement, state: ContractsUiState): void {
@@ -2520,10 +2741,10 @@ function renderPlannerMap(root: HTMLElement, state: ContractsUiState): void {
   }
 
   const summary = buildPlannerChainSummary(state.payload.routePlan);
-  renderRouteMapSvg(svg, state.map, (viewportLeftPx, viewportTopPx, worldSizePx) =>
+  renderRouteMapSvg(svg, state.map, { width: plannerMapViewWidthPx, height: plannerMapViewHeightPx }, (viewportLeftPx, viewportTopPx, worldSizePx) =>
     summary.items.length > 0
       ? renderPlannerChainOverlay(summary, viewportLeftPx, viewportTopPx, worldSizePx)
-      : `<text x="500" y="280" text-anchor="middle" class="map-label muted">The route plan map appears here once the chain has items.</text>`);
+      : `<text x="${plannerMapViewWidthPx / 2}" y="${plannerMapViewHeightPx / 2}" text-anchor="middle" class="map-label muted">The route plan map appears here once the chain has items.</text>`);
 }
 
 function renderVisibleMap(root: HTMLElement, state: ContractsUiState, selectedRoute: SelectedRoute | null): void {
@@ -2538,18 +2759,19 @@ function renderVisibleMap(root: HTMLElement, state: ContractsUiState, selectedRo
 function renderRouteMapSvg(
   svg: SVGSVGElement,
   map: MapState,
+  dimensions: { width: number; height: number },
   overlayRenderer: (viewportLeftPx: number, viewportTopPx: number, worldSizePx: number) => string,
 ): void {
   const worldSizePx = mapTileSizePx * 2 ** map.zoom;
   const tileCount = 2 ** map.zoom;
   const centerWorldX = map.centerLongitudeNorm * worldSizePx;
   const centerWorldY = map.centerLatitudeNorm * worldSizePx;
-  const viewportLeftPx = centerWorldX - mapViewWidthPx / 2;
-  const viewportTopPx = centerWorldY - mapViewHeightPx / 2;
+  const viewportLeftPx = centerWorldX - dimensions.width / 2;
+  const viewportTopPx = centerWorldY - dimensions.height / 2;
   const xStartTile = Math.floor(viewportLeftPx / mapTileSizePx);
-  const xEndTile = Math.floor((viewportLeftPx + mapViewWidthPx) / mapTileSizePx);
+  const xEndTile = Math.floor((viewportLeftPx + dimensions.width) / mapTileSizePx);
   const yStartTile = Math.max(0, Math.floor(viewportTopPx / mapTileSizePx));
-  const yEndTile = Math.min(tileCount - 1, Math.floor((viewportTopPx + mapViewHeightPx) / mapTileSizePx));
+  const yEndTile = Math.min(tileCount - 1, Math.floor((viewportTopPx + dimensions.height) / mapTileSizePx));
 
   const tileImages: string[] = [];
   for (let tileY = yStartTile; tileY <= yEndTile; tileY += 1) {
@@ -2562,17 +2784,17 @@ function renderRouteMapSvg(
   const overlay = overlayRenderer(viewportLeftPx, viewportTopPx, worldSizePx);
 
   svg.innerHTML = `
-    <rect x="0" y="0" width="${mapViewWidthPx}" height="${mapViewHeightPx}" rx="24" class="map-bg" />
+    <rect x="0" y="0" width="${dimensions.width}" height="${dimensions.height}" rx="24" class="map-bg" />
     <g class="map-tiles">${tileImages.join("")}</g>
-    <rect x="0" y="0" width="${mapViewWidthPx}" height="${mapViewHeightPx}" rx="24" class="map-scrim" />
+    <rect x="0" y="0" width="${dimensions.width}" height="${dimensions.height}" rx="24" class="map-scrim" />
     <g class="map-grid">
       ${[-120, -60, 0, 60, 120].map((longitude) => {
         const x = wrapUnitInterval((longitude + 180) / 360) * worldSizePx - viewportLeftPx;
-        return `<line x1="${x}" y1="16" x2="${x}" y2="${mapViewHeightPx - 16}" />`;
+        return `<line x1="${x}" y1="16" x2="${x}" y2="${dimensions.height - 16}" />`;
       }).join("")}
       ${[-60, -30, 0, 30, 60].map((latitude) => {
         const y = latitudeToMercatorNorm(latitude) * worldSizePx - viewportTopPx;
-        return `<line x1="16" y1="${y}" x2="${mapViewWidthPx - 16}" y2="${y}" />`;
+        return `<line x1="16" y1="${y}" x2="${dimensions.width - 16}" y2="${y}" />`;
       }).join("")}
     </g>
     <g class="map-overlay">

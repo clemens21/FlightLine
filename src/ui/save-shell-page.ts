@@ -2105,18 +2105,18 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       height: 100%;
       display: grid;
-      grid-template-columns: minmax(0, 1.2fr) minmax(460px, 1fr);
+      grid-template-columns: minmax(0, 1fr) 560px;
       gap: 18px;
       overflow: hidden;
     }
-     .contracts-side-column {
+    .contracts-side-column {
       min-height: 0;
       min-width: 0;
       display: grid;
       gap: 18px;
-      grid-template-rows: minmax(0, .62fr) minmax(0, .38fr);
+      grid-template-rows: auto minmax(0, 1fr);
       overflow: hidden;
-      align-content: stretch;
+      align-content: start;
     }
     .contracts-main-body {
       display: flex;
@@ -2161,7 +2161,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-radius: 18px;
       background: var(--panel-strong);
     }
-    .contracts-board-table { min-width: 1360px; }
+    .contracts-board-table { min-width: 1180px; }
     .contracts-board-table th,
     .contracts-board-table td {
       position: relative;
@@ -2247,19 +2247,73 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
     }
-     .contracts-map-panel {
+    .contracts-map-panel {
       position: sticky;
       top: 0;
       z-index: 1;
-      height: 100%;
+      align-self: start;
     }
     .contracts-map-body {
       padding: 14px;
       background: linear-gradient(180deg, rgba(13,106,119,.08), transparent 45%);
       display: grid;
-      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-rows: auto auto;
       gap: 10px;
       overflow: hidden;
+    }
+    .contracts-selected-panel {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .contracts-selected-body {
+      display: grid;
+      gap: 14px;
+    }
+    .contracts-selected-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .contracts-selected-card {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
+    }
+    .contracts-selected-card strong {
+      font-size: 15px;
+      line-height: 1.25;
+    }
+    .contracts-selected-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .contracts-due-cell {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .contracts-aircraft-filter-list {
+      display: grid;
+      gap: 8px;
+      justify-items: start;
+    }
+    .contracts-aircraft-filter-option {
+      display: inline-grid;
+      grid-template-columns: 16px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+      color: var(--text);
+    }
+    .contracts-aircraft-filter-option input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
     }
      .contracts-planner-panel {
       min-height: 0;
@@ -2475,14 +2529,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .contracts-map {
       width: 100%;
-      height: 100%;
-      min-height: 420px;
+      height: auto;
+      min-height: 0;
+      aspect-ratio: 1 / 1;
       display: block;
       border-radius: 18px;
       touch-action: none;
       overflow: hidden;
     }
     .contracts-plan-map {
+      aspect-ratio: auto;
+      height: 100%;
       min-height: 360px;
     }
     .map-attribution {
@@ -3613,13 +3670,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .dispatch-board,
       .dispatch-queue-grid,
         .dispatch-selected-aircraft-grid,
-        .dispatch-detail-grid,
-        .dispatch-validation-summary,
-        .dispatch-commit-metrics,
-        .contracts-grid,
+      .dispatch-detail-grid,
+      .dispatch-validation-summary,
+      .dispatch-commit-metrics,
+      .contracts-grid,
       .contracts-side-column,
       .planner-workbench,
-      .planner-summary-grid {
+      .planner-summary-grid,
+      .contracts-selected-grid {
         grid-template-columns: 1fr;
         height: auto;
       }

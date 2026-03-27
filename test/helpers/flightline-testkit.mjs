@@ -9,8 +9,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../../dist/index.js";
+import { buildGeneratedSaveId } from "../../dist/ui/save-slot-files.js";
 
 const startupStartingCashAmount = 3_500_000;
+let saveIdSequence = 0;
 
 function deriveFinancialPressureBand(currentCashAmount) {
   if (currentCashAmount < 250_000) {
@@ -41,16 +43,15 @@ export async function createTestHarness(prefix) {
     backend,
     airportReference: backend.getAirportReference(),
     async cleanup() {
-      await Promise.allSettled([
-        backend.close(),
-        rm(saveDirectoryPath, { recursive: true, force: true }),
-      ]);
+      await backend.close();
+      await rm(saveDirectoryPath, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     },
   };
 }
 
 export function uniqueSaveId(prefix) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  saveIdSequence += 1;
+  return buildGeneratedSaveId(prefix, { suffix: String(saveIdSequence).padStart(3, "0") });
 }
 
 export async function dispatchOrThrow(backend, command) {

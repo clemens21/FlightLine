@@ -438,7 +438,7 @@ try {
   assert.ok(firstRouteCode.length > 0);
   await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='route']") instanceof HTMLElement && !(document.querySelector("[data-contracts-board-popover='route']")).hidden);
-  await page.locator("[data-contracts-board-popover='route'] input[name='searchText']").fill(firstRouteCode);
+  await page.locator("[data-contracts-board-popover='route'] input[name='routeSearchText']").fill(firstRouteCode);
   await page.waitForFunction(([expectedCode, expectedCount]) => {
     const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
     return rows.length > 0 && rows.length <= expectedCount
@@ -449,7 +449,17 @@ try {
   await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
   await page.waitForFunction(() => document.querySelector("button[aria-label='Route search']")?.getAttribute("aria-expanded") === "false");
 
-  await clickUi(page.locator("[data-accept-offer]").first());
+  const contractsHeaderTextAfterRefresh = (await contractsBoardTable.locator("thead").textContent()) ?? "";
+  assert.equal(contractsHeaderTextAfterRefresh.includes("Fit"), false);
+  assert.equal(contractsHeaderTextAfterRefresh.includes("Accept now"), false);
+  assert.equal(contractsHeaderTextAfterRefresh.includes("Nearest Aircraft"), true);
+  const contractsMapBounds = await page.locator(".contracts-map-panel .contracts-map").boundingBox();
+  assert.ok(contractsMapBounds);
+  assert.equal(Math.abs(contractsMapBounds.width - contractsMapBounds.height) <= 1, true);
+  await clickUi(page.locator("[data-select-offer-row]").first());
+  await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
+  assert.equal(await page.locator("[data-accept-selected-offer]").count(), 1);
+  await clickUi(page.locator("[data-accept-selected-offer]").first());
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
   assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").count(), 1);
   assert.equal((await page.locator(".contracts-next-step").textContent())?.includes("Accept and dispatch"), true);

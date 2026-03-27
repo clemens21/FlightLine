@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import { FlightLineBackend, } from "../index.js";
 import { AircraftReferenceRepository } from "../infrastructure/reference/aircraft-reference.js";
 import { AirportReferenceRepository } from "../infrastructure/reference/airport-reference.js";
-import { deleteSaveFile, listSaveIds as listSaveSlotIds, resolveRequestedSaveId } from "./save-slot-files.js";
+import { buildGeneratedSaveId, deleteSaveFile, listSaveIds as listSaveSlotIds, resolveRequestedSaveId } from "./save-slot-files.js";
 import { loadContractsViewPayload } from "./contracts-view.js";
 import { buildBootstrapPayload, buildTabPayload, normalizeTab as normalizeShellTab } from "./save-shell-fragments.js";
 import { loadClockPanelPayload, resolveCalendarAnchorUtc } from "./clock-calendar.js";
@@ -351,7 +351,7 @@ function resolveSelectedNamedPilotIdsFromForm(form) {
 }
 // Server-rendered page helpers still support the launcher and the non-hydrated shell paths.
 async function handleCreateSave(response, form) {
-    const saveId = resolveRequestedSaveId(form.get("saveName"), `save_${Date.now()}`);
+    const saveId = resolveRequestedSaveId(form.get("saveName"), buildGeneratedSaveId("save"));
     const worldSeed = `world_${randomUUID()}`;
     const result = await backend.dispatch({
         commandId: commandId("cmd_save"),

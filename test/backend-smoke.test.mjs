@@ -11,7 +11,7 @@ import { join, resolve } from "node:path";
 import { FlightLineBackend } from "../dist/index.js";
 import { resolveDispatchPilotAssignment } from "../dist/domain/dispatch/named-pilot-assignment.js";
 import { AirportReferenceRepository } from "../dist/infrastructure/reference/airport-reference.js";
-import { effectiveCargoCapacityLb, effectivePassengerCapacity } from "./helpers/flightline-testkit.mjs";
+import { effectiveCargoCapacityLb, effectivePassengerCapacity, uniqueSaveId } from "./helpers/flightline-testkit.mjs";
 
 function addHours(utcIsoString, hours) {
   return new Date(new Date(utcIsoString).getTime() + hours * 60 * 60 * 1000).toISOString();
@@ -145,7 +145,7 @@ const backend = await FlightLineBackend.create({
 });
 const airportReference = await AirportReferenceRepository.open(airportDatabasePath);
 
-const saveId = `test_${Date.now()}`;
+const saveId = uniqueSaveId("backend_smoke");
 const missingSaveId = `${saveId}_missing`;
 const startedAtUtc = new Date().toISOString();
 
@@ -1085,9 +1085,10 @@ try {
     backend.closeSaveSession(saveId),
     backend.closeSaveSession(`${saveId}_pilot_override`),
     backend.closeSaveSession(`${saveId}_discard`),
-    backend.close(),
     airportReference.close(),
   ]);
+  await backend.close();
+  await rm(saveDirectoryPath, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
 
 

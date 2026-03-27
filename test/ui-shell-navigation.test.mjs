@@ -309,7 +309,10 @@ try {
   const destinationDetail = await firstOfferRow.locator(".contract-route-detail").nth(1).textContent();
   const destinationCode = parseAirportCode(destinationDetail, "Destination");
 
-  await page.locator("input[name='searchText']").fill(destinationCode);
+  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='route']") instanceof HTMLElement
+    && !(document.querySelector("[data-contracts-board-popover='route']")).hidden);
+  await page.locator("[data-contracts-board-popover='route'] input[name='routeSearchText']").fill(destinationCode);
   await page.waitForFunction((code) => {
     const rows = [...document.querySelectorAll("[data-select-offer-row]")];
     return rows.length > 0 && rows.every((row) => row.textContent?.includes(code));
@@ -317,45 +320,30 @@ try {
   const searchedOfferCount = await page.locator("[data-select-offer-row]").count();
   assert.ok(searchedOfferCount <= initialOfferCount);
 
-  await page.locator("input[name='searchText']").fill("");
-  await page.waitForFunction(() => {
-    const rows = document.querySelectorAll("[data-select-offer-row]");
-    return rows.length > 0 && (document.querySelector("input[name='searchText']")?.value ?? "") === "";
-  });
+  await clickUi(page.locator("[data-contracts-board-popover='route'] [data-contracts-board-clear='route']").first());
+  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-select-offer-row]").length === expectedCount, initialOfferCount);
+  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
+  await page.waitForFunction(() => document.querySelector("button[aria-label='Route search']")?.getAttribute("aria-expanded") === "false");
 
-  const refreshedFirstRow = page.locator("[data-select-offer-row]").first();
-  const refreshedDestinationDetail = await refreshedFirstRow.locator(".contract-route-detail").nth(1).textContent();
-  const refreshedDestinationCode = parseAirportCode(refreshedDestinationDetail, "Destination");
-  await clickUi(page.locator("[data-use-selected-destination]"));
-  await page.waitForFunction((code) => (document.querySelector("input[name='originCode']")?.value ?? "") === code, refreshedDestinationCode);
-  await page.waitForFunction((code) => {
-    const rows = [...document.querySelectorAll("[data-select-offer-row]")];
-    return rows.length > 0 && rows.some((row) => row.textContent?.includes(code));
-  }, refreshedDestinationCode);
-
-  await page.locator("input[name='originCode']").fill("");
-  await page.waitForFunction(() => {
-    const rows = document.querySelectorAll("[data-select-offer-row]");
-    return rows.length > 0 && (document.querySelector("input[name='originCode']")?.value ?? "") === "";
-  });
-
-  const fitBadgeText = await page.locator("[data-select-offer-row] .badge").first().textContent();
-  const fitBucket = fitBadgeText?.trim().toLowerCase().replace(/\s+/g, "_") ?? "all";
-  assert.ok(["flyable_now", "flyable_with_reposition", "stretch_growth", "blocked_now"].includes(fitBucket), `Unexpected fit bucket ${fitBucket}.`);
-  await page.locator("select[name='fitBucket']").selectOption(fitBucket);
-  await page.waitForFunction((expectedFitBucket) => {
-    const rows = [...document.querySelectorAll("[data-select-offer-row]")];
-    return rows.length > 0 && rows.every((row) => {
-      const badgeText = row.querySelector(".badge")?.textContent?.trim().toLowerCase().replace(/\s+/g, "_");
-      return badgeText === expectedFitBucket;
+  const readyRows = page.locator("[data-select-offer-row]", { hasText: "No ready aircraft" });
+  const noReadyCount = await readyRows.count();
+  if (noReadyCount > 0) {
+    await clickUi(page.locator("button[aria-label='Nearest aircraft filter']").first().locator("svg"));
+    await page.waitForFunction(() => document.querySelector("[data-contracts-board-popover='aircraft']") instanceof HTMLElement
+      && !(document.querySelector("[data-contracts-board-popover='aircraft']")).hidden);
+    await clickUi(page.locator("[data-contracts-board-popover='aircraft'] input[name='noReadyAircraft']").first());
+    await page.waitForFunction(() => {
+      const rows = [...document.querySelectorAll("[data-select-offer-row]")];
+      return rows.length > 0 && rows.every((row) => (row.textContent ?? "").includes("No ready aircraft"));
     });
-  }, fitBucket);
-
-  await page.locator("select[name='fitBucket']").selectOption("all");
-  await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
+    await clickUi(page.locator("[data-contracts-board-popover='aircraft'] [data-contracts-board-clear='aircraft']").first());
+    await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-select-offer-row]").length === expectedCount, initialOfferCount);
+  }
 
   await page.waitForFunction(() => (document.querySelector("[data-shell-flash]")?.textContent ?? "").trim() === "");
-  await clickUi(page.locator("[data-accept-offer]").first());
+  await clickUi(page.locator("[data-select-offer-row]").first());
+  await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
+  await clickUi(page.locator("[data-accept-selected-offer]").first());
   await page.waitForFunction(() => document.body.innerText.includes("Send to route plan"));
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Use Accepted / Active"));
 

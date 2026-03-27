@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../dist/index.js";
+import { uniqueSaveId } from "./helpers/flightline-testkit.mjs";
 
 const startupStartingCashAmount = 3_500_000;
 
@@ -35,7 +36,7 @@ const backend = await FlightLineBackend.create({
   aircraftDatabasePath: resolve(process.cwd(), "data", "aircraft", "flightline-aircraft.sqlite"),
 });
 
-const saveId = `aircraft_market_${Date.now()}`;
+const saveId = uniqueSaveId("aircraft_market_lifecycle");
 const startedAtUtc = "2026-03-16T12:00:00.000Z";
 
 try {
@@ -174,5 +175,5 @@ try {
 }
 finally {
   await backend.close();
-  await rm(saveDirectoryPath, { recursive: true, force: true });
+  await rm(saveDirectoryPath, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }

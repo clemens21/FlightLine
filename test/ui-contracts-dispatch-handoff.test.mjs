@@ -115,7 +115,12 @@ try {
     await waitForShellTitle(page, displayName);
     await page.waitForFunction(() => document.querySelectorAll(".contracts-board-table tbody tr").length > 0);
 
-    await clickUi(page.locator(`[data-accept-offer='${eligibleOffer.contractOfferId}']`).first());
+    await clickUi(page.locator(`[data-select-offer-row='${eligibleOffer.contractOfferId}']`).first());
+    await page.waitForFunction((expectedOfferId) => {
+      const button = document.querySelector(`[data-accept-selected-offer="${expectedOfferId}"]`);
+      return button instanceof HTMLButtonElement && !button.disabled;
+    }, eligibleOffer.contractOfferId);
+    await clickUi(page.locator(`[data-accept-selected-offer='${eligibleOffer.contractOfferId}']`).first());
     await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
     assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").isEnabled(), true);
 

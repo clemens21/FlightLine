@@ -13,7 +13,7 @@ import { acceptRoutePlanOffers } from "../dist/ui/route-plan-accept.js";
 import { bindRoutePlanToAircraft } from "../dist/ui/route-plan-dispatch.js";
 import { addAcceptedContractToRoutePlan, addCandidateOfferToRoutePlan, loadRoutePlanState } from "../dist/ui/route-plan-state.js";
 import { AirportReferenceRepository } from "../dist/infrastructure/reference/airport-reference.js";
-import { effectiveCargoCapacityLb, effectivePassengerCapacity } from "./helpers/flightline-testkit.mjs";
+import { effectiveCargoCapacityLb, effectivePassengerCapacity, uniqueSaveId } from "./helpers/flightline-testkit.mjs";
 
 function addHours(utcIsoString, hours) {
   return new Date(new Date(utcIsoString).getTime() + hours * 60 * 60 * 1000).toISOString();
@@ -130,7 +130,7 @@ try {
   };
 
   {
-    const saveId = `planner_${Date.now()}`;
+    const saveId = uniqueSaveId("route_planner");
     const startedAtUtc = await setupSave(saveId);
 
     await backend.dispatch({
@@ -439,11 +439,9 @@ try {
     assert.equal(routePlan.items[0]?.plannerItemStatus, "candidate_stale");
   }
 } finally {
-  await Promise.allSettled([
-    backend.close(),
-    airportReference.close(),
-    rm(saveDirectoryPath, { recursive: true, force: true }),
-  ]);
+  await airportReference.close();
+  await backend.close();
+  await rm(saveDirectoryPath, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }
 
 

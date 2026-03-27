@@ -10,6 +10,7 @@ import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../dist/index.js";
 import { ensureActiveContractBoard } from "../dist/ui/contracts-board-lifecycle.js";
+import { uniqueSaveId } from "./helpers/flightline-testkit.mjs";
 
 function addHours(utcIsoString, hours) {
   return new Date(new Date(utcIsoString).getTime() + hours * 60 * 60 * 1000).toISOString();
@@ -22,7 +23,7 @@ const backend = await FlightLineBackend.create({
   aircraftDatabasePath: resolve(process.cwd(), "data", "aircraft", "flightline-aircraft.sqlite"),
 });
 
-const saveId = `contracts_${Date.now()}`;
+const saveId = uniqueSaveId("contracts_board_lifecycle");
 const startedAtUtc = new Date().toISOString();
 
 try {
@@ -119,8 +120,7 @@ try {
   assert.notEqual(refreshedBoard.contractBoard.offerWindowId, firstWindowId);
   assert.ok(refreshedBoard.contractBoard.offers.every((offer) => offer.offerStatus !== "expired"));
 } finally {
-  await Promise.allSettled([
-    backend.closeSaveSession(saveId),
-    backend.close(),
-  ]);
+  await backend.closeSaveSession(saveId);
+  await backend.close();
+  await rm(saveDirectoryPath, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 }

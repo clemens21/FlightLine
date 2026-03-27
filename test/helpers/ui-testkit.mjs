@@ -18,6 +18,11 @@ const saveDirectoryPath = resolve(workspaceRoot, "data", "saves");
 const airportDatabasePath = resolve(workspaceRoot, "data", "airports", "flightline-airports.sqlite");
 const aircraftDatabasePath = resolve(workspaceRoot, "data", "aircraft", "flightline-aircraft.sqlite");
 const uiServerWorkerUrl = new URL("./ui-server-worker.mjs", import.meta.url);
+const workspaceSaveDeleteOptions = {
+  force: true,
+  maxRetries: 20,
+  retryDelay: 100,
+};
 
 export async function createWorkspaceBackend() {
   return FlightLineBackend.create({
@@ -176,7 +181,7 @@ export async function removeWorkspaceSave(saveId) {
     `${basePath}-shm`,
   ];
   const results = await Promise.allSettled(
-    targets.map((targetPath) => rm(targetPath, { force: true })),
+    targets.map((targetPath) => rm(targetPath, workspaceSaveDeleteOptions)),
   );
   const failures = results.flatMap((result, index) => {
     if (result.status === "fulfilled") {
