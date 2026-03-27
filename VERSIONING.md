@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.9.2`
+- `0.9.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -42,6 +42,7 @@ The staff hire contract-sort, certification-filter, and column-width stability f
 The aircraft market column split and minimal header-control rework advances the release to `0.9.0`.
 The aircraft market header visual alignment follow-up advances the release to `0.9.1`.
 The aircraft market sorted-header state restoration advances the release to `0.9.2`.
+The aircraft market clipping and overlay-bounds fix advances the release to `0.9.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

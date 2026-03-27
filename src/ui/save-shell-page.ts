@@ -2611,8 +2611,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       overflow: hidden;
     }
     .aircraft-market-body {
-      display: flex;
-      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
+    }
+    .aircraft-market-body .aircraft-table-wrap {
+      height: 100%;
     }
     .aircraft-table-wrap {
       min-height: 0;
@@ -2977,12 +2983,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: color-mix(in srgb, var(--accent-soft) 42%, var(--panel-strong));
     }
     .aircraft-market-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
       display: grid;
       place-items: center;
       padding: 18px;
-      z-index: 4;
+      z-index: 12;
     }
     .aircraft-market-overlay[hidden] {
       display: none;
