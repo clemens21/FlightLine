@@ -15,6 +15,7 @@ import {
   allocatePort,
   createWorkspaceBackend,
   removeWorkspaceSave,
+  setContractsBoardBrowserTestMode,
   startUiServer,
 } from "./helpers/ui-testkit.mjs";
 import {
@@ -29,6 +30,7 @@ const displayName = `Contracts Dispatch Handoff ${saveId}`;
 
 let server = null;
 let browser = null;
+const restoreContractsBoardBrowserTestMode = setContractsBoardBrowserTestMode();
 
 try {
   const backend = await createWorkspaceBackend();
@@ -157,4 +159,5 @@ try {
     await server.stop();
   }
   await removeWorkspaceSave(saveId);
+  restoreContractsBoardBrowserTestMode();
 }

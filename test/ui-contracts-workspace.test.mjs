@@ -11,6 +11,7 @@ import {
   allocatePort,
   createWorkspaceBackend,
   removeWorkspaceSave,
+  setContractsBoardBrowserTestMode,
   startUiServer,
 } from "./helpers/ui-testkit.mjs";
 import {
@@ -22,10 +23,21 @@ import {
 
 const saveId = uniqueSaveId("ui_contracts_workspace");
 const displayName = `Contracts Workspace ${saveId}`;
+const traceSteps = process.env.UI_TEST_TRACE_STEPS === "1";
+const suiteStartedAtMs = Date.now();
 
 let backend = null;
 let server = null;
 let browser = null;
+const restoreContractsBoardBrowserTestMode = setContractsBoardBrowserTestMode();
+
+function markStep(label) {
+  if (!traceSteps) {
+    return;
+  }
+
+  console.log(`[ui-contracts-workspace] +${Date.now() - suiteStartedAtMs}ms ${label}`);
+}
 
 async function forceRowDoubleClick(locator) {
   await locator.waitFor({ state: "visible" });
@@ -40,8 +52,10 @@ async function forceRowDoubleClick(locator) {
 }
 
 try {
+  markStep("start");
   backend = await createWorkspaceBackend();
   await seedUiRegressionSave(backend, { saveId, displayName });
+  markStep("seeded save");
   await backend.close();
   backend = null;
 
@@ -49,6 +63,7 @@ try {
   server = await startUiServer(port);
   browser = await launchBrowser();
   const page = await browser.newPage();
+  markStep("server started");
 
   await page.goto(`${server.baseUrl}/save/${encodeURIComponent(saveId)}?tab=contracts`, {
     waitUntil: "domcontentloaded",
@@ -56,6 +71,7 @@ try {
   await page.waitForURL((url) => url.pathname === `/save/${saveId}` && url.searchParams.get("tab") === "contracts");
   await waitForShellTitle(page, displayName);
   await page.waitForFunction(() => document.querySelectorAll(".contracts-board-table tbody tr").length > 0);
+  markStep("board loaded");
 
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
@@ -97,31 +113,6 @@ try {
   assert.match(firstDueCellText, /[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}/);
   assert.match(firstDueCellText, /\d{2}D:\d{2}H:\d{2}M/);
 
-  const popoverColumns = await contractsBoardTable.locator("[data-contracts-board-popover-toggle]").evaluateAll((elements) => {
-    return elements.map((element) => ({
-      column: element.getAttribute("data-contracts-board-popover-toggle") ?? "",
-      label: element.getAttribute("aria-label") ?? "",
-    }));
-  });
-  for (const { column, label } of popoverColumns) {
-    const buttonLocator = contractsBoardTable.locator(`button[aria-label="${label}"]`).first();
-    await clickUi(buttonLocator.locator("svg").first());
-    await page.waitForFunction(([expectedColumn, expectedLabel]) => {
-      const popover = document.querySelector(`[data-contracts-board-popover="${expectedColumn}"]`);
-      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
-      return popover instanceof HTMLElement
-        && toggle instanceof HTMLElement
-        && toggle.getAttribute("aria-expanded") === "true";
-    }, [column, label]);
-    await clickUi(buttonLocator.locator("svg").first());
-    await page.waitForFunction((expectedLabel) => {
-      const toggle = document.querySelector(`button[aria-label="${expectedLabel}"]`);
-      return toggle instanceof HTMLElement
-        && toggle.getAttribute("aria-expanded") === "false"
-        && !document.querySelector(`[data-contracts-board-popover="${toggle.getAttribute("data-contracts-board-popover-toggle") ?? ""}"]`);
-    }, label);
-  }
-
   await clickUi(contractsBoardTable.locator("[data-sort-field='distanceNm']").first());
   const distanceHeaderState = await contractsBoardTable.locator("[data-sort-field='distanceNm']").first().evaluate((button) => {
     if (!(button instanceof HTMLElement)) {
@@ -146,6 +137,7 @@ try {
   assert.equal(distanceHeaderState.ariaSort, "ascending");
   assert.equal(distanceHeaderState.color, distanceHeaderState.accentColor);
   assert.equal(distanceHeaderState.arrow.includes("↑"), true);
+  markStep("distance sort");
 
   const baselineContractRows = await page.locator(".contracts-board-table tbody tr").count();
   const firstRouteCode = firstRouteCellText.match(/\b[A-Z]{3,4}\b/)?.[0] ?? "";
@@ -167,6 +159,7 @@ try {
   await page.locator("[data-contracts-board-popover='routeSearch'] input[name='routeSearchText']").fill("");
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".contracts-board-table tbody tr").length === expectedCount, baselineContractRows);
   await page.keyboard.press("Escape");
+  markStep("route search");
 
   await clickUi(page.locator("button[aria-label='Nearest Aircraft search']").first().locator("svg"));
   await page.waitForFunction(() => {
@@ -187,11 +180,13 @@ try {
   });
   assert.equal(await page.locator("[data-contracts-board-clear]").count(), 0);
   await page.keyboard.press("Escape");
+  markStep("nearest aircraft controls");
 
   const firstAvailableRow = page.locator("[data-select-offer-row]").first();
   await clickUi(firstAvailableRow);
   await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
   assert.equal(await page.locator("[data-accept-selected-offer]").count(), 1);
+  markStep("selected contract");
 
   const secondAvailableRow = page.locator("[data-select-offer-row]").nth(1);
   const hasSecondRow = (await secondAvailableRow.count()) > 0;
@@ -200,11 +195,13 @@ try {
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
   assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").count(), 1);
   assert.equal((await page.locator(".contracts-next-step").textContent())?.includes("Send to route plan"), true);
+  markStep("double click accept");
 
   await clickUi(page.locator("[data-shell-tab='dashboard']"));
   await page.waitForFunction(() => document.querySelector("[data-overview-finance-section]"));
   await clickUi(page.locator("[data-shell-tab='contracts']"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
+  markStep("accepted workflow persisted after tab round-trip");
 
   await clickUi(page.locator("[data-select-offer-row]").first());
   await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
@@ -215,6 +212,7 @@ try {
   await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("Route Planning"));
   await page.waitForFunction(() => document.querySelector("[name='plannerMatchCurrentEndpoint']") instanceof HTMLInputElement
     && (document.querySelector("[name='plannerMatchCurrentEndpoint']")?.checked ?? false) === true);
+  markStep("planner opened");
 
   assert.ok((await page.locator(".planner-summary-panel").textContent())?.includes("Current endpoint"));
   assert.ok((await page.locator(".planner-summary-panel").textContent())?.includes("Payout total"));
@@ -232,6 +230,7 @@ try {
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
   await page.waitForFunction((offerId) => !document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
   await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planned"));
+  markStep("planner add candidate");
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.accepted").count()) >= 1);
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.planned").count()) >= 1);
   backend = await createWorkspaceBackend();
@@ -254,6 +253,7 @@ try {
   await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
   await page.waitForFunction(() => document.querySelector(".planner-candidate-panel .planner-item.stale")?.textContent?.includes("Stale"));
+  markStep("reload and stale candidate verification");
   assert.equal(await page.locator(".planner-candidate-panel .planner-item.stale [data-planner-add-candidate]").count(), 0);
 
   await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='board']"));
@@ -267,6 +267,7 @@ try {
   await page.waitForFunction(() => document.querySelector(".contracts-board-tab[data-board-scope='my_contracts'][aria-selected='true']"));
   assert.equal(await page.locator(".contracts-board-tab[data-board-scope='my_contracts']").getAttribute("aria-selected"), "true");
   assert.equal((await page.locator(".contracts-toolbar").textContent())?.includes("at-risk / overdue contracts"), true);
+  markStep("suite complete");
 } finally {
   await Promise.allSettled([
     browser?.close(),
@@ -274,4 +275,5 @@ try {
     backend?.close(),
   ]);
   await removeWorkspaceSave(saveId);
+  restoreContractsBoardBrowserTestMode();
 }

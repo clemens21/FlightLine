@@ -10,8 +10,30 @@ import { chromium } from "playwright";
 export async function clickUi(locator) {
   await locator.waitFor({ state: "visible" });
 
+  const isSvgClickTarget = await locator.evaluate((element) => {
+    return element instanceof SVGElement;
+  }).catch(() => false);
+
+  if (isSvgClickTarget) {
+    await locator.evaluate((element) => {
+      const clickTarget = element.closest("button, [role='button'], label") ?? element;
+      clickTarget.scrollIntoView({ block: "center", inline: "center" });
+      if (clickTarget instanceof HTMLElement) {
+        clickTarget.click();
+        return;
+      }
+
+      clickTarget.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      }));
+    });
+    return;
+  }
+
   try {
-    await locator.click({ timeout: 10_000 });
+    await locator.click({ timeout: 2_000 });
     return;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -36,6 +58,13 @@ export async function clickUi(locator) {
 }
 
 export async function launchBrowser() {
+  const headful = /^(1|true|yes)$/i.test(process.env.PLAYWRIGHT_HEADFUL?.trim() ?? "");
+  const parsedSlowMo = Number.parseInt(process.env.PLAYWRIGHT_SLOW_MO ?? "", 10);
+  const slowMo = Number.isFinite(parsedSlowMo) && parsedSlowMo > 0 ? parsedSlowMo : undefined;
+  const launchOptions = {
+    headless: !headful,
+    slowMo,
+  };
   const cdpUrl = process.env.PLAYWRIGHT_CDP_URL?.trim();
   if (cdpUrl) {
     const browser = await chromium.connectOverCDP(cdpUrl);
@@ -76,7 +105,7 @@ export async function launchBrowser() {
   }
 
   try {
-    return await chromium.launch({ headless: true });
+    return await chromium.launch(launchOptions);
   } catch (error) {
     const executableCandidates = [
       "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
@@ -87,7 +116,7 @@ export async function launchBrowser() {
     for (const executablePath of executableCandidates) {
       try {
         await access(executablePath);
-        return await chromium.launch({ headless: true, executablePath });
+        return await chromium.launch({ ...launchOptions, executablePath });
       } catch {
         // Try the next installed browser candidate.
       }

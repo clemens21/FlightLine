@@ -49,6 +49,28 @@ interface RouteCandidate {
   relevanceScore: number;
 }
 
+function readContractBoardTargetScale(): number {
+  const rawValue = process.env.FLIGHTLINE_CONTRACT_BOARD_TARGET_SCALE?.trim();
+  if (!rawValue) {
+    return 1;
+  }
+
+  const parsed = Number.parseFloat(rawValue);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+
+  return Math.max(0.05, parsed);
+}
+
+function scaledTargetCount(targetCount: number, targetScale: number): number {
+  if (targetScale === 1) {
+    return targetCount;
+  }
+
+  return Math.max(1, Math.round(targetCount * targetScale));
+}
+
 const ARCHETYPE_PROFILES: ArchetypeProfile[] = [
   {
     archetype: "premium_passenger_charter",
@@ -728,6 +750,7 @@ export function generateContractBoard(
   candidateAirports: AirportRecord[],
   refreshReason: string,
 ): GeneratedContractBoard {
+  const targetScale = readContractBoardTargetScale();
   const uniqueFootprintOrigins = uniqueAirports(footprintOrigins);
   const uniqueCandidates = uniqueAirports([
     ...uniqueFootprintOrigins,
@@ -750,7 +773,10 @@ export function generateContractBoard(
   const routeUsage = new Map<string, number>();
   const originUsage = new Map<string, number>();
   const destinationUsage = new Map<string, number>();
-  const targetOfferCount = ARCHETYPE_PROFILES.reduce((sum, profile) => sum + profile.targetCount, 0);
+  const targetOfferCount = ARCHETYPE_PROFILES.reduce(
+    (sum, profile) => sum + scaledTargetCount(profile.targetCount, targetScale),
+    0,
+  );
   const originCap = Math.max(12, Math.ceil(targetOfferCount / Math.max(originPool.length, 1)) + 8);
   const destinationCap = 72;
 
@@ -793,7 +819,7 @@ export function generateContractBoard(
       destinationUsage.set(candidate.destination.airportKey, destinationCount + 1);
       addedForProfile += 1;
 
-      if (addedForProfile >= archetypeProfile.targetCount) {
+      if (addedForProfile >= scaledTargetCount(archetypeProfile.targetCount, targetScale)) {
         break;
       }
     }

@@ -13,7 +13,19 @@ export interface EnsuredContractBoardResult {
   refreshed: boolean;
 }
 
-const minimumContractBoardOfferCount = 400;
+function readMinimumContractBoardOfferCount(): number {
+  const rawValue = process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT?.trim();
+  if (!rawValue) {
+    return 400;
+  }
+
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed)) {
+    return 400;
+  }
+
+  return Math.max(24, parsed);
+}
 
 export async function ensureActiveContractBoard(
   backend: FlightLineBackend,
@@ -21,6 +33,7 @@ export async function ensureActiveContractBoard(
   refreshReason: "scheduled" | "manual" | "bootstrap" = "scheduled",
 ): Promise<EnsuredContractBoardResult> {
   const startedAtMs = Date.now();
+  const minimumContractBoardOfferCount = readMinimumContractBoardOfferCount();
   let [companyContext, contractBoard] = await Promise.all([
     backend.loadCompanyContext(saveId),
     backend.loadActiveContractBoard(saveId),

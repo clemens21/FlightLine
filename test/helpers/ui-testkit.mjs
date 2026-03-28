@@ -173,6 +173,30 @@ export async function startUiServer(port) {
   }
 }
 
+export function setContractsBoardBrowserTestMode({
+  targetScale = "0.15",
+  minimumOfferCount = "64",
+} = {}) {
+  const previousTargetScale = process.env.FLIGHTLINE_CONTRACT_BOARD_TARGET_SCALE;
+  const previousMinimumOfferCount = process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT;
+  process.env.FLIGHTLINE_CONTRACT_BOARD_TARGET_SCALE = targetScale;
+  process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT = minimumOfferCount;
+
+  return () => {
+    if (previousTargetScale === undefined) {
+      delete process.env.FLIGHTLINE_CONTRACT_BOARD_TARGET_SCALE;
+    } else {
+      process.env.FLIGHTLINE_CONTRACT_BOARD_TARGET_SCALE = previousTargetScale;
+    }
+
+    if (previousMinimumOfferCount === undefined) {
+      delete process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT;
+    } else {
+      process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT = previousMinimumOfferCount;
+    }
+  };
+}
+
 export async function removeWorkspaceSave(saveId) {
   const basePath = join(saveDirectoryPath, `${saveId}.sqlite`);
   const targets = [
