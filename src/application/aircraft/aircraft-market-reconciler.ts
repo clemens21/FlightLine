@@ -50,6 +50,7 @@ export interface ReconcileAircraftMarketResult {
 
 const perpetualWindowDays = 3650;
 const millisecondsPerDay = 24 * 60 * 60 * 1000;
+const AIRCRAFT_MARKET_SIZE_MULTIPLIER = 3;
 
 // Reuses the current active window when possible and self-heals duplicate active windows if earlier runs left stale state behind.
 function loadOrCreateActiveWindow(
@@ -206,7 +207,7 @@ function estimateInitialListingCount(params: {
     * progressionFactor
     * footprintFactor;
 
-  return Math.max(params.aircraftModelCount, Math.round(weightedCount));
+  return Math.max(params.aircraftModelCount, Math.round(weightedCount)) * AIRCRAFT_MARKET_SIZE_MULTIPLIER;
 }
 
 function determineArrivalCount(params: {

@@ -90,7 +90,7 @@ export interface StaffingMarketReconcileResult {
 
 const CONTRACT_DURATION_DAYS = [90, 120, 180] as const;
 const STAFFING_MARKET_REFRESH_HOURS = 24;
-const STAFFING_MARKET_VISIBLE_CANDIDATE_GROUP_LIMIT = 64;
+const STAFFING_MARKET_VISIBLE_CANDIDATE_GROUP_LIMIT = 128;
 const QUALIFICATION_LANE_ORDER = [
   "single_turboprop_utility",
   "single_turboprop_premium",
@@ -751,8 +751,8 @@ function desiredCandidateCountForLane(lane: GeneratedMarketLane, windowSeed: str
     ? Math.min(3, pressureGap)
     : Math.min(2, pressureGap);
   const varietyBias = hashString(`${windowSeed}:${lane.qualificationGroup}:count`) % 3;
-  const tierBase = lane.marketFitTier === "core" ? 10 : lane.marketFitTier === "adjacent" ? 7 : 4;
-  const tierMax = lane.marketFitTier === "core" ? 14 : lane.marketFitTier === "adjacent" ? 10 : 6;
+  const tierBase = lane.marketFitTier === "core" ? 20 : lane.marketFitTier === "adjacent" ? 14 : 8;
+  const tierMax = lane.marketFitTier === "core" ? 28 : lane.marketFitTier === "adjacent" ? 20 : 12;
   return Math.max(tierBase, Math.min(tierMax, tierBase + pressureBias + varietyBias));
 }
 

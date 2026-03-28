@@ -76,9 +76,9 @@ try {
 
   const directMarket = await backend.loadActiveStaffingMarket(directSaveId);
   assert.ok(directMarket);
-  assert.ok(directMarket.offers.length >= 24);
-  assert.ok(countCandidateGroups(directMarket) >= 24);
-  assert.ok(countCandidateGroups(directMarket) <= 64);
+  assert.ok(directMarket.offers.length >= 60);
+  assert.ok(countCandidateGroups(directMarket) >= 45);
+  assert.ok(countCandidateGroups(directMarket) <= 128);
   assert.equal(directMarket.offers.every((offer) => offer.laborCategory === "pilot"), true);
   assert.equal(directMarket.offers.every((offer) => typeof offer.displayName === "string" && offer.displayName.length > 0), true);
   assert.equal(directMarket.offers.every((offer) => typeof offer.firstName === "string" && offer.firstName.length > 0), true);
@@ -154,7 +154,7 @@ try {
     "Expected contract-hire offers to show broader hourly-rate variety.",
   );
   const directCandidatePairs = findCandidatePairs(directMarket);
-  assert.ok(directCandidatePairs.length >= 8);
+  assert.ok(directCandidatePairs.length >= 16);
   assert.equal(directCandidatePairs.every((pair) => pair.directOffer || pair.contractOffer), true);
   assert.equal(directCandidatePairs.some((pair) => pair.directOffer && pair.contractOffer), true);
   assert.equal(directCandidatePairs.some((pair) => pair.directOffer && !pair.contractOffer), true);
@@ -198,8 +198,8 @@ try {
   const cadenceMarketBeforeAdvance = await backend.loadActiveStaffingMarket(cadenceSaveId);
   assert.ok(cadenceMarketBeforeAdvance);
   const cadenceGroupsBefore = countCandidateGroups(cadenceMarketBeforeAdvance);
-  assert.ok(cadenceGroupsBefore >= 24);
-  assert.ok(cadenceGroupsBefore <= 64);
+  assert.ok(cadenceGroupsBefore >= 45);
+  assert.ok(cadenceGroupsBefore <= 128);
 
   const cadenceShortAdvanceTargetUtc = addMinutes(cadenceStartedAtUtc, 6 * 60);
   const cadenceShortAdvanceResult = await backend.dispatch({
@@ -242,8 +242,8 @@ try {
   assert.notEqual(cadenceMarketAfterRefresh.offerWindowId, cadenceMarketBeforeAdvance.offerWindowId);
   assert.equal(cadenceMarketAfterRefresh.generatedAtUtc, cadenceRefreshTargetUtc);
   assert.equal(cadenceMarketAfterRefresh.expiresAtUtc, addMinutes(cadenceRefreshTargetUtc, 24 * 60));
-  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) >= 24);
-  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) <= 64);
+  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) >= 45);
+  assert.ok(countCandidateGroups(cadenceMarketAfterRefresh) <= 128);
 
   const selectedDirectPair = directCandidatePairs.find((pair) => pair.directOffer && pair.contractOffer);
   assert.ok(selectedDirectPair?.directOffer);

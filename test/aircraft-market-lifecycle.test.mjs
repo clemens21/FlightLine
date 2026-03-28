@@ -108,6 +108,7 @@ try {
   const initialMarket = await backend.loadActiveAircraftMarket(saveId);
   assert.ok(initialMarket);
   assert.ok(initialMarket.offers.length > 0);
+  assert.ok(initialMarket.offers.length >= 150);
 
   const purchasedOffer = initialMarket.offers[0];
   assert.ok(purchasedOffer);

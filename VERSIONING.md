@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.12.7`
+- `0.12.8`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -65,6 +65,8 @@ The aircraft/contracts sticky-header and contracts-board scroll-region follow-up
 The external-browser Playwright fallback and in-process UI runner follow-up advance the release to `0.12.6`.
 
 The headed UI watch scripts and fast contracts-browser suite follow-up advance the release to `0.12.7`.
+
+The aircraft-market and staffing-market size expansion follow-up advances the release to `0.12.8`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
