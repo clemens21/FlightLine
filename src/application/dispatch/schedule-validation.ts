@@ -7,6 +7,7 @@
 
 import type { AirportId, CompanyContractId, JsonObject } from "../../domain/common/primitives.js";
 import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
+import { aggregateContractPayload, defaultPassengerWeightLb } from "../../domain/contracts/payload.js";
 import type { FlightLegType, ValidationMessage } from "../../domain/dispatch/types.js";
 import type { LaborCategory } from "../../domain/staffing/types.js";
 import { requiredCertificationForQualificationGroup } from "../../domain/staffing/pilot-certifications.js";
@@ -21,6 +22,7 @@ import {
 export interface ProposedScheduleLegInput {
   legType: FlightLegType;
   linkedCompanyContractId?: CompanyContractId;
+  linkedCompanyContractIds?: CompanyContractId[];
   originAirportId: AirportId;
   destinationAirportId: AirportId;
   plannedDepartureUtc: string;
@@ -99,6 +101,7 @@ export interface ResolvedScheduleLeg {
   sequenceNumber: number;
   legType: FlightLegType;
   linkedCompanyContractId?: CompanyContractId;
+  linkedCompanyContractIds?: CompanyContractId[];
   originAirportId: AirportId;
   destinationAirportId: AirportId;
   plannedDepartureUtc: string;
@@ -227,17 +230,44 @@ function resolveFlightAttendantQualificationGroup(_aircraftModel: AircraftModelR
   return "cabin_general";
 }
 
-function buildPayloadSnapshot(contract: CompanyContractRow | null, inputPayloadSnapshot: JsonObject | undefined): JsonObject | undefined {
-  if (!contract) {
+function resolveLinkedCompanyContractIds(
+  leg: Pick<ProposedScheduleLegInput, "linkedCompanyContractId" | "linkedCompanyContractIds">,
+): CompanyContractId[] {
+  if (Array.isArray(leg.linkedCompanyContractIds) && leg.linkedCompanyContractIds.length > 0) {
+    return [...new Set(
+      leg.linkedCompanyContractIds.filter(
+        (contractId): contractId is CompanyContractId => typeof contractId === "string" && contractId.length > 0,
+      ),
+    )];
+  }
+
+  if (typeof leg.linkedCompanyContractId === "string" && leg.linkedCompanyContractId.length > 0) {
+    return [leg.linkedCompanyContractId];
+  }
+
+  return [];
+}
+
+function buildPayloadSnapshot(
+  contracts: readonly CompanyContractRow[],
+  inputPayloadSnapshot: JsonObject | undefined,
+): JsonObject | undefined {
+  if (contracts.length === 0) {
     return inputPayloadSnapshot;
   }
 
+  const payloadTotals = aggregateContractPayload(contracts, defaultPassengerWeightLb);
   return {
-    volumeType: contract.volumeType,
-    passengerCount: contract.passengerCount ?? undefined,
-    cargoWeightLb: contract.cargoWeightLb ?? undefined,
-    acceptedPayoutAmount: contract.acceptedPayoutAmount,
     ...(inputPayloadSnapshot ?? {}),
+    ...(payloadTotals.volumeType !== "none" ? { volumeType: payloadTotals.volumeType } : {}),
+    ...(payloadTotals.passengerCount > 0 ? { passengerCount: payloadTotals.passengerCount } : {}),
+    ...(payloadTotals.cargoWeightLb > 0 ? { cargoWeightLb: payloadTotals.cargoWeightLb } : {}),
+    ...(payloadTotals.passengerPayloadWeightLb > 0 ? { passengerPayloadWeightLb: payloadTotals.passengerPayloadWeightLb } : {}),
+    ...(payloadTotals.totalPayloadWeightLb > 0 ? { totalPayloadWeightLb: payloadTotals.totalPayloadWeightLb } : {}),
+    passengerWeightPerPersonLb: defaultPassengerWeightLb,
+    contractCount: contracts.length,
+    linkedCompanyContractIds: contracts.map((contract) => contract.companyContractId),
+    acceptedPayoutAmount: contracts.reduce((sum, contract) => sum + contract.acceptedPayoutAmount, 0),
   };
 }
 
@@ -483,9 +513,7 @@ export function validateProposedSchedule(
     );
   }
 
-  const contractIds = validProposedLegs
-    .map((leg) => leg.linkedCompanyContractId)
-    .filter((contractId): contractId is string => typeof contractId === "string");
+  const contractIds = validProposedLegs.flatMap((leg) => resolveLinkedCompanyContractIds(leg));
   const uniqueContractIds = [...new Set(contractIds)];
 
   if (uniqueContractIds.length !== contractIds.length) {
@@ -529,7 +557,10 @@ export function validateProposedSchedule(
     const legKey = `leg_${sequenceNumber}`;
     const originAirport = dependencies.airportReference.findAirport(leg.originAirportId);
     const destinationAirport = dependencies.airportReference.findAirport(leg.destinationAirportId);
-    const contract = leg.linkedCompanyContractId ? contractById.get(leg.linkedCompanyContractId) ?? null : null;
+    const linkedCompanyContractIds = resolveLinkedCompanyContractIds(leg);
+    const contractsForLeg = linkedCompanyContractIds
+      .map((contractId) => contractById.get(contractId) ?? null)
+      .filter((contract): contract is CompanyContractRow => Boolean(contract));
     const plannedDurationMinutes = minutesBetween(leg.plannedDepartureUtc, leg.plannedArrivalUtc);
 
     if (!["reposition", "contract_flight"].includes(leg.legType)) {
@@ -614,15 +645,17 @@ export function validateProposedSchedule(
     totalBlockHours += Math.max(plannedDurationMinutes, 0) / 60;
 
     if (leg.legType === "contract_flight") {
-      if (!leg.linkedCompanyContractId) {
+      if (linkedCompanyContractIds.length === 0) {
         pushMessage(messages, "blocker", "contract.missing_link", "Contract-flight legs must reference an accepted company contract.", legKey);
       }
 
-      if (leg.linkedCompanyContractId && !contract) {
-        pushMessage(messages, "blocker", "contract.missing", `Contract ${leg.linkedCompanyContractId} was not found.`, legKey);
+      for (const contractId of linkedCompanyContractIds) {
+        if (!contractById.has(contractId)) {
+          pushMessage(messages, "blocker", "contract.missing", `Contract ${contractId} was not found.`, legKey);
+        }
       }
 
-      if (contract) {
+      for (const contract of contractsForLeg) {
         attachedContractIds.push(contract.companyContractId);
 
         if (!["accepted", "assigned"].includes(contract.contractState)) {
@@ -637,9 +670,10 @@ export function validateProposedSchedule(
           `SELECT
             s.schedule_id AS scheduleId,
             s.aircraft_id AS aircraftId
-          FROM flight_leg AS fl
+          FROM flight_leg_contract AS flc
+          JOIN flight_leg AS fl ON fl.flight_leg_id = flc.flight_leg_id
           JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
-          WHERE fl.linked_company_contract_id = $company_contract_id
+          WHERE flc.company_contract_id = $company_contract_id
             AND s.is_draft = 1
             AND s.schedule_state = 'draft'
             AND s.schedule_id <> $schedule_id
@@ -675,35 +709,41 @@ export function validateProposedSchedule(
         } else if (hoursBetween(leg.plannedArrivalUtc, contract.deadlineUtc) < 2) {
           pushMessage(messages, "warning", "contract.tight_deadline", `Leg leaves little margin before contract ${contract.companyContractId} deadline.`, legKey);
         }
+      }
 
-        if (aircraftModel) {
-          if (contract.volumeType === "passenger") {
-            const seatCapacity = activeCabinLayout?.totalSeats ?? aircraftModel.maxPassengers;
+      if (aircraftModel && contractsForLeg.length > 0) {
+        const payloadTotals = aggregateContractPayload(contractsForLeg, defaultPassengerWeightLb);
+        const seatCapacity = activeCabinLayout?.totalSeats ?? aircraftModel.maxPassengers;
+        const layoutCargoCapacity = activeCabinLayout?.cargoCapacityLb ?? aircraftModel.maxCargoLb;
+        const cargoCapacity = Math.min(layoutCargoCapacity, aircraftModel.maxCargoLb);
 
-            if ((contract.passengerCount ?? 0) > seatCapacity || (contract.passengerCount ?? 0) > aircraftModel.maxPassengers) {
-              pushMessage(messages, "blocker", "payload.passenger_capacity", "Passenger count exceeds the aircraft cabin capacity.", legKey);
-            }
+        if (payloadTotals.passengerCount > seatCapacity || payloadTotals.passengerCount > aircraftModel.maxPassengers) {
+          pushMessage(messages, "blocker", "payload.passenger_capacity", "Passenger count exceeds the aircraft cabin capacity.", legKey);
+        }
 
-            if (aircraftModel.flightAttendantsRequired > 0 && (contract.passengerCount ?? 0) > 0) {
-              staffingRequirements.push({
-                sequenceNumber,
-                laborCategory: "flight_attendant",
-                qualificationGroup: resolveFlightAttendantQualificationGroup(aircraftModel),
-                unitsRequired: aircraftModel.flightAttendantsRequired,
-                reservedFromUtc: leg.plannedDepartureUtc,
-                reservedToUtc: leg.plannedArrivalUtc,
-              });
-            }
-          }
+        if (payloadTotals.cargoWeightLb > cargoCapacity) {
+          pushMessage(messages, "blocker", "payload.cargo_capacity", "Cargo weight exceeds the modeled cargo-hold capability.", legKey);
+        }
 
-          if (contract.volumeType === "cargo") {
-            const layoutCargoCapacity = activeCabinLayout?.cargoCapacityLb ?? aircraftModel.maxCargoLb;
-            const cargoCapacity = Math.min(layoutCargoCapacity, aircraftModel.maxCargoLb);
+        if (payloadTotals.totalPayloadWeightLb > aircraftModel.maxPayloadLb) {
+          pushMessage(
+            messages,
+            "blocker",
+            "payload.total_capacity",
+            `Combined contract load exceeds ${aircraftModel.displayName} payload capacity using ${defaultPassengerWeightLb} lb per passenger.`,
+            legKey,
+          );
+        }
 
-            if ((contract.cargoWeightLb ?? 0) > cargoCapacity || (contract.cargoWeightLb ?? 0) > aircraftModel.maxPayloadLb) {
-              pushMessage(messages, "blocker", "payload.cargo_capacity", "Cargo weight exceeds the modeled payload capability.", legKey);
-            }
-          }
+        if (aircraftModel.flightAttendantsRequired > 0 && payloadTotals.passengerCount > 0) {
+          staffingRequirements.push({
+            sequenceNumber,
+            laborCategory: "flight_attendant",
+            qualificationGroup: resolveFlightAttendantQualificationGroup(aircraftModel),
+            unitsRequired: aircraftModel.flightAttendantsRequired,
+            reservedFromUtc: leg.plannedDepartureUtc,
+            reservedToUtc: leg.plannedArrivalUtc,
+          });
         }
       }
     }
@@ -722,7 +762,7 @@ export function validateProposedSchedule(
     const resolvedAssignedQualificationGroup = aircraftModel
       ? leg.assignedQualificationGroup ?? aircraftModel.pilotQualificationGroup
       : leg.assignedQualificationGroup;
-    const resolvedPayloadSnapshot = buildPayloadSnapshot(contract, leg.payloadSnapshot);
+    const resolvedPayloadSnapshot = buildPayloadSnapshot(contractsForLeg, leg.payloadSnapshot);
     const resolvedLeg: ResolvedScheduleLeg = {
       sequenceNumber,
       legType: leg.legType,
@@ -732,7 +772,8 @@ export function validateProposedSchedule(
       plannedArrivalUtc: leg.plannedArrivalUtc,
       distanceNm,
       plannedDurationMinutes,
-      ...(leg.linkedCompanyContractId ? { linkedCompanyContractId: leg.linkedCompanyContractId } : {}),
+      ...(linkedCompanyContractIds[0] ? { linkedCompanyContractId: linkedCompanyContractIds[0] } : {}),
+      ...(linkedCompanyContractIds.length > 0 ? { linkedCompanyContractIds } : {}),
       ...(resolvedAssignedQualificationGroup ? { assignedQualificationGroup: resolvedAssignedQualificationGroup } : {}),
       ...(resolvedPayloadSnapshot ? { payloadSnapshot: resolvedPayloadSnapshot } : {}),
     };

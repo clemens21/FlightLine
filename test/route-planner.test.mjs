@@ -326,6 +326,189 @@ try {
   }
 
   {
+    const saveId = uniqueSaveId("planner_grouped_same_leg");
+    const startedAtUtc = await setupSave(saveId);
+
+    await backend.dispatch({
+      commandId: `cmd_${saveId}_aircraft`,
+      saveId,
+      commandName: "AcquireAircraft",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+        deliveryAirportId: "KDEN",
+        ownershipType: "owned",
+        registration: "N208GL",
+      },
+    });
+    await backend.dispatch({
+      commandId: `cmd_${saveId}_pilot`,
+      saveId,
+      commandName: "ActivateStaffingPackage",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        laborCategory: "pilot",
+        employmentModel: "direct_hire",
+        qualificationGroup: "single_turboprop_utility",
+        coverageUnits: 2,
+        fixedCostAmount: 12_000,
+      },
+    });
+    await backend.dispatch({
+      commandId: `cmd_${saveId}_cabin`,
+      saveId,
+      commandName: "ActivateStaffingPackage",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        laborCategory: "flight_attendant",
+        employmentModel: "direct_hire",
+        qualificationGroup: "cabin_general",
+        coverageUnits: 1,
+        fixedCostAmount: 6_000,
+      },
+    });
+    await backend.dispatch({
+      commandId: `cmd_${saveId}_refresh`,
+      saveId,
+      commandName: "RefreshContractBoard",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        refreshReason: "bootstrap",
+      },
+    });
+
+    const board = await backend.loadActiveContractBoard(saveId);
+    assert.ok(board);
+    const groupedOffers = board.offers.filter((offer) => offer.offerStatus === "available").slice(0, 2);
+    assert.equal(groupedOffers.length, 2);
+
+    await backend.withExistingSaveDatabase(saveId, async (context) => {
+      for (const [index, offer] of groupedOffers.entries()) {
+        context.saveDatabase.run(
+          `UPDATE contract_offer
+           SET origin_airport_id = $origin_airport_id,
+               destination_airport_id = $destination_airport_id,
+               volume_type = 'passenger',
+               passenger_count = $passenger_count,
+               cargo_weight_lb = NULL,
+               earliest_start_utc = $earliest_start_utc,
+               latest_completion_utc = $latest_completion_utc,
+               payout_amount = $payout_amount
+           WHERE contract_offer_id = $contract_offer_id`,
+          {
+            $contract_offer_id: offer.contractOfferId,
+            $origin_airport_id: "KDEN",
+            $destination_airport_id: "KCOS",
+            $passenger_count: 4 + index,
+            $earliest_start_utc: startedAtUtc,
+            $latest_completion_utc: addHours(startedAtUtc, 12),
+            $payout_amount: 25_000 + index * 5_000,
+          },
+        );
+      }
+      await context.saveDatabase.persist();
+    });
+
+    for (const offer of groupedOffers) {
+      const acceptResult = await backend.dispatch({
+        commandId: `cmd_${saveId}_accept_${offer.contractOfferId}`,
+        saveId,
+        commandName: "AcceptContractOffer",
+        issuedAtUtc: startedAtUtc,
+        actorType: "player",
+        payload: {
+          contractOfferId: offer.contractOfferId,
+        },
+      });
+      assert.equal(acceptResult.success, true);
+    }
+
+    const companyContracts = await backend.loadCompanyContracts(saveId);
+    assert.ok(companyContracts);
+    const groupedCompanyContracts = groupedOffers.map((offer) =>
+      companyContracts.contracts.find((contract) => contract.originContractOfferId === offer.contractOfferId),
+    );
+    assert.equal(groupedCompanyContracts.every(Boolean), true);
+
+    await backend.withExistingSaveDatabase(saveId, async (context) => {
+      for (const contract of groupedCompanyContracts) {
+        const mutation = addAcceptedContractToRoutePlan(context.saveDatabase, saveId, contract.companyContractId);
+        assert.equal(mutation.success, true);
+      }
+      await context.saveDatabase.persist();
+    });
+
+    let routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items.length, 2);
+    assert.equal(routePlan.items.every((item) => item.plannerItemStatus === "accepted_ready"), true);
+
+    const fleetState = await backend.loadFleetState(saveId);
+    assert.ok(fleetState?.aircraft[0]);
+
+    const bindResult = await bindRoutePlanToAircraft(
+      backend,
+      saveId,
+      fleetState.aircraft[0].aircraftId,
+      `cmd_${saveId}_bind_grouped`,
+    );
+    assert.equal(bindResult.success, true);
+    assert.ok(bindResult.scheduleId);
+    assert.equal(bindResult.boundContractIds?.length, 2);
+
+    const groupedLegSnapshot = await backend.withExistingSaveDatabase(saveId, async (context) => ({
+      contractFlightLegs: context.saveDatabase.all(
+        `SELECT
+           flight_leg_id AS flightLegId,
+           payload_snapshot_json AS payloadSnapshotJson
+         FROM flight_leg
+         WHERE schedule_id = $schedule_id
+           AND leg_type = 'contract_flight'
+         ORDER BY sequence_number ASC`,
+        { $schedule_id: bindResult.scheduleId },
+      ),
+      contractLinks: context.saveDatabase.all(
+        `SELECT
+           flc.company_contract_id AS companyContractId
+         FROM flight_leg_contract AS flc
+         JOIN flight_leg AS fl ON fl.flight_leg_id = flc.flight_leg_id
+         WHERE fl.schedule_id = $schedule_id
+         ORDER BY fl.sequence_number ASC, flc.attachment_order ASC`,
+        { $schedule_id: bindResult.scheduleId },
+      ),
+    }));
+    assert.equal(groupedLegSnapshot.contractFlightLegs.length, 1);
+    assert.equal(groupedLegSnapshot.contractLinks.length, 2);
+
+    const payloadSnapshot = JSON.parse(groupedLegSnapshot.contractFlightLegs[0].payloadSnapshotJson);
+    assert.equal(payloadSnapshot.contractCount, 2);
+    assert.equal(payloadSnapshot.passengerCount, 9);
+    assert.equal(payloadSnapshot.passengerWeightPerPersonLb, 195);
+    assert.equal(payloadSnapshot.totalPayloadWeightLb, 9 * 195);
+
+    const commitResult = await backend.dispatch({
+      commandId: `cmd_${saveId}_commit_grouped`,
+      saveId,
+      commandName: "CommitAircraftSchedule",
+      issuedAtUtc: startedAtUtc,
+      actorType: "player",
+      payload: {
+        scheduleId: bindResult.scheduleId,
+      },
+    });
+    assert.equal(commitResult.success, true);
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items.every((item) => item.linkedScheduleId === bindResult.scheduleId), true);
+    assert.equal(routePlan.items.every((item) => item.linkedAircraftId === fleetState.aircraft[0].aircraftId), true);
+  }
+
+  {
     const saveId = `planner_cancel_${Date.now()}`;
     const startedAtUtc = await setupSave(saveId);
 

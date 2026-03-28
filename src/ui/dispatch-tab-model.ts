@@ -58,6 +58,7 @@ export interface DispatchLegView {
   plannedDepartureUtc: string;
   plannedArrivalUtc: string;
   linkedCompanyContractId?: string;
+  linkedCompanyContractIds?: string[];
   assignedQualificationGroup?: string;
   requiredPilotCertificationCode?: string;
   payloadLabel: string;
@@ -571,6 +572,7 @@ function buildDispatchLegView(
     plannedDepartureUtc: leg.plannedDepartureUtc,
     plannedArrivalUtc: leg.plannedArrivalUtc,
     ...(leg.linkedCompanyContractId ? { linkedCompanyContractId: leg.linkedCompanyContractId } : {}),
+    ...(leg.linkedCompanyContractIds.length > 0 ? { linkedCompanyContractIds: leg.linkedCompanyContractIds } : {}),
     ...(leg.assignedQualificationGroup ? { assignedQualificationGroup: leg.assignedQualificationGroup } : {}),
     ...(() => {
       const requiredPilotCertificationCode = leg.assignedQualificationGroup
@@ -726,6 +728,7 @@ function readPayloadSnapshot(raw: JsonObject | undefined): {
   volumeType?: string;
   passengerCount?: number;
   cargoWeightLb?: number;
+  totalPayloadWeightLb?: number;
 } | undefined {
   if (!raw || Array.isArray(raw)) {
     return undefined;
@@ -736,6 +739,7 @@ function readPayloadSnapshot(raw: JsonObject | undefined): {
     ...(typeof snapshot.volumeType === "string" ? { volumeType: snapshot.volumeType } : {}),
     ...(typeof snapshot.passengerCount === "number" ? { passengerCount: snapshot.passengerCount } : {}),
     ...(typeof snapshot.cargoWeightLb === "number" ? { cargoWeightLb: snapshot.cargoWeightLb } : {}),
+    ...(typeof snapshot.totalPayloadWeightLb === "number" ? { totalPayloadWeightLb: snapshot.totalPayloadWeightLb } : {}),
   };
 }
 
@@ -790,6 +794,10 @@ function formatPayloadLabel(
 
   if (volumeType === "passenger") {
     return `${formatNumber(passengerCount ?? 0)} pax`;
+  }
+
+  if (volumeType === "mixed") {
+    return `${formatNumber(passengerCount ?? 0)} pax + ${formatNumber(cargoWeightLb ?? 0)} lb cargo`;
   }
 
   return legType === "reposition" ? "Reposition ferry" : humanize(legType);

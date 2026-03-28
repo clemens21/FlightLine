@@ -38,6 +38,11 @@ interface FlightLegRow extends Record<string, unknown> {
   payloadSnapshotJson: string | null;
 }
 
+interface FlightLegContractLinkRow extends Record<string, unknown> {
+  flightLegId: string;
+  companyContractId: string;
+}
+
 interface LaborAllocationRow extends Record<string, unknown> {
   laborAllocationId: string;
   scheduleId: string;
@@ -62,6 +67,7 @@ export interface ScheduleLegView {
   sequenceNumber: number;
   legType: FlightLegType;
   linkedCompanyContractId: string | undefined;
+  linkedCompanyContractIds: string[];
   originAirportId: string;
   destinationAirportId: string;
   plannedDepartureUtc: string;
@@ -165,6 +171,17 @@ export function loadAircraftSchedules(
     params,
   );
 
+  const flightLegContractLinkRows = saveDatabase.all<FlightLegContractLinkRow>(
+    `SELECT
+      flc.flight_leg_id AS flightLegId,
+      flc.company_contract_id AS companyContractId
+    FROM flight_leg_contract AS flc
+    JOIN flight_leg AS fl ON fl.flight_leg_id = flc.flight_leg_id
+    WHERE fl.schedule_id IN (${placeholders})
+    ORDER BY fl.schedule_id ASC, fl.sequence_number ASC, flc.attachment_order ASC, flc.company_contract_id ASC`,
+    params,
+  );
+
   const laborAllocationRows = saveDatabase.all<LaborAllocationRow>(
     `SELECT
       labor_allocation_id AS laborAllocationId,
@@ -182,13 +199,23 @@ export function loadAircraftSchedules(
   );
 
   const legsByScheduleId = new Map<string, ScheduleLegView[]>();
+  const linkedCompanyContractIdsByLegId = new Map<string, string[]>();
+  for (const row of flightLegContractLinkRows) {
+    const linkedCompanyContractIds = linkedCompanyContractIdsByLegId.get(row.flightLegId) ?? [];
+    linkedCompanyContractIds.push(row.companyContractId);
+    linkedCompanyContractIdsByLegId.set(row.flightLegId, linkedCompanyContractIds);
+  }
+
   for (const row of flightLegRows) {
     const scheduleLegs = legsByScheduleId.get(row.scheduleId) ?? [];
+    const linkedCompanyContractIds = linkedCompanyContractIdsByLegId.get(row.flightLegId)
+      ?? (row.linkedCompanyContractId ? [row.linkedCompanyContractId] : []);
     scheduleLegs.push({
       flightLegId: row.flightLegId,
       sequenceNumber: row.sequenceNumber,
       legType: row.legType,
-      linkedCompanyContractId: row.linkedCompanyContractId ?? undefined,
+      linkedCompanyContractId: linkedCompanyContractIds[0] ?? undefined,
+      linkedCompanyContractIds,
       originAirportId: row.originAirportId,
       destinationAirportId: row.destinationAirportId,
       plannedDepartureUtc: row.plannedDepartureUtc,

@@ -51,6 +51,35 @@ async function forceRowDoubleClick(locator) {
   });
 }
 
+async function assertContractsHeaderSort(page, field) {
+  const button = page.locator(`.contracts-board-table [data-sort-field='${field}']`).first();
+  await clickUi(button);
+  const headerState = await button.evaluate((element) => {
+    if (!(element instanceof HTMLElement)) {
+      return null;
+    }
+
+    const column = element.closest("th");
+    const probe = document.createElement("span");
+    probe.style.color = "var(--accent)";
+    document.body.appendChild(probe);
+    const accentColor = window.getComputedStyle(probe).color;
+    probe.remove();
+
+    return {
+      ariaSort: column?.getAttribute("aria-sort") ?? "",
+      color: window.getComputedStyle(element).color,
+      arrow: window.getComputedStyle(element, "::after").content,
+      accentColor,
+    };
+  });
+
+  assert.ok(headerState);
+  assert.equal(headerState.ariaSort, "ascending");
+  assert.equal(headerState.color, headerState.accentColor);
+  assert.equal(headerState.arrow.includes("↑"), true);
+}
+
 try {
   markStep("start");
   backend = await createWorkspaceBackend();
@@ -113,31 +142,13 @@ try {
   assert.match(firstDueCellText, /[A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2}/);
   assert.match(firstDueCellText, /\d{2}D:\d{2}H:\d{2}M/);
 
-  await clickUi(contractsBoardTable.locator("[data-sort-field='distanceNm']").first());
-  const distanceHeaderState = await contractsBoardTable.locator("[data-sort-field='distanceNm']").first().evaluate((button) => {
-    if (!(button instanceof HTMLElement)) {
-      return null;
-    }
-
-    const column = button.closest("th");
-    const probe = document.createElement("span");
-    probe.style.color = "var(--accent)";
-    document.body.appendChild(probe);
-    const accentColor = window.getComputedStyle(probe).color;
-    probe.remove();
-
-    return {
-      ariaSort: column?.getAttribute("aria-sort") ?? "",
-      color: window.getComputedStyle(button).color,
-      arrow: window.getComputedStyle(button, "::after").content,
-      accentColor,
-    };
-  });
-  assert.ok(distanceHeaderState);
-  assert.equal(distanceHeaderState.ariaSort, "ascending");
-  assert.equal(distanceHeaderState.color, distanceHeaderState.accentColor);
-  assert.equal(distanceHeaderState.arrow.includes("↑"), true);
-  markStep("distance sort");
+  await assertContractsHeaderSort(page, "distanceNm");
+  await assertContractsHeaderSort(page, "route");
+  await assertContractsHeaderSort(page, "payload");
+  await assertContractsHeaderSort(page, "nearestAircraft");
+  await assertContractsHeaderSort(page, "dueUtc");
+  await assertContractsHeaderSort(page, "payout");
+  markStep("header sorts");
 
   const baselineContractRows = await page.locator(".contracts-board-table tbody tr").count();
   const firstRouteCode = firstRouteCellText.match(/\b[A-Z]{3,4}\b/)?.[0] ?? "";

@@ -123,7 +123,7 @@ interface FocusState {
 type ContractsBoardTab = "available" | "active" | "closed";
 type ContractsBoardScope = "all" | "my_contracts";
 type ContractsWorkspaceTab = "board" | "planning";
-type SortField = "distanceNm" | "hoursRemaining";
+type SortField = "route" | "payload" | "nearestAircraft" | "distanceNm" | "hoursRemaining" | "dueUtc" | "payout";
 type SortDirection = "asc" | "desc";
 type RouteLike = ContractsViewOffer | ContractsViewCompanyContract;
 
@@ -1335,12 +1335,14 @@ function renderOffersTable(
               key: "routeSearch",
               label: "Route search",
             },
+            sortField: "route",
           })}
           ${renderContractsBoardHeaderCell("Payload", state, activePopover, {
             filter: {
               key: "payloadFilter",
               label: "Payload filter",
             },
+            sortField: "payload",
           })}
           ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
             search: {
@@ -1351,6 +1353,7 @@ function renderOffersTable(
               key: "aircraftFilter",
               label: "Nearest Aircraft filter",
             },
+            sortField: "nearestAircraft",
           })}
           ${renderContractsBoardHeaderCell("Distance", state, activePopover, {
             filter: {
@@ -1371,12 +1374,14 @@ function renderOffersTable(
               key: "dueFilter",
               label: "Due filter",
             },
+            sortField: "dueUtc",
           })}
           ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
             filter: {
               key: "payoutFilter",
               label: "Payout filter",
             },
+            sortField: "payout",
           })}
         </tr>
       </thead>
@@ -1414,6 +1419,7 @@ function renderCompanyContractsTable(
               key: "routeSearch",
               label: "Route search",
             },
+            sortField: "route",
           })}
           ${renderContractsStaticHeaderCell("State")}
           ${renderContractsBoardHeaderCell("Payload", state, activePopover, {
@@ -1421,6 +1427,7 @@ function renderCompanyContractsTable(
               key: "payloadFilter",
               label: "Payload filter",
             },
+            sortField: "payload",
           })}
           ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
             search: {
@@ -1431,6 +1438,7 @@ function renderCompanyContractsTable(
               key: "aircraftFilter",
               label: "Nearest Aircraft filter",
             },
+            sortField: "nearestAircraft",
           })}
           ${renderContractsBoardHeaderCell("Distance", state, activePopover, {
             filter: {
@@ -1451,12 +1459,14 @@ function renderCompanyContractsTable(
               key: "dueFilter",
               label: "Due filter",
             },
+            sortField: "dueUtc",
           })}
           ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
             filter: {
               key: "payoutFilter",
               label: "Payout filter",
             },
+            sortField: "payout",
           })}
           <th></th>
         </tr>
@@ -2331,15 +2341,30 @@ function compareRoutes(
   sortDirection: SortDirection,
   currentTimeUtc: string,
 ): number {
-  const leftValue = sortField === "distanceNm" ? routeDistanceNm(left) : routeHoursRemaining(left, currentTimeUtc);
-  const rightValue = sortField === "distanceNm" ? routeDistanceNm(right) : routeHoursRemaining(right, currentTimeUtc);
-  const delta = sortDirection === "asc" ? leftValue - rightValue : rightValue - leftValue;
-
-  if (delta !== 0) {
-    return delta;
+  switch (sortField) {
+    case "route":
+      return compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "payload":
+      return compareNumber(routePayloadAmount(left), routePayloadAmount(right), sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "nearestAircraft":
+      return compareNearestAircraft(left.nearestRelevantAircraft, right.nearestRelevantAircraft, sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "distanceNm":
+      return compareNumber(routeDistanceNm(left), routeDistanceNm(right), sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "hoursRemaining":
+      return compareNumber(routeHoursRemaining(left, currentTimeUtc), routeHoursRemaining(right, currentTimeUtc), sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "dueUtc":
+      return compareText(routeDueUtc(left), routeDueUtc(right), sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "payout":
+      return compareNumber(left.payoutAmount, right.payoutAmount, sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    default:
+      return compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
   }
-
-  return (left.origin.code + left.destination.code).localeCompare(right.origin.code + right.destination.code);
 }
 
 function compareMyContracts(
@@ -2381,6 +2406,19 @@ function routeHoursRemaining(route: RouteLike, currentTimeUtc: string): number {
 
 function routeDistanceNm(route: RouteLike): number {
   return haversineDistanceNm(route.origin.latitudeDeg, route.origin.longitudeDeg, route.destination.latitudeDeg, route.destination.longitudeDeg);
+}
+
+function routeDueUtc(route: RouteLike): string {
+  return "latestCompletionUtc" in route ? route.latestCompletionUtc : route.deadlineUtc;
+}
+
+function routeSortLabel(route: RouteLike): string {
+  return [
+    route.origin.code,
+    route.origin.name,
+    route.destination.code,
+    route.destination.name,
+  ].join(" -> ");
 }
 
 function haversineDistanceNm(
@@ -2757,6 +2795,43 @@ function routePayloadAmount(route: Pick<RouteLike, "volumeType" | "passengerCoun
   return route.volumeType === "cargo"
     ? route.cargoWeightLb ?? 0
     : route.passengerCount ?? 0;
+}
+
+function compareNearestAircraft(
+  leftCue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"],
+  rightCue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"],
+  sortDirection: SortDirection,
+): number {
+  const leftHasCue = leftCue ? 1 : 0;
+  const rightHasCue = rightCue ? 1 : 0;
+  const availabilityDelta = rightHasCue - leftHasCue;
+  if (availabilityDelta !== 0) {
+    return availabilityDelta;
+  }
+
+  if (!leftCue || !rightCue) {
+    return 0;
+  }
+
+  return compareNumber(leftCue.distanceNm, rightCue.distanceNm, sortDirection)
+    || compareText(leftCue.registration, rightCue.registration, sortDirection);
+}
+
+function compareNumber(left: number, right: number, sortDirection: SortDirection): number {
+  const delta = sortDirection === "asc" ? left - right : right - left;
+  if (delta < 0) {
+    return -1;
+  }
+  if (delta > 0) {
+    return 1;
+  }
+  return 0;
+}
+
+function compareText(left: string, right: string, sortDirection: SortDirection): number {
+  return sortDirection === "asc"
+    ? left.localeCompare(right)
+    : right.localeCompare(left);
 }
 
 function matchesNearestAircraftFilter(

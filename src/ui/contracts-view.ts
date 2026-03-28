@@ -6,6 +6,7 @@
  */
 
 import type { JsonObject } from "../domain/common/primitives.js";
+import { aggregateContractPayload, defaultPassengerWeightLb } from "../domain/contracts/payload.js";
 import type { FlightLineBackend } from "../application/backend-service.js";
 import { loadCompanyContracts, type CompanyContractsView } from "../application/queries/company-contracts.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
@@ -155,7 +156,13 @@ function canAircraftStructurallyOperateOffer(
 
   if (offer.volumeType === "passenger") {
     const seatCapacity = Math.min(aircraft.activeCabinSeats ?? aircraft.maxPassengers, aircraft.maxPassengers);
-    return (offer.passengerCount ?? 0) <= seatCapacity;
+    const payloadTotals = aggregateContractPayload([{
+      volumeType: offer.volumeType,
+      passengerCount: offer.passengerCount ?? null,
+      cargoWeightLb: offer.cargoWeightLb ?? null,
+    }], defaultPassengerWeightLb);
+    return payloadTotals.passengerCount <= seatCapacity
+      && payloadTotals.totalPayloadWeightLb <= aircraftModel.maxPayloadLb;
   }
 
   const cargoCapacity = Math.min(aircraft.activeCabinCargoCapacityLb ?? aircraft.maxCargoLb, aircraft.maxCargoLb);

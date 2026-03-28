@@ -899,14 +899,14 @@ function loadCommittedContractExecutionLinks(
 ): Map<string, ContractExecutionLinkRow> {
   const rows = saveDatabase.all<ContractExecutionLinkRow>(
     `SELECT
-      fl.linked_company_contract_id AS companyContractId,
+      flc.company_contract_id AS companyContractId,
       s.aircraft_id AS linkedAircraftId,
       s.schedule_id AS linkedScheduleId
-    FROM flight_leg AS fl
+    FROM flight_leg_contract AS flc
+    JOIN flight_leg AS fl ON fl.flight_leg_id = flc.flight_leg_id
     JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
     JOIN company_aircraft AS ca ON ca.aircraft_id = s.aircraft_id
     WHERE ca.company_id = $company_id
-      AND fl.linked_company_contract_id IS NOT NULL
       AND s.schedule_state = 'committed'
       AND s.is_draft = 0
     ORDER BY s.updated_at_utc DESC, s.schedule_id DESC, fl.sequence_number ASC`,

@@ -48,6 +48,12 @@ interface DraftFlightLegRow extends Record<string, unknown> {
   payloadSnapshotJson: string | null;
 }
 
+interface DraftFlightLegContractLinkRow extends Record<string, unknown> {
+  scheduleId: string;
+  sequenceNumber: number;
+  companyContractId: string;
+}
+
 interface ContractDeadlineRow extends Record<string, unknown> {
   companyContractId: string;
   deadlineUtc: string;
@@ -221,6 +227,25 @@ export async function handleCommitAircraftSchedule(
     { $schedule_id: scheduleRow.scheduleId },
   );
 
+  const legContractLinkRows = dependencies.saveDatabase.all<DraftFlightLegContractLinkRow>(
+    `SELECT
+      fl.schedule_id AS scheduleId,
+      fl.sequence_number AS sequenceNumber,
+      flc.company_contract_id AS companyContractId
+    FROM flight_leg_contract AS flc
+    JOIN flight_leg AS fl ON fl.flight_leg_id = flc.flight_leg_id
+    WHERE fl.schedule_id = $schedule_id
+    ORDER BY fl.sequence_number ASC, flc.attachment_order ASC, flc.company_contract_id ASC`,
+    { $schedule_id: scheduleRow.scheduleId },
+  );
+
+  const linkedCompanyContractIdsBySequence = new Map<number, string[]>();
+  for (const row of legContractLinkRows) {
+    const linkedCompanyContractIds = linkedCompanyContractIdsBySequence.get(row.sequenceNumber) ?? [];
+    linkedCompanyContractIds.push(row.companyContractId);
+    linkedCompanyContractIdsBySequence.set(row.sequenceNumber, linkedCompanyContractIds);
+  }
+
   if (legRows.length === 0) {
     return {
       success: false,
@@ -240,6 +265,7 @@ export async function handleCommitAircraftSchedule(
     scheduleKind: scheduleRow.scheduleKind,
     legs: legRows.map((legRow) => {
       const payloadSnapshot = parsePayloadSnapshot(legRow.payloadSnapshotJson);
+      const linkedCompanyContractIds = linkedCompanyContractIdsBySequence.get(legRow.sequenceNumber);
       return {
         legType: legRow.legType,
         originAirportId: legRow.originAirportId,
@@ -247,6 +273,9 @@ export async function handleCommitAircraftSchedule(
         plannedDepartureUtc: legRow.plannedDepartureUtc,
         plannedArrivalUtc: legRow.plannedArrivalUtc,
         ...(legRow.linkedCompanyContractId ? { linkedCompanyContractId: legRow.linkedCompanyContractId } : {}),
+        ...(linkedCompanyContractIds && linkedCompanyContractIds.length > 0
+          ? { linkedCompanyContractIds }
+          : {}),
         ...(legRow.assignedQualificationGroup ? { assignedQualificationGroup: legRow.assignedQualificationGroup } : {}),
         ...(payloadSnapshot ? { payloadSnapshot } : {}),
       };
@@ -390,6 +419,8 @@ export async function handleCommitAircraftSchedule(
 
     for (const leg of validation.resolvedLegs) {
       const flightLegId = flightLegIds.get(leg.sequenceNumber)!;
+      const linkedCompanyContractIds = leg.linkedCompanyContractIds
+        ?? (leg.linkedCompanyContractId ? [leg.linkedCompanyContractId] : []);
       dependencies.saveDatabase.run(
         `INSERT INTO flight_leg (
           flight_leg_id,
@@ -427,7 +458,7 @@ export async function handleCommitAircraftSchedule(
           $schedule_id: scheduleRow.scheduleId,
           $sequence_number: leg.sequenceNumber,
           $leg_type: leg.legType,
-          $linked_company_contract_id: leg.linkedCompanyContractId ?? null,
+          $linked_company_contract_id: linkedCompanyContractIds[0] ?? null,
           $origin_airport_id: leg.originAirportId,
           $destination_airport_id: leg.destinationAirportId,
           $planned_departure_utc: leg.plannedDepartureUtc,
@@ -436,6 +467,25 @@ export async function handleCommitAircraftSchedule(
           $payload_snapshot_json: leg.payloadSnapshot ? JSON.stringify(leg.payloadSnapshot) : null,
         },
       );
+
+      linkedCompanyContractIds.forEach((companyContractId, attachmentOrder) => {
+        dependencies.saveDatabase.run(
+          `INSERT INTO flight_leg_contract (
+            flight_leg_id,
+            company_contract_id,
+            attachment_order
+          ) VALUES (
+            $flight_leg_id,
+            $company_contract_id,
+            $attachment_order
+          )`,
+          {
+            $flight_leg_id: flightLegId,
+            $company_contract_id: companyContractId,
+            $attachment_order: attachmentOrder,
+          },
+        );
+      });
 
       const departureEventId = createPrefixedId("eventq");
       const arrivalEventId = createPrefixedId("eventq");
@@ -468,7 +518,7 @@ export async function handleCommitAircraftSchedule(
           $save_id: command.saveId,
           $scheduled_time_utc: leg.plannedDepartureUtc,
           $aircraft_id: scheduleRow.aircraftId,
-          $company_contract_id: leg.linkedCompanyContractId ?? null,
+          $company_contract_id: linkedCompanyContractIds[0] ?? null,
           $payload_json: JSON.stringify({
             scheduleId: scheduleRow.scheduleId,
             flightLegId,
@@ -504,7 +554,7 @@ export async function handleCommitAircraftSchedule(
           $save_id: command.saveId,
           $scheduled_time_utc: leg.plannedArrivalUtc,
           $aircraft_id: scheduleRow.aircraftId,
-          $company_contract_id: leg.linkedCompanyContractId ?? null,
+          $company_contract_id: linkedCompanyContractIds[0] ?? null,
           $payload_json: JSON.stringify({
             scheduleId: scheduleRow.scheduleId,
             flightLegId,

@@ -28,6 +28,7 @@ export interface FlightLeg {
   sequenceNumber: number;
   legType: FlightLegType;
   linkedCompanyContractId?: CompanyContractId;
+  linkedCompanyContractIds?: CompanyContractId[];
   originAirportId: AirportId;
   destinationAirportId: AirportId;
   plannedDepartureUtc: UtcIsoString;

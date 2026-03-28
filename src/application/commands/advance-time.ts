@@ -74,6 +74,14 @@ interface FlightLegExecutionRow extends Record<string, unknown> {
   penaltyModelJson: string | null;
 }
 
+interface FlightLegLinkedContractRow extends Record<string, unknown> {
+  companyContractId: string;
+  contractState: string;
+  deadlineUtc: string;
+  acceptedPayoutAmount: number;
+  penaltyModelJson: string | null;
+}
+
 interface MaintenanceProgramRow extends Record<string, unknown> {
   hoursSinceInspection: number;
   cyclesSinceInspection: number;
@@ -595,6 +603,22 @@ export async function handleAdvanceTime(
       )
     );
 
+    const loadFlightLegLinkedContracts = (flightLegId: string): FlightLegLinkedContractRow[] => (
+      dependencies.saveDatabase.all<FlightLegLinkedContractRow>(
+        `SELECT
+          cc.company_contract_id AS companyContractId,
+          cc.contract_state AS contractState,
+          cc.deadline_utc AS deadlineUtc,
+          cc.accepted_payout_amount AS acceptedPayoutAmount,
+          cc.penalty_model_json AS penaltyModelJson
+        FROM flight_leg_contract AS flc
+        JOIN company_contract AS cc ON cc.company_contract_id = flc.company_contract_id
+        WHERE flc.flight_leg_id = $flight_leg_id
+        ORDER BY flc.attachment_order ASC, cc.company_contract_id ASC`,
+        { $flight_leg_id: flightLegId },
+      )
+    );
+
     const loadMaintenanceProgram = (aircraftId: string): MaintenanceProgramRow | null => (
       dependencies.saveDatabase.getOne<MaintenanceProgramRow>(
         `SELECT
@@ -1064,6 +1088,8 @@ export async function handleAdvanceTime(
         return;
       }
 
+      const linkedContracts = loadFlightLegLinkedContracts(legRow.flightLegId);
+
       if (assignedQualificationGroup) {
         setNamedPilotAssignmentsInFlight(legRow.scheduleId, assignedQualificationGroup, eventTimeUtc);
       }
@@ -1087,14 +1113,18 @@ export async function handleAdvanceTime(
         { $aircraft_id: legRow.aircraftId },
       );
 
-      if (legRow.linkedCompanyContractId && legRow.contractState === "assigned") {
+      for (const linkedContract of linkedContracts) {
+        if (linkedContract.contractState !== "assigned") {
+          continue;
+        }
+
         dependencies.saveDatabase.run(
           `UPDATE company_contract
           SET contract_state = 'active'
           WHERE company_contract_id = $company_contract_id`,
-          { $company_contract_id: legRow.linkedCompanyContractId },
+          { $company_contract_id: linkedContract.companyContractId },
         );
-        changedAggregateIds.add(legRow.linkedCompanyContractId);
+        changedAggregateIds.add(linkedContract.companyContractId);
       }
 
       markScheduledEventProcessed(scheduledEvent.scheduledEventId);
@@ -1110,6 +1140,7 @@ export async function handleAdvanceTime(
           scheduleId: legRow.scheduleId,
           destinationAirportId: legRow.destinationAirportId,
           linkedCompanyContractId: legRow.linkedCompanyContractId ?? undefined,
+          linkedCompanyContractIds: linkedContracts.map((contract) => contract.companyContractId),
         },
       );
 
@@ -1183,6 +1214,7 @@ export async function handleAdvanceTime(
         return;
       }
 
+      const linkedContracts = loadFlightLegLinkedContracts(legRow.flightLegId);
       const aircraftModel = dependencies.aircraftReference.findModel(legRow.aircraftModelId);
       if (!aircraftModel) {
         markScheduledEventProcessed(scheduledEvent.scheduledEventId);
@@ -1331,15 +1363,19 @@ export async function handleAdvanceTime(
         changedAggregateIds.add(contractPilot.staffingPackageId);
       }
 
-      if (legRow.linkedCompanyContractId && ["assigned", "active"].includes(legRow.contractState ?? "")) {
-        const penaltyModel = parseJsonObject(legRow.penaltyModelJson) as ContractPenaltyModel | undefined;
+      for (const linkedContract of linkedContracts) {
+        if (!["assigned", "active"].includes(linkedContract.contractState)) {
+          continue;
+        }
+
+        const penaltyModel = parseJsonObject(linkedContract.penaltyModelJson) as ContractPenaltyModel | undefined;
         const lateCompletionPenaltyPercent = typeof penaltyModel?.lateCompletionPenaltyPercent === "number"
           ? penaltyModel.lateCompletionPenaltyPercent
           : 25;
-        const arrivedLate = eventTimeUtc > String(legRow.deadlineUtc);
+        const arrivedLate = eventTimeUtc > linkedContract.deadlineUtc;
         const revenueAmount = arrivedLate
-          ? Math.round((legRow.acceptedPayoutAmount ?? 0) * (1 - lateCompletionPenaltyPercent / 100))
-          : Math.round(legRow.acceptedPayoutAmount ?? 0);
+          ? Math.round(linkedContract.acceptedPayoutAmount * (1 - lateCompletionPenaltyPercent / 100))
+          : Math.round(linkedContract.acceptedPayoutAmount);
         const resolvedContractState = arrivedLate ? "late_completed" : "completed";
 
         dependencies.saveDatabase.run(
@@ -1349,7 +1385,7 @@ export async function handleAdvanceTime(
           WHERE company_contract_id = $company_contract_id`,
           {
             $contract_state: resolvedContractState,
-            $company_contract_id: legRow.linkedCompanyContractId,
+            $company_contract_id: linkedContract.companyContractId,
           },
         );
 
@@ -1358,10 +1394,10 @@ export async function handleAdvanceTime(
           "contract_revenue",
           revenueAmount,
           "company_contract",
-          legRow.linkedCompanyContractId,
+          linkedContract.companyContractId,
           arrivedLate
-            ? `Completed contract ${legRow.linkedCompanyContractId} after deadline.`
-            : `Completed contract ${legRow.linkedCompanyContractId}.`,
+            ? `Completed contract ${linkedContract.companyContractId} after deadline.`
+            : `Completed contract ${linkedContract.companyContractId}.`,
           {
             aircraftId: legRow.aircraftId,
             flightLegId: legRow.flightLegId,
@@ -1373,11 +1409,11 @@ export async function handleAdvanceTime(
           eventTimeUtc,
           arrivedLate ? "contract_late_completed" : "contract_completed",
           "company_contract",
-          legRow.linkedCompanyContractId,
+          linkedContract.companyContractId,
           arrivedLate ? "warning" : "info",
           arrivedLate
-            ? `Contract ${legRow.linkedCompanyContractId} completed late.`
-            : `Contract ${legRow.linkedCompanyContractId} completed successfully.`,
+            ? `Contract ${linkedContract.companyContractId} completed late.`
+            : `Contract ${linkedContract.companyContractId} completed successfully.`,
           {
             aircraftId: legRow.aircraftId,
             flightLegId: legRow.flightLegId,
@@ -1385,9 +1421,9 @@ export async function handleAdvanceTime(
           },
         );
 
-        batchOutcome.resolvedContractIds.add(legRow.linkedCompanyContractId);
-        resolvedContractIds.add(legRow.linkedCompanyContractId);
-        changedAggregateIds.add(legRow.linkedCompanyContractId);
+        batchOutcome.resolvedContractIds.add(linkedContract.companyContractId);
+        resolvedContractIds.add(linkedContract.companyContractId);
+        changedAggregateIds.add(linkedContract.companyContractId);
       }
 
       const remainingLegsRow = dependencies.saveDatabase.getOne<CountRow>(
@@ -1646,9 +1682,10 @@ export async function handleAdvanceTime(
           : Math.round(contractRow.acceptedPayoutAmount * 0.22);
         const dispatchedLegRow = dependencies.saveDatabase.getOne<CountRow>(
           `SELECT COUNT(*) AS countValue
-          FROM flight_leg AS fl
+          FROM flight_leg_contract AS flc
+          JOIN flight_leg AS fl ON fl.flight_leg_id = flc.flight_leg_id
           JOIN aircraft_schedule AS s ON s.schedule_id = fl.schedule_id
-          WHERE fl.linked_company_contract_id = $company_contract_id
+          WHERE flc.company_contract_id = $company_contract_id
             AND s.schedule_state = 'committed'
             AND fl.leg_state IN ('in_progress', 'completed')`,
           { $company_contract_id: contractRow.companyContractId },

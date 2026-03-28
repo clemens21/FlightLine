@@ -153,19 +153,19 @@ export async function handleSaveScheduleDraft(
         `SELECT DISTINCT s.schedule_id AS scheduleId
          FROM aircraft_schedule AS s
          JOIN flight_leg AS fl ON fl.schedule_id = s.schedule_id
+         JOIN flight_leg_contract AS flc ON flc.flight_leg_id = fl.flight_leg_id
          WHERE s.is_draft = 1
            AND s.schedule_state = 'blocked'
            AND s.schedule_id <> $schedule_id
            AND s.aircraft_id <> $aircraft_id
          GROUP BY s.schedule_id
          HAVING SUM(CASE
-             WHEN fl.linked_company_contract_id IN (${stagedContractIds.map((_, index) => `$company_contract_id_${index}`).join(", ")})
+             WHEN flc.company_contract_id IN (${stagedContractIds.map((_, index) => `$company_contract_id_${index}`).join(", ")})
              THEN 1
              ELSE 0
            END) > 0
            AND SUM(CASE
-             WHEN fl.linked_company_contract_id IS NOT NULL
-               AND fl.linked_company_contract_id NOT IN (${stagedContractIds.map((_, index) => `$company_contract_id_${index}`).join(", ")})
+             WHEN flc.company_contract_id NOT IN (${stagedContractIds.map((_, index) => `$company_contract_id_${index}`).join(", ")})
              THEN 1
              ELSE 0
            END) = 0`,
@@ -294,6 +294,9 @@ export async function handleSaveScheduleDraft(
     }
 
     for (const leg of validation.resolvedLegs) {
+      const flightLegId = createPrefixedId("leg");
+      const linkedCompanyContractIds = leg.linkedCompanyContractIds
+        ?? (leg.linkedCompanyContractId ? [leg.linkedCompanyContractId] : []);
       dependencies.saveDatabase.run(
         `INSERT INTO flight_leg (
           flight_leg_id,
@@ -327,11 +330,11 @@ export async function handleSaveScheduleDraft(
           $payload_snapshot_json
         )`,
         {
-          $flight_leg_id: createPrefixedId("leg"),
+          $flight_leg_id: flightLegId,
           $schedule_id: scheduleId,
           $sequence_number: leg.sequenceNumber,
           $leg_type: leg.legType,
-          $linked_company_contract_id: leg.linkedCompanyContractId ?? null,
+          $linked_company_contract_id: linkedCompanyContractIds[0] ?? null,
           $origin_airport_id: leg.originAirportId,
           $destination_airport_id: leg.destinationAirportId,
           $planned_departure_utc: leg.plannedDepartureUtc,
@@ -340,6 +343,25 @@ export async function handleSaveScheduleDraft(
           $payload_snapshot_json: leg.payloadSnapshot ? JSON.stringify(leg.payloadSnapshot) : null,
         },
       );
+
+      linkedCompanyContractIds.forEach((companyContractId, attachmentOrder) => {
+        dependencies.saveDatabase.run(
+          `INSERT INTO flight_leg_contract (
+            flight_leg_id,
+            company_contract_id,
+            attachment_order
+          ) VALUES (
+            $flight_leg_id,
+            $company_contract_id,
+            $attachment_order
+          )`,
+          {
+            $flight_leg_id: flightLegId,
+            $company_contract_id: companyContractId,
+            $attachment_order: attachmentOrder,
+          },
+        );
+      });
     }
 
     dependencies.saveDatabase.run(

@@ -5,6 +5,7 @@
 
 import type { FlightLineBackend, ScheduleDraftLegPayload } from "../index.js";
 import { validateProposedSchedule } from "../application/dispatch/schedule-validation.js";
+import { aggregateContractPayload, defaultPassengerWeightLb } from "../domain/contracts/payload.js";
 import { loadRoutePlanState } from "./route-plan-state.js";
 
 const turnaroundMinutes = 45;
@@ -63,7 +64,11 @@ export async function bindRoutePlanToAircraft(
   let cursorAirportId = aircraft.currentAirportId;
   let cursorTimeUtc = companyContext.currentTimeUtc;
 
-  for (const item of acceptedReadyItems) {
+  for (let itemIndex = 0; itemIndex < acceptedReadyItems.length; itemIndex += 1) {
+    const item = acceptedReadyItems[itemIndex];
+    if (!item) {
+      continue;
+    }
     const contract = contractsById.get(item.sourceId);
     if (!contract) {
       return { success: false, error: `Planned contract ${item.sourceId} is no longer available.` };
@@ -90,9 +95,43 @@ export async function bindRoutePlanToAircraft(
       cursorTimeUtc = addMinutesIso(repositionArrival, turnaroundMinutes);
     }
 
-    const earliestStartUtc = contract.earliestStartUtc && contract.earliestStartUtc > cursorTimeUtc
-      ? contract.earliestStartUtc
-      : cursorTimeUtc;
+    const groupedContracts = [contract];
+    let groupedItemIndex = itemIndex + 1;
+    const routeFlightMinutes = estimateFlightMinutes(
+      backend,
+      contract.originAirportId,
+      contract.destinationAirportId,
+      aircraftModel.cruiseSpeedKtas,
+    );
+    while (groupedItemIndex < acceptedReadyItems.length) {
+      const nextItem = acceptedReadyItems[groupedItemIndex];
+      if (!nextItem) {
+        break;
+      }
+      const nextContract = contractsById.get(nextItem.sourceId);
+      if (!nextContract) {
+        return { success: false, error: `Planned contract ${nextItem.sourceId} is no longer available.` };
+      }
+      if (nextContract.originAirportId !== contract.originAirportId || nextContract.destinationAirportId !== contract.destinationAirportId) {
+        break;
+      }
+
+      const candidateGroup = [...groupedContracts, nextContract];
+      if (!canAircraftCarryGroupedContracts(aircraft, aircraftModel, candidateGroup)) {
+        break;
+      }
+
+      const candidateDepartureUtc = resolveGroupedDepartureUtc(cursorTimeUtc, candidateGroup);
+      const candidateArrivalUtc = addMinutesIso(candidateDepartureUtc, routeFlightMinutes);
+      if (candidateGroup.some((candidate) => candidateArrivalUtc > candidate.deadlineUtc)) {
+        break;
+      }
+
+      groupedContracts.push(nextContract);
+      groupedItemIndex += 1;
+    }
+
+    const earliestStartUtc = resolveGroupedDepartureUtc(cursorTimeUtc, groupedContracts);
     const contractArrivalUtc = addMinutesIso(
       earliestStartUtc,
       estimateFlightMinutes(
@@ -103,21 +142,23 @@ export async function bindRoutePlanToAircraft(
       ),
     );
 
-    if (contractArrivalUtc > contract.deadlineUtc) {
+    if (groupedContracts.some((groupedContract) => contractArrivalUtc > groupedContract.deadlineUtc)) {
       return { success: false, error: `Route plan would miss the deadline for ${contract.originAirportId} -> ${contract.destinationAirportId}.` };
     }
 
     legs.push({
       legType: "contract_flight",
-      linkedCompanyContractId: contract.companyContractId,
+      linkedCompanyContractIds: groupedContracts.map((entry) => entry.companyContractId),
+      ...(groupedContracts[0] ? { linkedCompanyContractId: groupedContracts[0].companyContractId } : {}),
       originAirportId: contract.originAirportId,
       destinationAirportId: contract.destinationAirportId,
       plannedDepartureUtc: earliestStartUtc,
       plannedArrivalUtc: contractArrivalUtc,
     });
-    boundContractIds.push(contract.companyContractId);
+    boundContractIds.push(...groupedContracts.map((entry) => entry.companyContractId));
     cursorAirportId = contract.destinationAirportId;
     cursorTimeUtc = addMinutesIso(contractArrivalUtc, turnaroundMinutes);
+    itemIndex = groupedItemIndex - 1;
   }
 
   const preview = await backend.withExistingSaveDatabase(saveId, (context) => validateProposedSchedule({
@@ -170,6 +211,40 @@ export async function bindRoutePlanToAircraft(
     boundContractIds,
     blockerItemIds: blockerItems.map((item) => item.routePlanItemId),
   };
+}
+
+function resolveGroupedDepartureUtc(
+  cursorTimeUtc: string,
+  contracts: ReadonlyArray<{ earliestStartUtc?: string | undefined }>,
+): string {
+  return contracts.reduce((latestStartUtc, contract) => (
+    contract.earliestStartUtc && contract.earliestStartUtc > latestStartUtc
+      ? contract.earliestStartUtc
+      : latestStartUtc
+  ), cursorTimeUtc);
+}
+
+function canAircraftCarryGroupedContracts(
+  aircraft: {
+    activeCabinSeats?: number | undefined;
+    activeCabinCargoCapacityLb?: number | undefined;
+    maxPassengers: number;
+    maxCargoLb: number;
+  },
+  aircraftModel: { maxPayloadLb: number },
+  contracts: ReadonlyArray<{
+    volumeType: "passenger" | "cargo";
+    passengerCount?: number | undefined;
+    cargoWeightLb?: number | undefined;
+  }>,
+): boolean {
+  const payloadTotals = aggregateContractPayload(contracts, defaultPassengerWeightLb);
+  const seatCapacity = Math.min(aircraft.activeCabinSeats ?? aircraft.maxPassengers, aircraft.maxPassengers);
+  const cargoCapacity = Math.min(aircraft.activeCabinCargoCapacityLb ?? aircraft.maxCargoLb, aircraft.maxCargoLb);
+
+  return payloadTotals.passengerCount <= seatCapacity
+    && payloadTotals.cargoWeightLb <= cargoCapacity
+    && payloadTotals.totalPayloadWeightLb <= aircraftModel.maxPayloadLb;
 }
 
 function addMinutesIso(utcIsoString: string, minutes: number): string {

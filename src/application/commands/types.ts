@@ -111,6 +111,7 @@ export interface ActivateStaffingPackagePayload {
 export interface ScheduleDraftLegPayload {
   legType: FlightLegType;
   linkedCompanyContractId?: string;
+  linkedCompanyContractIds?: string[];
   originAirportId: AirportId;
   destinationAirportId: AirportId;
   plannedDepartureUtc: UtcIsoString;
