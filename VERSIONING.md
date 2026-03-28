@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.13.3`
+- `0.13.4`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -73,6 +73,7 @@ The contract-board sorting fix, passenger payload-weight modeling, grouped same-
 The contracts-workspace toolbar relocation and selected-tab styling follow-up advance the release to `0.13.1`.
 The desktop preferred-window sizing update advances the release to `0.13.2`.
 The desktop preferred-window content-size correction advances the release to `0.13.3`.
+The desktop preferred physical-pixel window-target update advances the release to `0.13.4`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

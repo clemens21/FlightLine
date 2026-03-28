@@ -26,8 +26,8 @@ let mainWindow: BrowserWindow | null = null;
 let uiServerProcess: ChildProcess | null = null;
 let isQuitting = false;
 
-const preferredWindowWidth = 1440;
-const preferredWindowHeight = 900;
+const preferredPhysicalWindowWidth = 2560;
+const preferredPhysicalWindowHeight = 1440;
 const minimumSupportedWindowWidth = 1280;
 const minimumSupportedWindowHeight = 720;
 
@@ -36,6 +36,9 @@ type WindowContentSize = {
   height: number;
   workAreaWidth: number;
   workAreaHeight: number;
+  scaleFactor: number;
+  targetPhysicalWidth: number;
+  targetPhysicalHeight: number;
 };
 
 function formatDesktopError(error: unknown): string {
@@ -190,19 +193,28 @@ async function stopUiServer(): Promise<void> {
 function resolveMainWindowContentSize(): WindowContentSize {
   const primaryDisplay = screen.getPrimaryDisplay();
   const workArea = primaryDisplay.workArea;
-  const canFitPreferredWindow = workArea.width >= preferredWindowWidth && workArea.height >= preferredWindowHeight;
-  const width = canFitPreferredWindow
-    ? preferredWindowWidth
-    : Math.min(Math.max(workArea.width, minimumSupportedWindowWidth), preferredWindowWidth);
-  const height = canFitPreferredWindow
-    ? preferredWindowHeight
-    : Math.min(Math.max(workArea.height, minimumSupportedWindowHeight), preferredWindowHeight);
+  const scaleFactor = primaryDisplay.scaleFactor || 1;
+  const workAreaPhysicalWidth = Math.round(workArea.width * scaleFactor);
+  const workAreaPhysicalHeight = Math.round(workArea.height * scaleFactor);
+  const canFitPreferredPhysicalWindow =
+    workAreaPhysicalWidth >= preferredPhysicalWindowWidth && workAreaPhysicalHeight >= preferredPhysicalWindowHeight;
+  const preferredLogicalWidth = Math.round(preferredPhysicalWindowWidth / scaleFactor);
+  const preferredLogicalHeight = Math.round(preferredPhysicalWindowHeight / scaleFactor);
+  const width = canFitPreferredPhysicalWindow
+    ? preferredLogicalWidth
+    : Math.min(Math.max(workArea.width, minimumSupportedWindowWidth), preferredLogicalWidth);
+  const height = canFitPreferredPhysicalWindow
+    ? preferredLogicalHeight
+    : Math.min(Math.max(workArea.height, minimumSupportedWindowHeight), preferredLogicalHeight);
 
   return {
     width,
     height,
     workAreaWidth: workArea.width,
     workAreaHeight: workArea.height,
+    scaleFactor,
+    targetPhysicalWidth: canFitPreferredPhysicalWindow ? preferredPhysicalWindowWidth : Math.round(width * scaleFactor),
+    targetPhysicalHeight: canFitPreferredPhysicalWindow ? preferredPhysicalWindowHeight : Math.round(height * scaleFactor),
   };
 }
 
@@ -212,7 +224,7 @@ async function createMainWindow(): Promise<void> {
   if (mainWindow) {
     mainWindow.setContentSize(initialSize.width, initialSize.height);
     logDesktopInfo(
-      `Main window already exists; resized content to ${initialSize.width}x${initialSize.height} from display work area ${initialSize.workAreaWidth}x${initialSize.workAreaHeight}, then focusing existing window.`,
+      `Main window already exists; resized content to ${initialSize.width}x${initialSize.height} logical pixels targeting ${initialSize.targetPhysicalWidth}x${initialSize.targetPhysicalHeight} physical pixels from display work area ${initialSize.workAreaWidth}x${initialSize.workAreaHeight} at scale factor ${initialSize.scaleFactor}, then focusing existing window.`,
     );
     mainWindow.focus();
     return;
@@ -221,7 +233,7 @@ async function createMainWindow(): Promise<void> {
   logDesktopInfo("Creating main Electron window.");
 
   logDesktopInfo(
-    `Resolved main window content size ${initialSize.width}x${initialSize.height} from display work area ${initialSize.workAreaWidth}x${initialSize.workAreaHeight}.`,
+    `Resolved main window content size ${initialSize.width}x${initialSize.height} logical pixels targeting ${initialSize.targetPhysicalWidth}x${initialSize.targetPhysicalHeight} physical pixels from display work area ${initialSize.workAreaWidth}x${initialSize.workAreaHeight} at scale factor ${initialSize.scaleFactor}.`,
   );
 
   mainWindow = new BrowserWindow({
