@@ -72,6 +72,27 @@ try {
   assert.equal(await page.locator("[data-staffing-hire-clear]").count(), 0);
 
   await page.setViewportSize({ width: 1800, height: 1000 });
+  const stickyHeaderGeometry = await page.evaluate(() => {
+    const market = document.querySelector("[data-pilot-candidate-market]");
+    const header = document.querySelector("[data-staffing-hire-column='pilot']");
+    if (!(market instanceof HTMLElement) || !(header instanceof HTMLElement)) {
+      return null;
+    }
+
+    const beforeTop = Math.round(header.getBoundingClientRect().top);
+    market.scrollTop = 320;
+    const afterTop = Math.round(header.getBoundingClientRect().top);
+    const marketTop = Math.round(market.getBoundingClientRect().top);
+
+    return {
+      beforeTop,
+      afterTop,
+      marketTop,
+    };
+  });
+  assert.ok(stickyHeaderGeometry);
+  assert.equal(Math.abs(stickyHeaderGeometry.afterTop - stickyHeaderGeometry.marketTop) <= 2, true);
+  assert.equal(Math.abs(stickyHeaderGeometry.afterTop - stickyHeaderGeometry.beforeTop) <= 2, true);
   assert.equal(await page.locator("button[aria-label='Pilot search']").count(), 1);
   assert.equal(await page.locator("button[aria-label='Pilot filter']").count(), 0);
   assert.equal(await page.locator("button[aria-label='Base search']").count(), 0);

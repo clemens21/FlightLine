@@ -111,6 +111,31 @@ try {
     }, label);
   }
 
+  await clickUi(aircraftMarketTable.locator("[data-market-sort-key='distance']").first());
+  const distanceSortState = await aircraftMarketTable.locator("[data-market-sort-key='distance']").first().evaluate((button) => {
+    if (!(button instanceof HTMLElement)) {
+      return null;
+    }
+
+    const column = button.closest("th");
+    const probe = document.createElement("span");
+    probe.style.color = "var(--accent)";
+    document.body.appendChild(probe);
+    const accentColor = window.getComputedStyle(probe).color;
+    probe.remove();
+
+    return {
+      ariaSort: column?.getAttribute("aria-sort") ?? "",
+      color: window.getComputedStyle(button).color,
+      arrow: window.getComputedStyle(button, "::after").content,
+      accentColor,
+    };
+  });
+  assert.ok(distanceSortState);
+  assert.equal(distanceSortState.ariaSort, "ascending");
+  assert.equal(distanceSortState.color, distanceSortState.accentColor);
+  assert.equal(distanceSortState.arrow.includes("↑"), true);
+
   await clickUi(aircraftMarketTable.locator("button[aria-label='Distance filter']").first().locator("svg"));
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-market-popover='distance']");

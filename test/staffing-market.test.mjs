@@ -137,6 +137,22 @@ try {
     directMarket.offers.some((offer) => offer.certifications.length > 1),
     true,
   );
+  assert.ok(
+    new Set(
+      directMarket.offers
+        .filter((offer) => offer.employmentModel === "direct_hire")
+        .map((offer) => offer.fixedCostAmount),
+    ).size >= 8,
+    "Expected direct-hire offers to show broader monthly salary variety.",
+  );
+  assert.ok(
+    new Set(
+      directMarket.offers
+        .filter((offer) => offer.employmentModel === "contract_hire")
+        .map((offer) => offer.variableCostRate),
+    ).size >= 8,
+    "Expected contract-hire offers to show broader hourly-rate variety.",
+  );
   const directCandidatePairs = findCandidatePairs(directMarket);
   assert.ok(directCandidatePairs.length >= 8);
   assert.equal(directCandidatePairs.every((pair) => pair.directOffer || pair.contractOffer), true);

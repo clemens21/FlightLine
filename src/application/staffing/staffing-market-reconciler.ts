@@ -209,114 +209,6 @@ function qualificationComplexityIndex(qualificationGroup: string): number {
   }
 }
 
-function directSalaryBase(qualificationGroup: string): number {
-  switch (qualificationGroup) {
-    case "single_turboprop_premium":
-      return 11_000;
-    case "regional_turboprop":
-      return 15_000;
-    case "twin_turboprop_utility":
-      return 13_500;
-    case "twin_turboprop_commuter":
-      return 16_500;
-    case "light_business_jet":
-      return 18_000;
-    case "super_midsize_business_jet":
-      return 21_000;
-    case "classic_regional_jet":
-      return 22_000;
-    case "regional_jet":
-      return 24_500;
-    case "narrowbody_airline":
-      return 28_000;
-    case "widebody_airline":
-      return 34_000;
-    case "single_turboprop_utility":
-    default:
-      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
-        return 34_000;
-      }
-
-      if (qualificationGroup.includes("jet")) {
-        return 22_000;
-      }
-
-      return qualificationGroup.includes("twin") ? 13_500 : 9_500;
-  }
-}
-
-function contractHourlyBase(qualificationGroup: string): number {
-  switch (qualificationGroup) {
-    case "single_turboprop_premium":
-      return 120;
-    case "regional_turboprop":
-      return 160;
-    case "twin_turboprop_utility":
-      return 145;
-    case "twin_turboprop_commuter":
-      return 170;
-    case "light_business_jet":
-      return 185;
-    case "super_midsize_business_jet":
-      return 215;
-    case "classic_regional_jet":
-      return 225;
-    case "regional_jet":
-      return 245;
-    case "narrowbody_airline":
-      return 300;
-    case "widebody_airline":
-      return 375;
-    case "single_turboprop_utility":
-    default:
-      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
-        return 375;
-      }
-
-      if (qualificationGroup.includes("jet")) {
-        return 225;
-      }
-
-      return qualificationGroup.includes("twin") ? 145 : 105;
-  }
-}
-
-function contractEngagementBase(qualificationGroup: string): number {
-  switch (qualificationGroup) {
-    case "single_turboprop_premium":
-      return 3_000;
-    case "regional_turboprop":
-      return 4_250;
-    case "twin_turboprop_utility":
-      return 3_750;
-    case "twin_turboprop_commuter":
-      return 4_750;
-    case "light_business_jet":
-      return 5_250;
-    case "super_midsize_business_jet":
-      return 6_250;
-    case "classic_regional_jet":
-      return 6_750;
-    case "regional_jet":
-      return 7_500;
-    case "narrowbody_airline":
-      return 9_500;
-    case "widebody_airline":
-      return 12_500;
-    case "single_turboprop_utility":
-    default:
-      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
-        return 12_500;
-      }
-
-      if (qualificationGroup.includes("jet")) {
-        return 6_750;
-      }
-
-      return qualificationGroup.includes("twin") ? 3_750 : 2_500;
-  }
-}
-
 function chooseStatScore(seed: string, laneComplexity: number): PilotStatScore {
   const rolledValue = hashString(seed) % 101;
   const boostedValue = Math.min(100, rolledValue + laneComplexity * 6);
@@ -346,15 +238,24 @@ function buildVisibleStatProfile(qualificationGroup: string, generatedSeed: stri
 }
 
 function estimateDirectSalary(profile: GeneratedPilotCandidateProfile): number {
-  return estimateDirectHireSalaryFromProfile(profile);
+  return estimateDirectHireSalaryFromProfile({
+    ...profile,
+    marketSeed: profile.generatedSeed,
+  });
 }
 
 function estimateContractHourlyRate(profile: GeneratedPilotCandidateProfile): number {
-  return estimateContractHourlyRateFromProfile(profile);
+  return estimateContractHourlyRateFromProfile({
+    ...profile,
+    marketSeed: profile.generatedSeed,
+  });
 }
 
 function estimateContractEngagementFee(profile: GeneratedPilotCandidateProfile): number {
-  return estimateContractEngagementFeeFromProfile(profile);
+  return estimateContractEngagementFeeFromProfile({
+    ...profile,
+    marketSeed: profile.generatedSeed,
+  });
 }
 
 function formatHours(hours: number): string {

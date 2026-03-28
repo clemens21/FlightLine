@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.12.2`
+- `0.12.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -55,6 +55,8 @@ The staffing base-airport hire control and table-column removal landing advances
 The staffing pilot-market sticky-header follow-up advances the release to `0.12.1`.
 
 The staffing workspace scroll-path correction advances the release to `0.12.2`.
+
+The staffing pricing rebalance and header-parity follow-up advance the release to `0.12.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

@@ -1181,6 +1181,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-hire-workspace {
       min-height: 0;
       height: 100%;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overflow: hidden;
     }
     .staffing-hire-stage {
       position: relative;
@@ -1188,6 +1191,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       height: 100%;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
     }
     .staffing-hire-table-panel {
       min-height: 0;
@@ -1200,36 +1204,47 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       overflow: hidden;
     }
     .staffing-hire-table-body {
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      flex: 1 1 auto;
       gap: 14px;
       min-height: 0;
+      height: 100%;
       overflow: hidden;
     }
     .staffing-hire-market-shell {
-      display: flex;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) auto;
       flex: 1 1 auto;
-      flex-direction: column;
       min-height: 0;
       height: 100%;
     }
     .staffing-hire-market-list {
       flex: 1 1 auto;
-      min-height: 0;
+      min-height: 280px;
+      height: 100%;
       max-height: 100%;
       position: relative;
       overflow: auto;
       overscroll-behavior: contain;
     }
+    .staffing-hire-market-list thead,
+    .staffing-hire-market-list thead tr {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
     .staffing-hire-market-list table {
       min-width: 1740px;
       width: 100%;
       table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 0;
     }
     .staffing-hire-market-list th {
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 4;
       overflow: visible;
       vertical-align: top;
       background: linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 94%, transparent), color-mix(in srgb, var(--panel) 92%, transparent));
@@ -1543,6 +1558,18 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       overflow: hidden;
       text-overflow: ellipsis;
       width: 100%;
+      justify-content: flex-start;
+      text-align: left;
+    }
+    .table-sort > .table-header-label {
+      color: inherit;
+      font: inherit;
+      font-weight: inherit;
+      line-height: inherit;
+      letter-spacing: inherit;
+      text-transform: inherit;
+      min-width: 0;
+      width: auto;
       justify-content: flex-start;
       text-align: left;
     }
@@ -2723,6 +2750,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-rows: minmax(0, 1fr);
       overflow: hidden;
     }
+    .staffing-workspace-shell > [data-staffing-workspace-panel] {
+      min-height: 0;
+      overflow: hidden;
+    }
     .aircraft-workbench {
       min-height: 0;
       height: 100%;
@@ -2790,7 +2821,48 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       position: relative;
     }
     .aircraft-market-table .table-header-label,
-    .aircraft-market-table .table-header-control .table-sort {
+    .contracts-board-table .table-header-label {
+      color: var(--text);
+    }
+    .aircraft-market-table .table-sort > .table-header-label,
+    .contracts-board-table .table-sort > .table-header-label {
+      color: inherit;
+    }
+    .aircraft-market-table .table-header-column[aria-sort="none"] .table-sort,
+    .contracts-board-table .table-header-column[aria-sort="none"] .table-sort {
+      color: var(--text);
+    }
+    .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort,
+    .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort,
+    .contracts-board-table .table-header-column[aria-sort="ascending"] .table-sort,
+    .contracts-board-table .table-header-column[aria-sort="descending"] .table-sort {
+      color: var(--accent);
+    }
+    .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort::after,
+    .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort::after,
+    .contracts-board-table .table-header-column[aria-sort="ascending"] .table-sort::after,
+    .contracts-board-table .table-header-column[aria-sort="descending"] .table-sort::after {
+      font-size: 11px;
+      line-height: 1;
+      opacity: 0.9;
+    }
+    .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort::after,
+    .contracts-board-table .table-header-column[aria-sort="ascending"] .table-sort::after {
+      content: "\\2191";
+    }
+    .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort::after,
+    .contracts-board-table .table-header-column[aria-sort="descending"] .table-sort::after {
+      content: "\\2193";
+    }
+    .aircraft-market-table .table-header-control .table-sort,
+    .aircraft-market-table .table-header-label,
+    .contracts-board-table .table-header-control .table-sort,
+    .contracts-board-table .table-header-label {
+      font-size: 13px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      text-transform: none;
       color: var(--text);
     }
     .aircraft-market-header-popover {

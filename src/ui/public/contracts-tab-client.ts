@@ -1129,10 +1129,28 @@ export function mountContractsTab(
       </div>
     `;
 
+    syncBoardHeaderState();
     renderVisibleMap(root, state, selectedRoute);
     restoreFocusState(root, focusState);
     positionActiveBoardPopover();
     focusActiveBoardPopoverField(focusState);
+  }
+
+  function syncBoardHeaderState(): void {
+    root.querySelectorAll<HTMLElement>("[data-sort-field]").forEach((button) => {
+      const sortField = button.dataset.sortField as SortField | undefined;
+      const column = button.closest<HTMLElement>(".table-header-column");
+      if (!sortField || !column) {
+        return;
+      }
+
+      const isActive = state.sortField === sortField;
+      column.setAttribute("aria-sort", isActive
+        ? state.sortDirection === "asc" ? "ascending" : "descending"
+        : "none");
+      column.classList.toggle("is-sorted", isActive);
+      button.classList.toggle("current", isActive);
+    });
   }
 
   function positionActiveBoardPopover(): void {
@@ -2041,8 +2059,7 @@ function togglePlannerReviewSelection(state: ContractsUiState, routePlanItemId: 
 }
 
 function renderSortButton(field: SortField, label: string, state: ContractsUiState): string {
-  const isCurrent = state.sortField === field;
-  return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-sort-field="${field}"><span>${escapeHtml(label)}</span></button>`;
+  return `<button type="button" class="table-sort" data-sort-field="${field}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
 }
 
 function renderContractsHeaderIcon(kind: "search" | "filter"): string {

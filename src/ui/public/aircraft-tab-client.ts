@@ -131,6 +131,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       acquisitionReview = null;
     }
     host.innerHTML = renderAircraftTab(payload, workspaceTab, fleetViewState, marketViewState, acquisitionReview, compareState, activeMarketPopover);
+    syncMarketHeaderState();
     setMarketOverlayVisible(workspaceTab === "market" && marketOverlayOpen);
     const fleetList = host.querySelector<HTMLElement>("[data-aircraft-scroll='fleet-list']");
     const marketList = host.querySelector<HTMLElement>("[data-aircraft-scroll='market-list']");
@@ -142,6 +143,23 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
     }
     positionActiveMarketPopover();
     positionMarketOverlay();
+  }
+
+  function syncMarketHeaderState(): void {
+    host.querySelectorAll<HTMLElement>("[data-market-sort-key]").forEach((button) => {
+      const sortKey = button.dataset.marketSortKey as AircraftMarketSortKey | undefined;
+      const column = button.closest<HTMLElement>("[data-aircraft-market-column]");
+      if (!sortKey || !column) {
+        return;
+      }
+
+      const isActive = marketSort.key === sortKey;
+      column.setAttribute("aria-sort", isActive
+        ? marketSort.direction === "asc" ? "ascending" : "descending"
+        : "none");
+      column.classList.toggle("is-sorted", isActive);
+      button.classList.toggle("current", isActive);
+    });
   }
 
   function focusMarketField(fieldName: string): void {
@@ -966,13 +984,13 @@ function renderFleetTable(
       <table>
         <thead>
           <tr>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "tail", "Aircraft")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "location", "Location")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "state", "Ownership")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "condition", "Condition")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "payload", "Mission Profile")}</th>
-            <th class="sortable">${renderFleetSortButton(viewState.sort, "attention", "Next Milestone")}</th>
-            <th>Compare</th>
+            ${renderFleetHeaderCell(viewState.sort, "tail", "Aircraft")}
+            ${renderFleetHeaderCell(viewState.sort, "location", "Location")}
+            ${renderFleetHeaderCell(viewState.sort, "state", "Ownership")}
+            ${renderFleetHeaderCell(viewState.sort, "condition", "Condition")}
+            ${renderFleetHeaderCell(viewState.sort, "payload", "Mission Profile")}
+            ${renderFleetHeaderCell(viewState.sort, "attention", "Next Milestone")}
+            ${renderFleetStaticHeaderCell("Compare")}
           </tr>
         </thead>
         <tbody>
@@ -1130,14 +1148,23 @@ function renderAircraftMarketActivePopover(
 }
 
 function renderFleetSortButton(sort: AircraftTableSort, key: AircraftTableSortKey, label: string): string {
-  const isCurrent = sort.key === key;
-  const direction = isCurrent ? sort.direction : defaultFleetSortDirection(key);
-  return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-aircraft-sort-key="${escapeHtml(key)}"><span>${escapeHtml(label)}</span><span class="table-sort-direction">${direction === "asc" ? "Asc" : "Desc"}</span></button>`;
+  return `<button type="button" class="table-sort" data-aircraft-sort-key="${escapeHtml(key)}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
+}
+
+function renderFleetHeaderCell(sort: AircraftTableSort, key: AircraftTableSortKey, label: string): string {
+  const isSorted = sort.key === key;
+  const ariaSort = isSorted
+    ? sort.direction === "asc" ? "ascending" : "descending"
+    : "none";
+  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}"><div class="table-header-control">${renderFleetSortButton(sort, key, label)}<span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+}
+
+function renderFleetStaticHeaderCell(label: string): string {
+  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
 }
 
 function renderMarketSortButton(sort: AircraftMarketSort, key: AircraftMarketSortKey, label: string): string {
-  const isCurrent = sort.key === key;
-  return `<button type="button" class="table-sort ${isCurrent ? "current" : ""}" data-market-sort-key="${escapeHtml(key)}"><span>${escapeHtml(label)}</span></button>`;
+  return `<button type="button" class="table-sort" data-market-sort-key="${escapeHtml(key)}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
 }
 
 function renderAircraftHeaderIcon(kind: "search" | "filter"): string {

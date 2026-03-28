@@ -16,23 +16,88 @@ interface PilotEmploymentPricingInput {
   primaryQualificationFamilyHours: number;
   certificationHours?: PilotVisibleCertificationHoursEntry[];
   statProfile: PilotVisibleStatProfile;
+  marketSeed?: string;
 }
 
 function roundToNearest(value: number, increment: number): number {
   return Math.round(value / increment) * increment;
 }
 
+function hashString(value: string): number {
+  let hash = 0;
+
+  for (const character of value) {
+    hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
+  }
+
+  return Math.abs(hash);
+}
+
+function marketRateMultiplier(
+  seedBase: string | undefined,
+  channel: "direct" | "hourly" | "fee",
+): number {
+  if (!seedBase) {
+    return 1;
+  }
+
+  const spreadByChannel = {
+    direct: { maxSteps: 5, stepPercent: 0.02 },
+    hourly: { maxSteps: 6, stepPercent: 0.02 },
+    fee: { maxSteps: 6, stepPercent: 0.025 },
+  } satisfies Record<"direct" | "hourly" | "fee", { maxSteps: number; stepPercent: number }>;
+
+  const spread = spreadByChannel[channel];
+  const totalBuckets = (spread.maxSteps * 2) + 1;
+  const signedSteps = (hashString(`${seedBase}:${channel}:market-band`) % totalBuckets) - spread.maxSteps;
+  return 1 + (signedSteps * spread.stepPercent);
+}
+
+// Calibrated to current U.S. pay anchors:
+// smaller-aircraft work near recent BLS commercial-pilot medians,
+// regional airline work near current official regional pay scales,
+// and long-haul airline work near current major-airline widebody pay ranges.
 function directSalaryBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
-      return 11_000;
+      return 10_250;
+    case "regional_turboprop":
+      return 12_250;
     case "twin_turboprop_utility":
-      return 13_500;
+      return 11_500;
     case "twin_turboprop_commuter":
-      return 16_500;
+      return 14_500;
+    case "light_business_jet":
+      return 17_000;
+    case "super_midsize_business_jet":
+      return 20_000;
+    case "classic_regional_jet":
+      return 17_250;
+    case "regional_jet":
+      return 19_250;
+    case "narrowbody_airline":
+      return 25_500;
+    case "widebody_airline":
+      return 32_500;
     case "single_turboprop_utility":
     default:
-      return qualificationGroup.includes("twin") ? 13_500 : 9_500;
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 32_500;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 17_250;
+      }
+
+      if (qualificationGroup.includes("regional_turboprop")) {
+        return 12_250;
+      }
+
+      if (qualificationGroup.includes("twin")) {
+        return 11_500;
+      }
+
+      return 9_000;
   }
 }
 
@@ -40,27 +105,87 @@ function contractHourlyBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
       return 120;
-    case "twin_turboprop_utility":
+    case "regional_turboprop":
       return 145;
+    case "twin_turboprop_utility":
+      return 135;
     case "twin_turboprop_commuter":
-      return 170;
+      return 160;
+    case "light_business_jet":
+      return 180;
+    case "super_midsize_business_jet":
+      return 210;
+    case "classic_regional_jet":
+      return 190;
+    case "regional_jet":
+      return 210;
+    case "narrowbody_airline":
+      return 285;
+    case "widebody_airline":
+      return 360;
     case "single_turboprop_utility":
     default:
-      return qualificationGroup.includes("twin") ? 145 : 105;
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 360;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 190;
+      }
+
+      if (qualificationGroup.includes("regional_turboprop")) {
+        return 145;
+      }
+
+      if (qualificationGroup.includes("twin")) {
+        return 135;
+      }
+
+      return 105;
   }
 }
 
 function contractEngagementBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
-      return 3_000;
+      return 3_500;
+    case "regional_turboprop":
+      return 4_250;
     case "twin_turboprop_utility":
-      return 3_750;
+      return 4_000;
     case "twin_turboprop_commuter":
-      return 4_750;
+      return 5_250;
+    case "light_business_jet":
+      return 6_000;
+    case "super_midsize_business_jet":
+      return 7_250;
+    case "classic_regional_jet":
+      return 6_500;
+    case "regional_jet":
+      return 7_250;
+    case "narrowbody_airline":
+      return 9_500;
+    case "widebody_airline":
+      return 12_500;
     case "single_turboprop_utility":
     default:
-      return qualificationGroup.includes("twin") ? 3_750 : 2_500;
+      if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
+        return 12_500;
+      }
+
+      if (qualificationGroup.includes("jet")) {
+        return 6_500;
+      }
+
+      if (qualificationGroup.includes("regional_turboprop")) {
+        return 4_250;
+      }
+
+      if (qualificationGroup.includes("twin")) {
+        return 4_000;
+      }
+
+      return 3_000;
   }
 }
 
@@ -111,59 +236,56 @@ export function estimateDirectHireSalary(input: PilotEmploymentPricingInput): nu
     + clampPilotStatScore(input.statProfile.stressTolerance)
     + clampPilotStatScore(input.statProfile.procedureDiscipline)
     + clampPilotStatScore(input.statProfile.trainingAptitude);
-  const hourPremium = Math.round(input.totalCareerHours / 450) * 125;
-  const laneHourPremium = Math.round(input.primaryQualificationFamilyHours / 350) * 100;
-  const certificationPremium = Math.max(input.certifications.length - 1, 0) * 250;
-  const certificationExperiencePremium = certificationExperienceIndex(input.certificationHours) * 35;
-  const statPremium = statWeight * 55;
+  const hourPremium = Math.round(input.totalCareerHours / 325) * 150;
+  const laneHourPremium = Math.round(input.primaryQualificationFamilyHours / 240) * 125;
+  const certificationPremium = Math.max(input.certifications.length - 1, 0) * 350;
+  const certificationExperiencePremium = certificationExperienceIndex(input.certificationHours) * 50;
+  const statPremium = statWeight * 72;
 
-  return roundToNearest(
-    directSalaryBase(input.qualificationGroup)
-      + hourPremium
-      + laneHourPremium
-      + certificationPremium
-      + certificationExperiencePremium
-      + statPremium,
-    250,
-  );
+  const salaryBeforeMarketTension = directSalaryBase(input.qualificationGroup)
+    + hourPremium
+    + laneHourPremium
+    + certificationPremium
+    + certificationExperiencePremium
+    + statPremium;
+
+  return roundToNearest(salaryBeforeMarketTension * marketRateMultiplier(input.marketSeed, "direct"), 250);
 }
 
 export function estimateContractHourlyRate(input: PilotEmploymentPricingInput): number {
   const statWeight = clampPilotStatScore(input.statProfile.operationalReliability)
     + clampPilotStatScore(input.statProfile.procedureDiscipline)
     + clampPilotStatScore(input.statProfile.stressTolerance);
-  const experiencePremium = Math.round(input.totalCareerHours / 700) * 4;
-  const laneExperiencePremium = Math.round(input.primaryQualificationFamilyHours / 550) * 3;
+  const experiencePremium = Math.round(input.totalCareerHours / 850) * 4;
+  const laneExperiencePremium = Math.round(input.primaryQualificationFamilyHours / 650) * 3;
   const certificationPremium = Math.max(input.certifications.length - 1, 0) * 4;
-  const certificationExperiencePremium = certificationExperienceIndex(input.certificationHours) * 0.9;
+  const certificationExperiencePremium = certificationExperienceIndex(input.certificationHours) * 0.85;
 
-  return roundToNearest(
-    contractHourlyBase(input.qualificationGroup)
-      + experiencePremium
-      + laneExperiencePremium
-      + certificationPremium
-      + certificationExperiencePremium
-      + statWeight * 0.75,
-    5,
-  );
+  const hourlyRateBeforeMarketTension = contractHourlyBase(input.qualificationGroup)
+    + experiencePremium
+    + laneExperiencePremium
+    + certificationPremium
+    + certificationExperiencePremium
+    + statWeight * 0.8;
+
+  return roundToNearest(hourlyRateBeforeMarketTension * marketRateMultiplier(input.marketSeed, "hourly"), 5);
 }
 
 export function estimateContractEngagementFee(input: PilotEmploymentPricingInput): number {
   const statWeight = clampPilotStatScore(input.statProfile.operationalReliability)
     + clampPilotStatScore(input.statProfile.procedureDiscipline)
     + clampPilotStatScore(input.statProfile.trainingAptitude);
-  const experiencePremium = Math.round(input.totalCareerHours / 800) * 150;
-  const laneExperiencePremium = Math.round(input.primaryQualificationFamilyHours / 650) * 125;
-  const certificationPremium = Math.max(input.certifications.length - 1, 0) * 225;
-  const certificationExperiencePremium = certificationExperienceIndex(input.certificationHours) * 45;
+  const experiencePremium = Math.round(input.totalCareerHours / 900) * 175;
+  const laneExperiencePremium = Math.round(input.primaryQualificationFamilyHours / 700) * 125;
+  const certificationPremium = Math.max(input.certifications.length - 1, 0) * 250;
+  const certificationExperiencePremium = certificationExperienceIndex(input.certificationHours) * 42;
 
-  return roundToNearest(
-    contractEngagementBase(input.qualificationGroup)
-      + experiencePremium
-      + laneExperiencePremium
-      + certificationPremium
-      + certificationExperiencePremium
-      + statWeight * 35,
-    250,
-  );
+  const engagementFeeBeforeMarketTension = contractEngagementBase(input.qualificationGroup)
+    + experiencePremium
+    + laneExperiencePremium
+    + certificationPremium
+    + certificationExperiencePremium
+    + statWeight * 36;
+
+  return roundToNearest(engagementFeeBeforeMarketTension * marketRateMultiplier(input.marketSeed, "fee"), 250);
 }
