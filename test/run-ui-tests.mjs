@@ -9,6 +9,7 @@
 import { spawn } from "node:child_process";
 import { availableParallelism } from "node:os";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { syncDistSaveSchema } from "./helpers/dist-assets.mjs";
 
 process.env.PLAYWRIGHT_BROWSERS_PATH = resolve(process.cwd(), ".playwright-browsers");
@@ -106,13 +107,52 @@ function pipeWithPrefix(stream, prefix, writer) {
 function runSuite(suiteName) {
   const filePath = suiteCatalog[suiteName];
   const absoluteFilePath = resolve(process.cwd(), filePath);
+  const runInProcess = process.env.UI_TEST_RUN_IN_PROCESS === "1";
+
+  async function runInProcessSuite() {
+    try {
+      console.log(`[${suiteName}] starting in-process`);
+      await import(`${pathToFileURL(absoluteFilePath).href}?suite=${encodeURIComponent(suiteName)}&run=${Date.now()}`);
+      console.log(`[${suiteName}] passed`);
+      return {
+        suiteName,
+        exitCode: 0,
+      };
+    } catch (error) {
+      console.error(`[${suiteName}] ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      return {
+        suiteName,
+        exitCode: 1,
+        error,
+      };
+    }
+  }
+
+  if (runInProcess) {
+    return runInProcessSuite();
+  }
 
   return new Promise((resolveSuite) => {
-    const child = spawn(process.execPath, [absoluteFilePath], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child;
+    try {
+      child = spawn(process.execPath, [absoluteFilePath], {
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "EPERM") {
+        console.warn(`[${suiteName}] child-process spawn is blocked; falling back to in-process execution.`);
+        runInProcessSuite().then(resolveSuite);
+        return;
+      }
+      resolveSuite({
+        suiteName,
+        exitCode: 1,
+        error,
+      });
+      return;
+    }
 
     pipeWithPrefix(child.stdout, suiteName, console.log);
     pipeWithPrefix(child.stderr, suiteName, console.error);
@@ -137,11 +177,14 @@ function runSuite(suiteName) {
 async function runSelectedSuites(selectedSuites) {
   const queue = [...selectedSuites];
   const results = [];
+  const runInProcess = process.env.UI_TEST_RUN_IN_PROCESS === "1";
   const requestedConcurrency = Number.parseInt(process.env.UI_TEST_CONCURRENCY ?? "", 10);
   const concurrencyCap = Number.isFinite(requestedConcurrency) && requestedConcurrency > 0
     ? requestedConcurrency
     : Math.min(4, Math.max(1, availableParallelism() - 1));
-  const concurrency = Math.max(1, Math.min(queue.length, concurrencyCap));
+  const concurrency = runInProcess
+    ? 1
+    : Math.max(1, Math.min(queue.length, concurrencyCap));
 
   console.log(`Running ${queue.length} UI browser suite(s) with concurrency ${concurrency}.`);
   console.log(`Suites: ${selectedSuites.join(", ")}`);

@@ -36,6 +36,45 @@ export async function clickUi(locator) {
 }
 
 export async function launchBrowser() {
+  const cdpUrl = process.env.PLAYWRIGHT_CDP_URL?.trim();
+  if (cdpUrl) {
+    const browser = await chromium.connectOverCDP(cdpUrl);
+    const createdPages = [];
+
+    return {
+      async newPage(options = {}) {
+        const context = browser.contexts()[0] ?? await browser.newContext();
+        if (!context) {
+          throw new Error(`Connected to external browser at ${cdpUrl}, but no default browser context is available.`);
+        }
+
+        const page = await context.newPage();
+        if (options.viewport) {
+          await page.setViewportSize(options.viewport);
+        }
+        createdPages.push(page);
+        return page;
+      },
+      async close() {
+        for (const page of createdPages.splice(0)) {
+          try {
+            if (!page.isClosed()) {
+              await page.close();
+            }
+          } catch {
+            // Ignore page-close cleanup errors during shared external-browser runs.
+          }
+        }
+
+        try {
+          await browser.close();
+        } catch {
+          // In CDP mode, disconnect/close behavior depends on the external browser owner.
+        }
+      },
+    };
+  }
+
   try {
     return await chromium.launch({ headless: true });
   } catch (error) {
@@ -55,7 +94,7 @@ export async function launchBrowser() {
     }
 
     if (error instanceof Error) {
-      throw new Error(`${error.message}\nRun "npm run test:ui:setup" to install the Chromium browser used by the UI smoke tests.`);
+      throw new Error(`${error.message}\nRun "npm run test:ui:setup" to install the Chromium browser used by the UI smoke tests, or run the external-browser wrapper script to attach over CDP.`);
     }
 
     throw error;

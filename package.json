@@ -1,6 +1,6 @@
 {
   "name": "flightline",
-  "version": "0.12.5",
+  "version": "0.12.6",
   "description": "FlightLine airline management simulation",
   "main": "dist/desktop/main.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "test:ui:staffing": "npm run build && node test/run-ui-tests.mjs staffing",
     "test:ui:aircraft": "npm run build && node test/run-ui-tests.mjs aircraft",
     "test:ui:aircraft:all": "npm run build && node test/run-ui-tests.mjs aircraft_extended",
+    "test:ui:edge": "npm run build && powershell -ExecutionPolicy Bypass -File scripts/run-ui-tests-via-edge.ps1 core",
     "test:all": "npm run test:unit && npm run test:ui"
   },
   "keywords": [],

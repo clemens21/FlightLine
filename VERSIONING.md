@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.12.5`
+- `0.12.6`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -61,6 +61,8 @@ The staffing pricing rebalance and header-parity follow-up advance the release t
 The staffing pricing-spread retune plus aircraft/contracts/staff header follow-up advance the release to `0.12.4`.
 
 The aircraft/contracts sticky-header and contracts-board scroll-region follow-up advance the release to `0.12.5`.
+
+The external-browser Playwright fallback and in-process UI runner follow-up advance the release to `0.12.6`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
