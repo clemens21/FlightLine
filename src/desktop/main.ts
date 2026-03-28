@@ -11,7 +11,7 @@ import { dirname, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow, dialog, screen } from "electron";
 
 const desktopPort = Number.parseInt(process.env.FLIGHTLINE_UI_PORT ?? process.env.PORT ?? "4321", 10);
 const desktopHost = "127.0.0.1";
@@ -25,6 +25,11 @@ const desktopLogFilePath = resolve(desktopLogDirectoryPath, "desktop-startup.log
 let mainWindow: BrowserWindow | null = null;
 let uiServerProcess: ChildProcess | null = null;
 let isQuitting = false;
+
+const preferredWindowWidth = 1440;
+const preferredWindowHeight = 900;
+const minimumSupportedWindowWidth = 1280;
+const minimumSupportedWindowHeight = 720;
 
 function formatDesktopError(error: unknown): string {
   if (error instanceof Error) {
@@ -184,11 +189,25 @@ async function createMainWindow(): Promise<void> {
 
   logDesktopInfo("Creating main Electron window.");
 
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay.workArea;
+  const canFitPreferredWindow = workArea.width >= preferredWindowWidth && workArea.height >= preferredWindowHeight;
+  const initialWidth = canFitPreferredWindow
+    ? preferredWindowWidth
+    : Math.min(Math.max(workArea.width, minimumSupportedWindowWidth), preferredWindowWidth);
+  const initialHeight = canFitPreferredWindow
+    ? preferredWindowHeight
+    : Math.min(Math.max(workArea.height, minimumSupportedWindowHeight), preferredWindowHeight);
+
+  logDesktopInfo(
+    `Resolved main window size ${initialWidth}x${initialHeight} from display work area ${workArea.width}x${workArea.height}.`,
+  );
+
   mainWindow = new BrowserWindow({
-    width: 1600,
-    height: 980,
-    minWidth: 1280,
-    minHeight: 800,
+    width: initialWidth,
+    height: initialHeight,
+    minWidth: minimumSupportedWindowWidth,
+    minHeight: minimumSupportedWindowHeight,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: "#0f1720",
