@@ -31,6 +31,13 @@ const preferredWindowHeight = 900;
 const minimumSupportedWindowWidth = 1280;
 const minimumSupportedWindowHeight = 720;
 
+type WindowContentSize = {
+  width: number;
+  height: number;
+  workAreaWidth: number;
+  workAreaHeight: number;
+};
+
 function formatDesktopError(error: unknown): string {
   if (error instanceof Error) {
     return error.stack ?? error.message;
@@ -180,34 +187,49 @@ async function stopUiServer(): Promise<void> {
   ]);
 }
 
+function resolveMainWindowContentSize(): WindowContentSize {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workArea = primaryDisplay.workArea;
+  const canFitPreferredWindow = workArea.width >= preferredWindowWidth && workArea.height >= preferredWindowHeight;
+  const width = canFitPreferredWindow
+    ? preferredWindowWidth
+    : Math.min(Math.max(workArea.width, minimumSupportedWindowWidth), preferredWindowWidth);
+  const height = canFitPreferredWindow
+    ? preferredWindowHeight
+    : Math.min(Math.max(workArea.height, minimumSupportedWindowHeight), preferredWindowHeight);
+
+  return {
+    width,
+    height,
+    workAreaWidth: workArea.width,
+    workAreaHeight: workArea.height,
+  };
+}
+
 async function createMainWindow(): Promise<void> {
+  const initialSize = resolveMainWindowContentSize();
+
   if (mainWindow) {
-    logDesktopInfo("Main window already exists; focusing existing window.");
+    mainWindow.setContentSize(initialSize.width, initialSize.height);
+    logDesktopInfo(
+      `Main window already exists; resized content to ${initialSize.width}x${initialSize.height} from display work area ${initialSize.workAreaWidth}x${initialSize.workAreaHeight}, then focusing existing window.`,
+    );
     mainWindow.focus();
     return;
   }
 
   logDesktopInfo("Creating main Electron window.");
 
-  const primaryDisplay = screen.getPrimaryDisplay();
-  const workArea = primaryDisplay.workArea;
-  const canFitPreferredWindow = workArea.width >= preferredWindowWidth && workArea.height >= preferredWindowHeight;
-  const initialWidth = canFitPreferredWindow
-    ? preferredWindowWidth
-    : Math.min(Math.max(workArea.width, minimumSupportedWindowWidth), preferredWindowWidth);
-  const initialHeight = canFitPreferredWindow
-    ? preferredWindowHeight
-    : Math.min(Math.max(workArea.height, minimumSupportedWindowHeight), preferredWindowHeight);
-
   logDesktopInfo(
-    `Resolved main window size ${initialWidth}x${initialHeight} from display work area ${workArea.width}x${workArea.height}.`,
+    `Resolved main window content size ${initialSize.width}x${initialSize.height} from display work area ${initialSize.workAreaWidth}x${initialSize.workAreaHeight}.`,
   );
 
   mainWindow = new BrowserWindow({
-    width: initialWidth,
-    height: initialHeight,
+    width: initialSize.width,
+    height: initialSize.height,
     minWidth: minimumSupportedWindowWidth,
     minHeight: minimumSupportedWindowHeight,
+    useContentSize: true,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: "#0f1720",
@@ -230,6 +252,15 @@ async function createMainWindow(): Promise<void> {
 
   mainWindow.on("show", () => {
     logDesktopInfo("Main window shown.");
+    if (!mainWindow) {
+      return;
+    }
+
+    const [windowWidth, windowHeight] = mainWindow.getSize();
+    const [contentWidth, contentHeight] = mainWindow.getContentSize();
+    logDesktopInfo(
+      `Main window actual outer size ${windowWidth}x${windowHeight}; content size ${contentWidth}x${contentHeight}.`,
+    );
   });
 
   mainWindow.webContents.on("did-finish-load", () => {
