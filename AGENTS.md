@@ -255,6 +255,8 @@ Important rules:
 - do not leave mixed unfinished work parked on `codex/dev`
 - do not treat `codex/dev` as the default scratch branch
 - do not rely on a local-only branch as the durable home for meaningful in-progress work
+- the lead Codex session should stay on local `main` by default
+- if isolated execution needs a separate branch or worktree, create that bounded `codex/<workstream>` branch or worktree for a sub-agent and keep the lead session on `main` unless the human explicitly overrides this
 - do not create a new branch or worktree without a bounded purpose and an expected promotion or retirement path
 - if a workstream matters, push the `codex/<workstream>` branch to GitHub rather than trusting one machine
 - if active work on `codex/dev` becomes mixed, move or preserve it on a `codex/<workstream>` branch before the next promotion decision
