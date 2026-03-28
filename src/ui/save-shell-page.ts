@@ -2712,6 +2712,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-workspace-panel {
       overflow: hidden;
     }
+    .staffing-workspace-panel > .panel-body {
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      min-height: 0;
+      overflow: hidden;
+    }
     .staffing-workspace-shell {
       display: grid;
       grid-template-rows: minmax(0, 1fr);
