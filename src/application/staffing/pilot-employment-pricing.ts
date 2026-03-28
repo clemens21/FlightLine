@@ -42,9 +42,9 @@ function marketRateMultiplier(
   }
 
   const spreadByChannel = {
-    direct: { maxSteps: 5, stepPercent: 0.02 },
-    hourly: { maxSteps: 6, stepPercent: 0.02 },
-    fee: { maxSteps: 6, stepPercent: 0.025 },
+    direct: { maxSteps: 6, stepPercent: 0.0225 },
+    hourly: { maxSteps: 7, stepPercent: 0.02 },
+    fee: { maxSteps: 7, stepPercent: 0.025 },
   } satisfies Record<"direct" | "hourly" | "fee", { maxSteps: number; stepPercent: number }>;
 
   const spread = spreadByChannel[channel];
@@ -60,41 +60,41 @@ function marketRateMultiplier(
 function directSalaryBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
-      return 10_250;
+      return 10_500;
     case "regional_turboprop":
-      return 12_250;
+      return 11_750;
     case "twin_turboprop_utility":
-      return 11_500;
+      return 11_250;
     case "twin_turboprop_commuter":
-      return 14_500;
+      return 13_250;
     case "light_business_jet":
-      return 17_000;
+      return 15_500;
     case "super_midsize_business_jet":
-      return 20_000;
+      return 18_500;
     case "classic_regional_jet":
-      return 17_250;
+      return 16_000;
     case "regional_jet":
-      return 19_250;
+      return 17_750;
     case "narrowbody_airline":
-      return 25_500;
+      return 23_500;
     case "widebody_airline":
-      return 32_500;
+      return 30_500;
     case "single_turboprop_utility":
     default:
       if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
-        return 32_500;
+        return 30_500;
       }
 
       if (qualificationGroup.includes("jet")) {
-        return 17_250;
+        return 16_000;
       }
 
       if (qualificationGroup.includes("regional_turboprop")) {
-        return 12_250;
+        return 11_750;
       }
 
       if (qualificationGroup.includes("twin")) {
-        return 11_500;
+        return 11_250;
       }
 
       return 9_000;
@@ -104,41 +104,41 @@ function directSalaryBase(qualificationGroup: string): number {
 function contractHourlyBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
-      return 120;
+      return 115;
     case "regional_turboprop":
-      return 145;
+      return 130;
     case "twin_turboprop_utility":
-      return 135;
+      return 125;
     case "twin_turboprop_commuter":
-      return 160;
+      return 145;
     case "light_business_jet":
-      return 180;
+      return 165;
     case "super_midsize_business_jet":
-      return 210;
-    case "classic_regional_jet":
       return 190;
+    case "classic_regional_jet":
+      return 175;
     case "regional_jet":
-      return 210;
+      return 195;
     case "narrowbody_airline":
-      return 285;
+      return 255;
     case "widebody_airline":
-      return 360;
+      return 335;
     case "single_turboprop_utility":
     default:
       if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
-        return 360;
+        return 335;
       }
 
       if (qualificationGroup.includes("jet")) {
-        return 190;
+        return 175;
       }
 
       if (qualificationGroup.includes("regional_turboprop")) {
-        return 145;
+        return 130;
       }
 
       if (qualificationGroup.includes("twin")) {
-        return 135;
+        return 125;
       }
 
       return 105;
@@ -148,41 +148,41 @@ function contractHourlyBase(qualificationGroup: string): number {
 function contractEngagementBase(qualificationGroup: string): number {
   switch (qualificationGroup) {
     case "single_turboprop_premium":
-      return 3_500;
+      return 3_250;
     case "regional_turboprop":
-      return 4_250;
-    case "twin_turboprop_utility":
       return 4_000;
+    case "twin_turboprop_utility":
+      return 3_750;
     case "twin_turboprop_commuter":
-      return 5_250;
+      return 4_750;
     case "light_business_jet":
-      return 6_000;
+      return 5_500;
     case "super_midsize_business_jet":
-      return 7_250;
+      return 6_750;
     case "classic_regional_jet":
-      return 6_500;
+      return 5_750;
     case "regional_jet":
-      return 7_250;
+      return 6_500;
     case "narrowbody_airline":
-      return 9_500;
+      return 8_500;
     case "widebody_airline":
-      return 12_500;
+      return 11_500;
     case "single_turboprop_utility":
     default:
       if (qualificationGroup.includes("widebody") || qualificationGroup.includes("jumbo")) {
-        return 12_500;
+        return 11_500;
       }
 
       if (qualificationGroup.includes("jet")) {
-        return 6_500;
+        return 5_750;
       }
 
       if (qualificationGroup.includes("regional_turboprop")) {
-        return 4_250;
+        return 4_000;
       }
 
       if (qualificationGroup.includes("twin")) {
-        return 4_000;
+        return 3_750;
       }
 
       return 3_000;

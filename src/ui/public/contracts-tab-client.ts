@@ -2058,7 +2058,7 @@ function togglePlannerReviewSelection(state: ContractsUiState, routePlanItemId: 
   };
 }
 
-function renderSortButton(field: SortField, label: string, state: ContractsUiState): string {
+function renderSortButton(field: SortField, label: string): string {
   return `<button type="button" class="table-sort" data-sort-field="${field}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
 }
 
@@ -2108,7 +2108,7 @@ function renderContractsBoardHeaderCell(
     ? renderContractsBoardIconButton(options.filter.key, "filter", options.filter.label, activePopover === options.filter.key)
     : "";
   const labelHtml = options.sortField
-    ? renderSortButton(options.sortField, label, state)
+    ? renderSortButton(options.sortField, label)
     : `<span class="table-header-label">${escapeHtml(label)}</span>`;
   return `<th class="table-header-column${options.sortField ? " sortable" : ""}${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control">${labelHtml}<span class="table-header-actions">${searchButton}${filterButton}</span></div></th>`;
 }

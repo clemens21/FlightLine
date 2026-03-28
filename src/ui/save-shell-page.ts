@@ -1225,14 +1225,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       height: 100%;
       max-height: 100%;
       position: relative;
+      isolation: isolate;
       overflow: auto;
       overscroll-behavior: contain;
-    }
-    .staffing-hire-market-list thead,
-    .staffing-hire-market-list thead tr {
-      position: sticky;
-      top: 0;
-      z-index: 3;
     }
     .staffing-hire-market-list table {
       min-width: 1740px;
@@ -1241,10 +1236,15 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-collapse: separate;
       border-spacing: 0;
     }
-    .staffing-hire-market-list th {
+    .staffing-hire-market-list thead {
       position: sticky;
       top: 0;
       z-index: 4;
+    }
+    .staffing-hire-market-list th {
+      position: sticky;
+      top: 0;
+      z-index: 5;
       overflow: visible;
       vertical-align: top;
       background: linear-gradient(180deg, color-mix(in srgb, var(--panel-strong) 94%, transparent), color-mix(in srgb, var(--panel) 92%, transparent));
@@ -2837,6 +2837,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .contracts-board-table .table-header-column[aria-sort="ascending"] .table-sort,
     .contracts-board-table .table-header-column[aria-sort="descending"] .table-sort {
       color: var(--accent);
+    }
+    .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort > .table-header-label,
+    .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort > .table-header-label,
+    .contracts-board-table .table-header-column[aria-sort="ascending"] .table-sort > .table-header-label,
+    .contracts-board-table .table-header-column[aria-sort="descending"] .table-sort > .table-header-label {
+      color: inherit;
     }
     .aircraft-market-table .table-header-column[aria-sort="ascending"] .table-sort::after,
     .aircraft-market-table .table-header-column[aria-sort="descending"] .table-sort::after,

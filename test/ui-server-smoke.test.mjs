@@ -287,6 +287,9 @@ try {
   assert.match(shellHtml, /Cash flow basics/);
   assert.match(shellHtml, /I cannot dispatch this contract/);
   assert.match(shellHtml, /\.staffing-hire-overlay\s*\{/);
+  assert.match(shellHtml, /\.staffing-workspace-panel > \.panel-body\s*\{/);
+  assert.match(shellHtml, /\.staffing-hire-market-list thead\s*\{/);
+  assert.match(shellHtml, /\.table-sort > \.table-header-label\s*\{/);
 
   const bootstrap = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/bootstrap?tab=aircraft`);
   assert.equal(bootstrap.saveId, saveId);

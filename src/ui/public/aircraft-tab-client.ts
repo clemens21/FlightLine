@@ -1147,7 +1147,7 @@ function renderAircraftMarketActivePopover(
   }
 }
 
-function renderFleetSortButton(sort: AircraftTableSort, key: AircraftTableSortKey, label: string): string {
+function renderFleetSortButton(key: AircraftTableSortKey, label: string): string {
   return `<button type="button" class="table-sort" data-aircraft-sort-key="${escapeHtml(key)}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
 }
 
@@ -1156,14 +1156,14 @@ function renderFleetHeaderCell(sort: AircraftTableSort, key: AircraftTableSortKe
   const ariaSort = isSorted
     ? sort.direction === "asc" ? "ascending" : "descending"
     : "none";
-  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}"><div class="table-header-control">${renderFleetSortButton(sort, key, label)}<span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}"><div class="table-header-control">${renderFleetSortButton(key, label)}<span class="table-header-actions" aria-hidden="true"></span></div></th>`;
 }
 
 function renderFleetStaticHeaderCell(label: string): string {
   return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
 }
 
-function renderMarketSortButton(sort: AircraftMarketSort, key: AircraftMarketSortKey, label: string): string {
+function renderMarketSortButton(key: AircraftMarketSortKey, label: string): string {
   return `<button type="button" class="table-sort" data-market-sort-key="${escapeHtml(key)}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
 }
 
@@ -1238,7 +1238,7 @@ function renderAircraftMarketHeaderCell(
     : "none";
   const popoverOpen = activePopover === columnKey;
   const iconButtons = iconKinds.map((kind) => renderAircraftMarketIconButton(columnKey, kind, `${label} ${kind === "search" ? "search" : "filter"}`, popoverOpen)).join("");
-  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}" data-aircraft-market-column="${escapeHtml(columnKey)}"><div class="table-header-control">${renderMarketSortButton(sort, sortKey, label)}<span class="table-header-actions">${iconButtons}</span></div></th>`;
+  return `<th class="sortable table-header-column${isSorted ? " is-sorted" : ""}" aria-sort="${ariaSort}" data-aircraft-market-column="${escapeHtml(columnKey)}"><div class="table-header-control">${renderMarketSortButton(sortKey, label)}<span class="table-header-actions">${iconButtons}</span></div></th>`;
 }
 
 function renderAircraftMarketStaticHeaderCell(label: string): string {
