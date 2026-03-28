@@ -464,6 +464,7 @@ async function handleHirePilotCandidate(response, form) {
     const saveId = form.get("saveId") ?? "";
     const tab = normalizeTab(form.get("tab"));
     const staffingOfferId = form.get("staffingOfferId") ?? "";
+    const baseAirportId = String(form.get("baseAirportId") ?? "").trim().toUpperCase();
     const market = await backend.loadActiveStaffingMarket(saveId);
     const offer = market?.offers.find((entry) => entry.staffingOfferId === staffingOfferId && entry.offerStatus === "available" && entry.laborCategory === "pilot");
     if (!offer) {
@@ -483,6 +484,7 @@ async function handleHirePilotCandidate(response, form) {
             coverageUnits: offer.coverageUnits,
             fixedCostAmount: offer.fixedCostAmount,
             variableCostRate: offer.variableCostRate,
+            baseAirportId,
             startsAtUtc: offer.startsAtUtc,
             endsAtUtc: offer.endsAtUtc,
             sourceOfferId: offer.staffingOfferId,
@@ -1155,6 +1157,7 @@ async function handleScheduleMaintenanceApi(response, saveId, form) {
 async function handleHirePilotCandidateApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
     const staffingOfferId = form.get("staffingOfferId") ?? "";
+    const baseAirportId = String(form.get("baseAirportId") ?? "").trim().toUpperCase();
     const market = await backend.loadActiveStaffingMarket(saveId);
     const offer = market?.offers.find((entry) => entry.staffingOfferId === staffingOfferId && entry.offerStatus === "available" && entry.laborCategory === "pilot");
     if (!offer) {
@@ -1174,6 +1177,7 @@ async function handleHirePilotCandidateApi(response, saveId, form) {
             coverageUnits: offer.coverageUnits,
             fixedCostAmount: offer.fixedCostAmount,
             variableCostRate: offer.variableCostRate,
+            baseAirportId,
             startsAtUtc: offer.startsAtUtc,
             endsAtUtc: offer.endsAtUtc,
             sourceOfferId: offer.staffingOfferId,

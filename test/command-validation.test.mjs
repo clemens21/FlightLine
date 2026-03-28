@@ -227,6 +227,27 @@ try {
     true,
   );
 
+  const invalidBaseAirportResult = await backend.dispatch({
+    commandId: `cmd_${staffingSaveId}_staffing_invalid_base_airport`,
+    saveId: staffingSaveId,
+    commandName: "ActivateStaffingPackage",
+    issuedAtUtc: staffingStartedAtUtc,
+    actorType: "player",
+    payload: {
+      laborCategory: "pilot",
+      employmentModel: "direct_hire",
+      qualificationGroup: "single_turboprop_utility",
+      coverageUnits: 1,
+      fixedCostAmount: 4_200,
+      baseAirportId: "INVALID_AIRPORT",
+    },
+  });
+  assert.equal(invalidBaseAirportResult.success, false);
+  assert.equal(
+    invalidBaseAirportResult.hardBlockers.some((entry) => /Base airport INVALID_AIRPORT was not found/i.test(entry)),
+    true,
+  );
+
   const staffingState = await backend.loadStaffingState(staffingSaveId);
   assert.ok(staffingState);
   assert.equal(staffingState.staffingPackages.length, 0);

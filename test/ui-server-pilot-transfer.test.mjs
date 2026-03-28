@@ -157,22 +157,24 @@ try {
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-detail-body="hire"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-scroll-region="hire:list"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-staffing-scroll-region="hire:detail"'), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Pilot</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Base</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Certification(s)</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Total hours</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Reliability</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Stress</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Procedure</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Training</th>"), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="pilot"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="base"'), false);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="certifications"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="hours"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="reliability"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="stress"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="procedure"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="training"'), true);
   assert.equal(zeroStateTab.contentHtml.includes("<th>Lane hours</th>"), false);
   assert.equal(zeroStateTab.contentHtml.includes("<th>Starting price</th>"), false);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Direct hire</th>"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Contract hire</th>"), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="direct_hire"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="contract_hire"'), true);
   assert.equal(zeroStateTab.contentHtml.includes('data-pilot-stat-rating="operationalReliability"'), true);
   assert.equal(zeroStateTab.contentHtml.includes("SEPL"), true);
-  assert.equal(zeroStateTab.contentHtml.includes("<th>Fit</th>"), false);
+  assert.equal(zeroStateTab.contentHtml.includes('data-staffing-hire-column="fit"'), false);
   assert.equal(zeroStateTab.contentHtml.includes("Activate Staffing"), false);
+  assert.equal(zeroStateTab.contentHtml.includes('name="baseAirportId"'), true);
+  assert.equal(zeroStateTab.contentHtml.includes('value="KDEN"'), true);
   assert.equal(zeroStateTab.contentHtml.includes("available soon"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Coverage Summary"), false);
   assert.equal(zeroStateTab.contentHtml.includes("Packages"), false);
@@ -203,12 +205,14 @@ try {
     tab: "staffing",
     saveId: zeroSaveId,
     staffingOfferId: zeroCandidateMatch[1],
+    baseAirportId: "KCOS",
   });
   assert.equal(zeroHireResult.response.ok, true);
   assert.equal(zeroHireResult.payload.success, true);
   assert.equal(zeroHireResult.payload.tab.tabId, "staffing");
   assert.equal(zeroHireResult.payload.tab.contentHtml.includes("data-staffing-pilot-row"), true);
   assert.equal(zeroHireResult.payload.tab.contentHtml.includes("No pilot roster yet."), false);
+  assert.equal(zeroHireResult.payload.tab.contentHtml.includes("KCOS"), true);
   const hiredEmployeePortrait = extractRowPortrait(zeroHireResult.payload.tab.contentHtml, "data-staffing-pilot-row", "employees-row");
   const hiredEmployeeDetailPortrait = extractFirstSurfaceSrc(zeroHireResult.payload.tab.contentHtml, "employees-detail");
   assert.equal(hiredEmployeePortrait.src, zeroCandidatePortrait.src);

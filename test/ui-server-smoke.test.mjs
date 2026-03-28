@@ -307,7 +307,7 @@ try {
   assert.ok((staffingTab.contentHtml.match(/data-pilot-candidate-row=/g) ?? []).length >= 8);
   assert.equal(staffingTab.contentHtml.includes("N208HT"), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="pilot"'), true);
-  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="base"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="base"'), false);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="certifications"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="hours"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-column="reliability"'), true);
@@ -326,11 +326,13 @@ try {
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-control-type="search"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-control-type="filter"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="pilotSearch"'), true);
-  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="baseSearch"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="baseSearch"'), false);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="certificationFilter"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="directCostMin"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="contractHourlyMin"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-hire-field="contractSortBasis"'), true);
+  assert.equal(staffingTab.contentHtml.includes('name="baseAirportId"'), true);
+  assert.equal(staffingTab.contentHtml.includes('data-staffing-base-airport-input'), true);
   assert.equal(staffingTab.contentHtml.includes('data-staffing-candidate-contract-hourly-rate'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="operationalReliability"'), true);
   assert.equal(staffingTab.contentHtml.includes('data-pilot-stat-rating="stressTolerance"'), true);

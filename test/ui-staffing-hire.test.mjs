@@ -74,7 +74,7 @@ try {
   await page.setViewportSize({ width: 1800, height: 1000 });
   assert.equal(await page.locator("button[aria-label='Pilot search']").count(), 1);
   assert.equal(await page.locator("button[aria-label='Pilot filter']").count(), 0);
-  assert.equal(await page.locator("button[aria-label='Base search']").count(), 1);
+  assert.equal(await page.locator("button[aria-label='Base search']").count(), 0);
   assert.equal(await page.locator("button[aria-label='Base filter']").count(), 0);
   assert.equal(await page.locator("button[aria-label='Certification(s) search']").count(), 0);
   assert.equal(await page.locator("button[aria-label='Certification(s) filter']").count(), 1);
@@ -89,7 +89,6 @@ try {
   const baselineCandidates = await page.evaluate(() => {
     return [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")].map((row) => ({
       name: row.getAttribute("data-staffing-candidate-name") ?? "",
-      baseSearch: row.getAttribute("data-staffing-candidate-base-search") ?? "",
       certifications: (row.getAttribute("data-staffing-candidate-certifications") ?? "").split("|").filter(Boolean),
       hours: Number.parseFloat(row.getAttribute("data-staffing-candidate-hours") ?? "0") || 0,
       reliability: Number.parseFloat(row.getAttribute("data-staffing-candidate-operational-reliability") ?? "0") || 0,
@@ -102,7 +101,6 @@ try {
   const multiCertCandidate = baselineCandidates.find((candidate) => candidate.certifications.length >= 2) ?? candidateSample;
   const firstCandidateName = candidateSample?.name ?? "";
   const pilotSearchTerm = firstCandidateName.split(" ")[0] ?? firstCandidateName;
-  const baseSearchTerm = (candidateSample?.baseSearch ?? "").split(/\s+/)[0] ?? "";
   const selectedHours = String(multiCertCandidate?.hours ?? 0);
   const selectedReliability = String(multiCertCandidate?.reliability ?? 0);
   assert.ok(baselineVisibleCandidates >= 8);
@@ -157,19 +155,6 @@ try {
   assert.deepEqual(filteredColumnWidths, baselineColumnWidths);
   await clickUi(page.locator("button[aria-label='Pilot search']"));
   await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill("");
-  await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
-  await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
-
-  await clickUi(page.locator("button[aria-label='Base search']"));
-  await page.locator("[data-staffing-hire-popover='base'] [data-staffing-hire-field='baseSearch']").fill(baseSearchTerm);
-  await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
-  await page.waitForFunction((expectedSearch) => {
-    const visibleRows = [...document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])")];
-    return visibleRows.length > 0
-      && visibleRows.every((row) => (row.getAttribute("data-staffing-candidate-base-search") ?? "").toLowerCase().includes(expectedSearch));
-  }, baseSearchTerm.toLowerCase());
-  await clickUi(page.locator("button[aria-label='Base search']"));
-  await page.locator("[data-staffing-hire-popover='base'] [data-staffing-hire-field='baseSearch']").fill("");
   await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
   await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);
 
@@ -375,6 +360,11 @@ try {
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='direct_hire']").count(), expectedDirectCards);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-hire-offer-path='contract_hire']").count(), expectedContractCards);
   assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-strengths-weaknesses] li").count(), 3);
+  assert.equal(await page.locator("[data-staffing-detail-body='hire'] [data-staffing-base-airport-input]").count(), expectedDirectCards + expectedContractCards);
+  const baseAirportDefaults = await page.locator("[data-staffing-detail-body='hire'] [data-staffing-base-airport-input]").evaluateAll((inputs) =>
+    inputs.map((input) => input instanceof HTMLInputElement ? input.value : ""),
+  );
+  assert.deepEqual(baseAirportDefaults, new Array(expectedDirectCards + expectedContractCards).fill("KDEN"));
   const hireDetailScroll = await page.locator("[data-staffing-detail-body='hire']").evaluate((element) => {
     if (!(element instanceof HTMLElement)) {
       return { scrollHeight: 0, clientHeight: 0 };

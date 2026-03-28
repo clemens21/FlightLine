@@ -16,7 +16,6 @@ const marketStoragePrefix = "flightline:staffing-market:";
 
 type StaffingMarketPopoverKey =
   | "pilot"
-  | "base"
   | "certifications"
   | "hours"
   | "reliability"
@@ -30,7 +29,6 @@ type StaffingContractSortBasis = "upfront" | "hourly";
 type StaffingMarketSortKey =
   | "relevance"
   | "name"
-  | "base"
   | "certifications"
   | "hours"
   | "operationalReliability"
@@ -43,7 +41,6 @@ type StaffingMarketSortDirection = "asc" | "desc";
 
 interface StaffingMarketState {
   pilotSearch: string;
-  baseSearch: string;
   certificationFilters: string[];
   hoursMin: string;
   hoursMax: string;
@@ -66,7 +63,6 @@ interface StaffingMarketState {
 
 const defaultMarketState: StaffingMarketState = {
   pilotSearch: "",
-  baseSearch: "",
   certificationFilters: [],
   hoursMin: "",
   hoursMax: "",
@@ -409,9 +405,6 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
       case "pilotSearch":
         updateMarketState({ pilotSearch: (target as HTMLInputElement).value });
         return;
-      case "baseSearch":
-        updateMarketState({ baseSearch: (target as HTMLInputElement).value });
-        return;
       case "certificationFilter":
         updateMarketState({
           certificationFilters: Array.from(
@@ -702,7 +695,6 @@ function restoreMarketState(saveId: string): StaffingMarketState | null {
         : typeof parsed.search === "string"
           ? parsed.search
           : defaultMarketState.pilotSearch,
-      baseSearch: typeof parsed.baseSearch === "string" ? parsed.baseSearch : defaultMarketState.baseSearch,
       certificationFilters: normalizeCertificationFilters(parsed.certificationFilters ?? parsed.certificationFilter),
       hoursMin: normalizeOptionalNumberString(parsed.hoursMin),
       hoursMax: normalizeOptionalNumberString(parsed.hoursMax),
@@ -758,7 +750,6 @@ function normalizeCertificationFilters(rawValue: unknown): string[] {
 
 function normalizeMarketSortKey(rawValue: unknown): StaffingMarketSortKey {
   return rawValue === "name"
-    || rawValue === "base"
     || rawValue === "certifications"
     || rawValue === "hours"
     || rawValue === "operationalReliability"
@@ -802,7 +793,6 @@ function parseOptionalNumber(rawValue: string): number | null {
 
 function normalizeMarketPopoverKey(rawValue: unknown): StaffingMarketPopoverKey {
   return rawValue === "pilot"
-    || rawValue === "base"
     || rawValue === "certifications"
     || rawValue === "hours"
     || rawValue === "reliability"
@@ -826,7 +816,6 @@ function defaultSortDirectionForKey(sortKey: StaffingMarketSortKey): StaffingMar
     case "trainingAptitude":
       return "desc";
     case "name":
-    case "base":
     case "direct_cost":
     case "contract_cost":
     default:
@@ -838,8 +827,6 @@ function getSortKeyForHeader(columnKey: string | undefined): StaffingMarketSortK
   switch (columnKey) {
     case "pilot":
       return "name";
-    case "base":
-      return "base";
     case "certifications":
       return "certifications";
     case "hours":
@@ -904,7 +891,6 @@ function positionActivePopover(host: HTMLElement, activePopover: StaffingMarketP
 function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState, activePopover: StaffingMarketPopoverKey): void {
   const controls: Array<[string, string]> = [
     ["pilotSearch", "input[data-staffing-hire-field='pilotSearch']"],
-    ["baseSearch", "input[data-staffing-hire-field='baseSearch']"],
     ["hoursMin", "input[data-staffing-hire-field='hoursMin']"],
     ["hoursMax", "input[data-staffing-hire-field='hoursMax']"],
     ["reliabilityMin", "input[data-staffing-hire-field='reliabilityMin']"],
@@ -931,9 +917,6 @@ function syncMarketControls(host: HTMLElement, marketState: StaffingMarketState,
     switch (field) {
       case "pilotSearch":
         control.value = marketState.pilotSearch;
-        break;
-      case "baseSearch":
-        control.value = marketState.baseSearch;
         break;
       case "hoursMin":
         control.value = marketState.hoursMin;
@@ -1026,9 +1009,6 @@ function applyMarketState(host: HTMLElement, marketState: StaffingMarketState, a
   const rows = Array.from(table.querySelectorAll<HTMLTableRowElement>("[data-pilot-candidate-row]"));
   const visibleRows = rows.filter((row) => {
     if (!matchesTextFilter(row.dataset.staffingCandidateName, marketState.pilotSearch)) {
-      return false;
-    }
-    if (!matchesTextFilter(row.dataset.staffingCandidateBaseSearch, marketState.baseSearch)) {
       return false;
     }
     if (!matchesCertificationFilters(row, marketState.certificationFilters)) {
@@ -1141,13 +1121,6 @@ function compareCandidateRows(left: HTMLTableRowElement, right: HTMLTableRowElem
   switch (state.sortKey) {
     case "name": {
       const comparison = (left.dataset.staffingCandidateName ?? "").localeCompare(right.dataset.staffingCandidateName ?? "");
-      if (comparison !== 0) {
-        return state.sortDirection === "asc" ? comparison : -comparison;
-      }
-      break;
-    }
-    case "base": {
-      const comparison = (left.dataset.staffingCandidateBaseSearch ?? "").localeCompare(right.dataset.staffingCandidateBaseSearch ?? "");
       if (comparison !== 0) {
         return state.sortDirection === "asc" ? comparison : -comparison;
       }

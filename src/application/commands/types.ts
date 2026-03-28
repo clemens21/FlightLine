@@ -101,6 +101,7 @@ export interface ActivateStaffingPackagePayload {
   coverageUnits: number;
   fixedCostAmount: CurrencyAmount;
   variableCostRate?: CurrencyAmount;
+  baseAirportId?: AirportId;
   serviceRegionCode?: string;
   startsAtUtc?: UtcIsoString;
   endsAtUtc?: UtcIsoString;

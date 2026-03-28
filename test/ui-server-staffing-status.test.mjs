@@ -508,7 +508,7 @@ try {
   const contractStaffingTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(contractSaveId)}/tab/staffing`);
   assert.equal(contractStaffingTab.tabId, "staffing");
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="pilot"/);
-  assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="base"/);
+  assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="base"/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-popover-toggle="certifications"/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort-button="name"/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-sort-button="direct_cost"/);
@@ -518,6 +518,8 @@ try {
   assert.doesNotMatch(contractStaffingTab.contentHtml, /data-staffing-hire-path-filter/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-control-type="search"/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-hire-control-type="filter"/);
+  assert.match(contractStaffingTab.contentHtml, /name="baseAirportId"/);
+  assert.match(contractStaffingTab.contentHtml, /data-staffing-base-airport-input/);
   assert.match(contractStaffingTab.contentHtml, /data-staffing-candidate-contract-hourly-rate=/);
   const contractRow = extractFirstPilotRow(contractStaffingTab.contentHtml);
   const contractDetail = extractEmployeeDetail(contractStaffingTab.contentHtml);

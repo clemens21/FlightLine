@@ -236,6 +236,7 @@ try {
   const selectedDirectSiblingOffer = selectedDirectPair.contractOffer;
   const directCompanyBeforeHire = await backend.loadCompanyContext(directSaveId);
   assert.ok(directCompanyBeforeHire);
+  const selectedBaseAirportId = "KCOS";
 
   const directHireResult = await backend.dispatch({
     commandId: `cmd_${directSaveId}_hire_candidate`,
@@ -250,6 +251,7 @@ try {
       coverageUnits: selectedDirectOffer.coverageUnits,
       fixedCostAmount: selectedDirectOffer.fixedCostAmount,
       variableCostRate: selectedDirectOffer.variableCostRate,
+      baseAirportId: selectedBaseAirportId,
       startsAtUtc: selectedDirectOffer.startsAtUtc,
       endsAtUtc: selectedDirectOffer.endsAtUtc,
       sourceOfferId: selectedDirectOffer.staffingOfferId,
@@ -284,6 +286,8 @@ try {
   assert.equal(directPilot.homeCity, selectedDirectOffer.homeCity);
   assert.equal(directPilot.homeRegionCode, selectedDirectOffer.homeRegionCode);
   assert.equal(directPilot.homeCountryCode, selectedDirectOffer.homeCountryCode);
+  assert.equal(directPilot.homeAirportId, selectedBaseAirportId);
+  assert.equal(directPilot.currentAirportId, selectedBaseAirportId);
   assert.deepEqual(directPilot.candidateProfile, selectedDirectOffer.candidateProfile);
   assert.equal(directPilot.sourceCandidateProfileId, selectedDirectOffer.candidateProfileId);
 
@@ -346,6 +350,8 @@ try {
   assert.equal(reloadedDirectPilot.homeCity, selectedDirectOffer.homeCity);
   assert.equal(reloadedDirectPilot.homeRegionCode, selectedDirectOffer.homeRegionCode);
   assert.equal(reloadedDirectPilot.homeCountryCode, selectedDirectOffer.homeCountryCode);
+  assert.equal(reloadedDirectPilot.homeAirportId, selectedBaseAirportId);
+  assert.equal(reloadedDirectPilot.currentAirportId, selectedBaseAirportId);
   assert.deepEqual(reloadedDirectPilot.candidateProfile, selectedDirectOffer.candidateProfile);
   assert.equal(reloadedDirectPilot.sourceCandidateProfileId, selectedDirectOffer.candidateProfileId);
 

@@ -1716,8 +1716,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .staffing-hire-market-list td:nth-child(7),
     .staffing-hire-market-list td:nth-child(8),
-    .staffing-hire-market-list td:nth-child(9),
-    .staffing-hire-market-list td:nth-child(10) {
+    .staffing-hire-market-list td:nth-child(9) {
       white-space: nowrap;
     }
     .staffing-certifications-cell {
@@ -1918,6 +1917,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-hire-choice-form--embedded button {
       width: auto;
       min-width: 180px;
+    }
+    .staffing-hire-base-field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+      width: 100%;
+    }
+    .staffing-hire-base-field input {
+      width: 100%;
+      min-width: 0;
+      text-transform: uppercase;
     }
     .staffing-snapshot-grid {
       display: grid;

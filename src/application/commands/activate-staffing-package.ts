@@ -139,6 +139,8 @@ export async function handleActivateStaffingPackage(
   const effectiveCoverageUnits = marketOffer?.coverageUnits ?? command.payload.coverageUnits;
   const effectiveFixedCostAmount = marketOffer?.fixedCostAmount ?? command.payload.fixedCostAmount;
   const effectiveVariableCostRate = marketOffer?.variableCostRate ?? command.payload.variableCostRate ?? null;
+  const requestedBaseAirportId = command.payload.baseAirportId?.trim().toUpperCase() || "";
+  const effectiveBaseAirportId = requestedBaseAirportId || companyContext?.homeBaseAirportId || "";
   const effectiveServiceRegionCode = command.payload.serviceRegionCode?.trim() || null;
 
   if (!qualificationGroup) {
@@ -153,6 +155,12 @@ export async function handleActivateStaffingPackage(
     hardBlockers.push("Staffing fixed cost amount must be a finite number.");
   } else if (effectiveFixedCostAmount < 0) {
     hardBlockers.push("Staffing fixed cost amount cannot be negative.");
+  }
+
+  if (!effectiveBaseAirportId) {
+    hardBlockers.push("Base airport is required for staffing activation.");
+  } else if (!dependencies.airportReference.findAirport(effectiveBaseAirportId)) {
+    hardBlockers.push(`Base airport ${effectiveBaseAirportId} was not found.`);
   }
 
   if (effectiveVariableCostRate !== null && !Number.isFinite(effectiveVariableCostRate)) {
@@ -395,6 +403,20 @@ export async function handleActivateStaffingPackage(
         dependencies.airportReference,
       );
 
+      dependencies.saveDatabase.run(
+        `UPDATE named_pilot
+        SET home_airport_id = $home_airport_id,
+            current_airport_id = $current_airport_id,
+            updated_at_utc = $updated_at_utc
+        WHERE staffing_package_id = $staffing_package_id`,
+        {
+          $home_airport_id: effectiveBaseAirportId,
+          $current_airport_id: effectiveBaseAirportId,
+          $updated_at_utc: hiredAtUtc,
+          $staffing_package_id: staffingPackageId,
+        },
+      );
+
       if (marketOffer && marketOffer.displayName) {
         dependencies.saveDatabase.run(
           `UPDATE named_pilot
@@ -417,11 +439,11 @@ export async function handleActivateStaffingPackage(
             $certifications_json: pilotCertificationsToJson(
               parsePilotCertificationsJson(marketOffer.certificationsJson, qualificationGroup),
             ),
-            $home_airport_id: companyContext!.homeBaseAirportId,
+            $home_airport_id: effectiveBaseAirportId,
             $home_city: marketOffer.homeCity ?? null,
             $home_region_code: marketOffer.homeRegionCode ?? null,
             $home_country_code: marketOffer.homeCountryCode ?? null,
-            $current_airport_id: marketOffer.currentAirportId ?? companyContext!.homeBaseAirportId,
+            $current_airport_id: effectiveBaseAirportId,
             $updated_at_utc: hiredAtUtc,
             $staffing_package_id: staffingPackageId,
           },
