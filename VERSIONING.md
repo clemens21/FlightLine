@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.11.0`
+- `0.12.0`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -50,6 +50,7 @@ The contracts available-board square-map, table-model, row-interaction, and test
 The UI browser smoke decomposition, targeted suite runner, and test-hardening follow-up advances the release to `0.10.1`.
 The contracts-board minimal header-control parity and map-width follow-up advances the release to `0.10.2`.
 The country-biased staffing identity, hometown metadata, migration, and larger staffing-market landing advances the release to `0.11.0`.
+The staffing base-airport hire control and table-column removal landing advances the release to `0.12.0`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
