@@ -1113,17 +1113,12 @@ export function mountContractsTab(
             <strong>${escapeHtml(toolbarHeadline)}</strong>
             <span class="muted">${toolbarSubtitle}</span>
           </div>
-          <div class="pill-row">
-            <span class="pill">${escapeHtml(String(availableCount + activeCount + closedCount))} visible</span>
-            <span class="pill">${escapeHtml(String(availableCount))} open market</span>
-            <span class="pill">${escapeHtml(String(activeCount))} accepted / active</span>
-            <span class="pill">${escapeHtml(String(closedCount))} closed</span>
-            <span class="pill">${escapeHtml(String(routePlanCount))} route plan</span>
+          <div class="contracts-toolbar-actions">
+            <div class="contracts-workspace-tabs" role="tablist" aria-label="Contracts workspace">
+              ${renderWorkspaceTab("board", resolveContractsWorkspaceTabLabel("board"), state.workspaceTab)}
+              ${renderWorkspaceTab("planning", `${resolveContractsWorkspaceTabLabel("planning")} ${routePlanCount > 0 ? `(${routePlanCount})` : ""}`.trim(), state.workspaceTab)}
+            </div>
           </div>
-        </div>
-        <div class="contracts-workspace-tabs" role="tablist" aria-label="Contracts workspace">
-          ${renderWorkspaceTab("board", resolveContractsWorkspaceTabLabel("board"), state.workspaceTab)}
-          ${renderWorkspaceTab("planning", `${resolveContractsWorkspaceTabLabel("planning")} ${routePlanCount > 0 ? `(${routePlanCount})` : ""}`.trim(), state.workspaceTab)}
         </div>
         ${state.workspaceTab === "board" ? boardWorkspaceHtml : planningWorkspaceHtml}
       </div>

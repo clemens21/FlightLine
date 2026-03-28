@@ -104,6 +104,9 @@ try {
 
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='board']").getAttribute("aria-selected"), "true");
   assert.equal(await page.locator(".contracts-workspace-tab[data-workspace-tab='planning']").getAttribute("aria-selected"), "false");
+  assert.equal(await page.locator(".contracts-toolbar-actions").count(), 1);
+  assert.equal(await page.locator(".contracts-workspace-tabs").count(), 1);
+  assert.equal(await page.locator(".contracts-toolbar .pill-row").count(), 0);
   assert.equal(await page.locator(".contracts-main-body > .contracts-filters").count(), 0);
   assert.equal(await page.locator("[data-plan-add-offer]").count(), 0);
   assert.ok((await page.locator("[data-contracts-board-popover-toggle]").count()) >= 7);

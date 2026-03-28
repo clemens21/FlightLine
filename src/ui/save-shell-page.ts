@@ -2089,10 +2089,52 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       justify-content: space-between;
       gap: 16px;
     }
+    .contracts-toolbar-actions {
+      display: flex;
+      justify-content: end;
+      align-items: start;
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
     .contracts-toolbar strong {
       display: block;
       font-size: 20px;
       margin: 4px 0;
+    }
+    .contracts-workspace-tabs {
+      display: inline-flex;
+      flex-wrap: wrap;
+      justify-content: end;
+      gap: 10px;
+    }
+    .contracts-workspace-tab,
+    body[data-theme="dark"] .contracts-workspace-tab {
+      appearance: none;
+      border: 1px solid rgba(111,201,212,.18) !important;
+      background: rgba(18, 40, 55, .88) !important;
+      color: #9bb8c9 !important;
+      border-radius: 14px;
+      padding: 10px 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font: inherit;
+      cursor: pointer;
+      transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .contracts-workspace-tab.current,
+    .contracts-workspace-tab[aria-selected="true"],
+    body[data-theme="dark"] .contracts-workspace-tab.current,
+    body[data-theme="dark"] .contracts-workspace-tab[aria-selected="true"] {
+      background: var(--accent) !important;
+      border-color: transparent !important;
+      color: #091018 !important;
+    }
+    .contracts-workspace-tab[aria-selected="false"],
+    body[data-theme="dark"] .contracts-workspace-tab[aria-selected="false"] {
+      background: rgba(18, 40, 55, .88) !important;
+      border-color: rgba(111,201,212,.18) !important;
+      color: #9bb8c9 !important;
     }
     .contracts-main-head {
       align-items: start;
@@ -2161,6 +2203,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-rows: auto minmax(0, 1fr);
       overflow: hidden;
       align-content: start;
+    }
+    @media (max-width: 1200px) {
+      .contracts-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .contracts-toolbar-actions,
+      .contracts-workspace-tabs {
+        justify-content: start;
+        margin-left: 0;
+      }
     }
     .contracts-main-body {
       display: flex;
