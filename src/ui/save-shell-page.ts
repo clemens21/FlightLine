@@ -1193,6 +1193,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       flex: 1 1 auto;
     }
+    .staffing-hire-table-panel > .panel-body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
     .staffing-hire-table-body {
       display: flex;
       flex-direction: column;
@@ -1211,6 +1217,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       flex: 1 1 auto;
       min-height: 0;
       max-height: 100%;
+      position: relative;
       overflow: auto;
       overscroll-behavior: contain;
     }
