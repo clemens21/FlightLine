@@ -380,6 +380,13 @@ try {
   assert.equal(hireDetailHtml.includes("Type and availability are fixed by this staffing offer."), false);
   assert.equal(hireDetailHtml.includes("Cabin General Coverage"), false);
   assert.equal(hireDetailHtml.includes("data-support-coverage-start"), false);
+  const employeeDetailBodyMatch = staffingTab.contentHtml.match(/data-staffing-detail-body="employees"[^>]*>([\s\S]*?)<\/div><div hidden data-staffing-detail-bank="employees">/);
+  assert.ok(employeeDetailBodyMatch?.[1]);
+  const employeeDetailHtml = employeeDetailBodyMatch[1];
+  assert.equal(employeeDetailHtml.includes("Operational profile"), true);
+  assert.equal((employeeDetailHtml.match(/data-pilot-stat-rating=/g) ?? []).length >= 4, true);
+  assert.equal(employeeDetailHtml.includes("Hometown"), true);
+  assert.equal(employeeDetailHtml.includes("Coverage posture"), true);
   const trainingMatch = staffingTab.contentHtml.match(/data-pilot-training-start="([^"]+)"/);
   assert.ok(trainingMatch?.[1]);
 

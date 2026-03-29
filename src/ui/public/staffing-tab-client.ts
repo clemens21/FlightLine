@@ -200,6 +200,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
   }
 
   function render(): void {
+    host.dataset.staffingActiveView = activeView;
     const buttons = host.querySelectorAll<HTMLElement>("[data-staffing-workspace-tab]");
     const panels = host.querySelectorAll<HTMLElement>("[data-staffing-workspace-panel]");
 

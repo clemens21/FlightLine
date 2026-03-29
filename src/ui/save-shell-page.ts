@@ -2046,6 +2046,15 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .staffing-stat-card .pilot-stat-rating.compact .pilot-stat-score {
       font-size: 12px;
     }
+    .staffing-employee-note {
+      display: grid;
+      gap: 4px;
+      align-content: start;
+    }
+    .staffing-employee-note strong {
+      display: block;
+      font-size: 15px;
+    }
     .staffing-detail-note-list {
       margin: 0;
       padding-left: 18px;
@@ -2836,6 +2845,27 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: hidden;
     }
+    .aircraft-workbench.staffing-employees-workbench {
+      grid-template-columns: minmax(300px, 0.68fr) minmax(0, 1.32fr);
+      gap: 16px;
+    }
+    .staffing-tab-host[data-staffing-active-view="employees"],
+    .staffing-tab-host[data-staffing-active-view="employees"] .staffing-workspace-panel,
+    .staffing-tab-host[data-staffing-active-view="employees"] .staffing-workspace-shell,
+    .staffing-tab-host[data-staffing-active-view="employees"] .staffing-workspace-panel > .panel-body,
+    .staffing-tab-host[data-staffing-active-view="employees"] .staffing-workspace-shell > [data-staffing-workspace-panel="employees"] {
+      height: auto;
+      overflow: visible;
+    }
+    .staffing-tab-host[data-staffing-active-view="employees"] .staffing-workspace-panel > .panel-body,
+    .staffing-tab-host[data-staffing-active-view="employees"] .staffing-workspace-shell {
+      grid-template-rows: auto;
+    }
+    .staffing-tab-host[data-staffing-active-view="employees"] .aircraft-workbench.staffing-employees-workbench {
+      height: auto;
+      overflow: visible;
+      align-items: start;
+    }
     .aircraft-workbench {
       min-height: 0;
       height: 100%;
@@ -2874,6 +2904,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-rows: auto minmax(0, 1fr);
       gap: 14px;
       overflow: hidden;
+    }
+    .staffing-roster-table {
+      width: 100%;
+      table-layout: fixed;
     }
     .aircraft-market-body {
       min-height: 0;
@@ -3125,6 +3159,103 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .aircraft-detail-body {
       min-height: 0;
       overflow: auto;
+    }
+    .staffing-employee-detail-body {
+      padding: 12px 14px 14px;
+    }
+    .staffing-tab-host[data-staffing-active-view="employees"] [data-staffing-detail-body="employees"] {
+      overflow: visible;
+    }
+    .staffing-employee-detail-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr) minmax(240px, 0.8fr);
+      gap: 10px;
+      align-content: start;
+    }
+    .staffing-employee-detail-card {
+      min-width: 0;
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      padding: 12px 14px;
+    }
+    .staffing-employee-detail-card--hero,
+    .staffing-employee-detail-card--actions {
+      grid-column: 1 / -1;
+    }
+    .staffing-employee-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: start;
+    }
+    .staffing-employee-hero-actions {
+      min-width: 228px;
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      justify-items: start;
+    }
+    .staffing-employee-hero-actions .meta-stack,
+    .staffing-employee-hero-actions form.inline {
+      width: 100%;
+    }
+    .staffing-employee-hero-actions .muted {
+      font-size: 12px;
+      line-height: 1.3;
+    }
+    .staffing-employee-detail-grid .aircraft-facts-list {
+      gap: 0;
+    }
+    .staffing-employee-detail-grid .aircraft-fact-row {
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 8px;
+      padding: 6px 0;
+    }
+    .staffing-employee-detail-grid .aircraft-fact-copy strong {
+      font-size: 13px;
+      line-height: 1.3;
+    }
+    .staffing-employee-detail-grid .aircraft-fact-copy .muted {
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .staffing-employee-detail-grid .staff-identity-card {
+      gap: 10px;
+      align-items: center;
+    }
+    .staffing-employee-detail-grid .summary-list {
+      gap: 10px;
+    }
+    .staffing-employee-detail-grid .summary-item {
+      padding: 8px 10px;
+    }
+    .staffing-employee-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .staffing-employee-summary-item {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+      align-content: start;
+      padding: 8px 10px;
+    }
+    .staffing-employee-summary-item--wide {
+      grid-column: 1 / -1;
+    }
+    .staffing-employee-summary-item strong {
+      font-size: 13px;
+      line-height: 1.3;
+    }
+    .staffing-employee-summary-item .muted {
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .staffing-employee-detail-grid .staffing-stat-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
     }
     .aircraft-detail-actions {
       display: flex;
@@ -3998,11 +4129,19 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         width: min(980px, calc(100% - 32px));
       }
       .staffing-hire-detail-grid,
+      .staffing-employee-detail-grid,
+      .staffing-employee-summary-grid,
       .staffing-snapshot-grid,
       .staffing-stat-grid,
       .staffing-hire-detail-grid .staffing-comparison-grid,
       .staffing-coverage-strip {
         grid-template-columns: 1fr;
+      }
+      .staffing-employee-hero {
+        grid-template-columns: 1fr;
+      }
+      .staffing-employee-hero-actions {
+        min-width: 0;
       }
       .staffing-comparison-card {
         grid-template-columns: 1fr;
