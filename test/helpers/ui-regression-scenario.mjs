@@ -105,6 +105,67 @@ export async function seedUiRegressionSave(backend, {
   }
 
   await backend.withExistingSaveDatabase(saveId, async (context) => {
+    const companyContext = await backend.loadCompanyContext(saveId);
+    assert.ok(companyContext);
+    const guaranteedDispatchContractId = `company_contract_${saveId}_dispatchable`;
+
+    context.saveDatabase.run(
+      `INSERT INTO company_contract (
+        company_contract_id,
+        company_id,
+        origin_contract_offer_id,
+        archetype,
+        origin_airport_id,
+        destination_airport_id,
+        volume_type,
+        passenger_count,
+        cargo_weight_lb,
+        accepted_payout_amount,
+        penalty_model_json,
+        accepted_at_utc,
+        earliest_start_utc,
+        deadline_utc,
+        contract_state,
+        assigned_aircraft_id
+      ) VALUES (
+        $company_contract_id,
+        $company_id,
+        NULL,
+        $archetype,
+        $origin_airport_id,
+        $destination_airport_id,
+        $volume_type,
+        $passenger_count,
+        NULL,
+        $accepted_payout_amount,
+        $penalty_model_json,
+        $accepted_at_utc,
+        $earliest_start_utc,
+        $deadline_utc,
+        'accepted',
+        NULL
+      )`,
+      {
+        $company_contract_id: guaranteedDispatchContractId,
+        $company_id: companyContext.companyId,
+        $archetype: "regional_passenger",
+        $origin_airport_id: "KDEN",
+        $destination_airport_id: "KCOS",
+        $volume_type: "passenger",
+        $passenger_count: 6,
+        $accepted_payout_amount: 18_500,
+        $penalty_model_json: JSON.stringify({
+          lateCompletionPenaltyPercent: 22,
+          cancellationPenaltyPercent: 14,
+        }),
+        $accepted_at_utc: startedAtUtc,
+        $earliest_start_utc: "2026-03-16T15:15:00.000Z",
+        $deadline_utc: "2026-03-16T20:00:00.000Z",
+      },
+    );
+
+    seededAcceptedContractIds.unshift(guaranteedDispatchContractId);
+
     for (const companyContractId of seededAcceptedContractIds) {
       const mutation = addAcceptedContractToRoutePlan(context.saveDatabase, saveId, companyContractId);
       assert.equal(mutation.success, true);

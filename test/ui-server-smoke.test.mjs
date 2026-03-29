@@ -699,14 +699,14 @@ try {
     acceptedContractsForSelection,
     stagedDraftAircraftForSelection,
   );
-  assert.equal(prioritizedAcceptedContracts[0]?.companyContractId, liveAcceptedContract.companyContractId);
+  assert.equal(prioritizedAcceptedContracts[0]?.companyContractId, stagedAcceptedContract.companyContractId);
   assert.equal(
     resolveAcceptedContractSourceId(
       acceptedContractsForSelection,
       stagedDraftAircraftForSelection,
       stagedAcceptedContract.companyContractId,
     ),
-    liveAcceptedContract.companyContractId,
+    stagedAcceptedContract.companyContractId,
   );
   const resolvedFallbackSelection = resolveSourceSelection(
     {

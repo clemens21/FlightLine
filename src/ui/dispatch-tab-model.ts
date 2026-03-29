@@ -278,7 +278,7 @@ export function buildDispatchTabPayload({
 
   const routePlanItems = (visibleRoutePlan?.items ?? []).map((item) => buildRoutePlanItemView(item, airportReference));
   const acceptedContracts = contracts
-    .filter((contract) => contract.contractState === "accepted")
+    .filter((contract) => contract.contractState === "accepted" || contract.contractState === "assigned")
     .map((contract) => buildAcceptedContractView(contract, airportReference));
   const defaultSelectedAircraftId = resolveDefaultSelectedAircraftId(aircraft);
 

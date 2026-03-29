@@ -56,17 +56,17 @@ try {
   await waitForShellTitle(page, displayName);
 
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
-  assert.equal(await page.locator("[data-dispatch-ops-bar]").isVisible(), true);
-  assert.equal((await page.locator("[data-dispatch-ops-bar]").textContent())?.includes("Operations board"), true);
   await page.waitForFunction((registration) => {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
   }, uiRegressionRegistrations.draft);
   assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Economics"), true);
   assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Route Load"), true);
-  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Advance time"), true);
-  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
-  assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Contracts"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Selected Contract"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Next Step"), true);
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Build selected contract draft"), true);
+  assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), false);
 
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: uiRegressionRegistrations.lead }).first());
   await page.waitForFunction((registration) => {
@@ -91,11 +91,7 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
   assert.equal((await page.locator("[data-dispatch-selected-leg-detail]").textContent())?.includes("Attached Work"), true);
 
-  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Dispatch Source"), true);
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Contracts"), true);
-  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Planned Routes"), true);
-  assert.equal(await page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='accepted_contracts'][role='tab']").isVisible(), true);
-  assert.equal(await page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']").isVisible(), true);
   assert.equal(await page.locator("[data-dispatch-selected-work]").isVisible(), true);
 
   await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: uiRegressionRegistrations.constrained }).first());
@@ -103,8 +99,8 @@ try {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
   }, uiRegressionRegistrations.constrained);
-  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("No draft to commit"), true);
-  await page.waitForFunction(() => document.querySelector("[data-dispatch-validation-rail]")?.textContent?.includes("Readiness Checklist"));
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("No dispatch draft"), true);
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-validation-rail]")?.textContent?.includes("Dispatch Check"));
   const readinessRailText = (await page.locator("[data-dispatch-validation-rail]").textContent()) ?? "";
   assert.equal(readinessRailText.includes("Pass"), true);
   assert.equal(readinessRailText.includes("Watch"), true);
@@ -118,49 +114,30 @@ try {
     true,
   );
   const commitBarText = (await page.locator("[data-dispatch-commit-bar]").textContent()) ?? "";
-  assert.equal(commitBarText.includes("Commit impact"), true);
+  assert.equal(commitBarText.includes("Dispatch action"), true);
   assert.equal(commitBarText.includes("Aircraft impact"), true);
   assert.equal(commitBarText.includes("Pilot impact"), true);
   assert.equal(commitBarText.includes("Calendar impact"), true);
 
-  await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='planned_routes'][role='tab']"));
-  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Planned Routes"));
-  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-source-item]").length >= 2);
-  await page.waitForFunction(() => {
-    const packageContext = document.querySelector("[data-dispatch-route-plan-package]")?.textContent ?? "";
-    const selectedRow = document.querySelector("[data-dispatch-route-plan-selected-row]")?.textContent ?? "";
-    return packageContext.includes("Package context") && selectedRow.includes("Selected row");
-  });
-  assert.equal(await page.locator("[data-dispatch-route-ribbon]").isVisible(), true);
-  assert.ok((await page.locator("[data-dispatch-route-step]").count()) >= 2);
   await clickUi(page.locator("[data-dispatch-source-item]").nth(0));
-  const routePlanPackageTextFirst = await page.locator("[data-dispatch-route-plan-package]").textContent();
-  const routePlanSelectedRowTextFirst = await page.locator("[data-dispatch-route-plan-selected-row]").textContent();
-  assert.equal(routePlanPackageTextFirst?.includes("Package"), true);
-  assert.equal(routePlanSelectedRowTextFirst?.includes("Selected row"), true);
-  assert.notEqual(routePlanPackageTextFirst, routePlanSelectedRowTextFirst);
+  assert.equal((await page.locator("[data-dispatch-accepted-route-context]").textContent())?.includes("Route"), true);
   assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Status"), true);
   assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Window"), true);
   assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Payload"), true);
   assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Payout"), true);
-  await clickUi(page.locator("[data-dispatch-source-item]").nth(1));
-  const routePlanPackageTextSecond = await page.locator("[data-dispatch-route-plan-package]").textContent();
-  assert.equal(routePlanPackageTextSecond, routePlanPackageTextFirst);
-  await forceButtonSubmit(page, "[data-dispatch-stage-draft]");
+  await forceButtonSubmit(page, "[data-dispatch-auto-plan-contract]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const selectedAircraft = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
-    return flashText.includes("Selected aircraft is not dispatch ready.")
+    return flashText.includes("is not dispatchable in its current state.")
       && selectedAircraft.includes("N20CUI")
-      && commitButton.includes("No draft to commit");
+      && commitButton.includes("No dispatch draft");
   });
 
-  await clickUi(page.locator("[data-dispatch-input-lane] [data-dispatch-source-mode='accepted_contracts'][role='tab']"));
-  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-work]")?.textContent?.includes("Accepted Contracts"));
   await clickUi(page.locator("[data-dispatch-source-item]").first());
-  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Single contract path"), true);
-  await forceButtonSubmit(page, "[data-dispatch-stage-draft]");
+  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Aircraft Assignment"), true);
+  await forceButtonSubmit(page, "[data-dispatch-auto-plan-contract]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
@@ -168,7 +145,7 @@ try {
     const previewFailed = flashText.includes("is not dispatchable in its current state.")
       || flashText.includes("would miss the contract deadline for this aircraft.");
     return previewFailed
-      && commitButton.includes("No draft to commit")
+      && commitButton.includes("No dispatch draft")
       && legButtons.length === 0;
   }, { timeout: 45_000 });
 
@@ -177,6 +154,15 @@ try {
   assert.equal(await page.locator("[data-dispatch-draft-pilot-assignment]").isVisible(), true);
   assert.equal((await page.locator("[data-dispatch-pilot-recommendation]").textContent())?.includes("Recommended"), true);
   assert.equal(await page.locator("[data-dispatch-pilot-option-reason]").count() >= 1, true);
+  await forceButtonSubmit(page, "[data-dispatch-auto-plan-contract]");
+  await page.waitForFunction(() => {
+    const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+    const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+    const legButtons = document.querySelectorAll("[data-dispatch-leg-select]");
+    return flashText.includes("Drafted schedule")
+      && commitButton.includes("Dispatch contract")
+      && legButtons.length === 1;
+  });
 
   const { recommendedPilotId, overridePilotId } = await page.evaluate(() => {
     const optionCards = [...document.querySelectorAll("[data-dispatch-pilot-option]")];
@@ -194,17 +180,16 @@ try {
   assert.notEqual(overridePilotId, recommendedPilotId);
 
   await clickUi(page.locator(`[data-dispatch-pilot-override='${overridePilotId}']`));
-  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
+  assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Dispatch contract"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
-  await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
-  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
-  await clickUi(page.locator(`[data-dispatch-pilot-override='${overridePilotId}']`));
+  await clickUi(page.locator("[data-dispatch-leg-select]").first());
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KDEN -> KCOS"));
   await clickUi(page.locator("[data-dispatch-commit-button]"));
   await page.waitForFunction((selectedPilotId) => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
     const commitButton = document.querySelector("[data-dispatch-commit-button]");
     return flashText.includes("Committed schedule")
-      && commitButton?.textContent?.includes("Already committed")
+      && commitButton?.textContent?.includes("Already dispatched")
       && Boolean(document.querySelector(`[data-dispatch-assigned-pilot='${selectedPilotId}']`));
   }, overridePilotId);
 } finally {
