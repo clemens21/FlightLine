@@ -263,6 +263,23 @@ export function mountContractsTab(
   let lastY = 0;
   let textFilterDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let activeBoardPopover: ContractsBoardPopoverKey | null = null;
+  let pendingAvailableOfferSelectionTimeout: number | null = null;
+  let pendingAvailableOfferId: string | null = null;
+
+  function clearPendingAvailableOfferSelection(): void {
+    if (pendingAvailableOfferSelectionTimeout !== null) {
+      window.clearTimeout(pendingAvailableOfferSelectionTimeout);
+      pendingAvailableOfferSelectionTimeout = null;
+    }
+    pendingAvailableOfferId = null;
+  }
+
+  function selectAvailableOffer(contractOfferId: string): void {
+    state.boardTab = "available";
+    state.selectedOfferId = contractOfferId;
+    focusSelectedRoute(state);
+    render();
+  }
 
   focusSelectedRoute(state);
   render();
@@ -272,6 +289,10 @@ export function mountContractsTab(
     const target = event.target instanceof Element ? event.target : null;
     if (!target) {
       return;
+    }
+    const clickedOfferRow = target.closest<HTMLElement>("[data-select-offer-row]");
+    if (!clickedOfferRow) {
+      clearPendingAvailableOfferSelection();
     }
 
     const workspaceTabButton = target.closest<HTMLElement>("[data-workspace-tab]");
@@ -534,12 +555,27 @@ export function mountContractsTab(
       return;
     }
 
-    const offerRow = target.closest<HTMLElement>("[data-select-offer-row]");
-    if (offerRow) {
-      state.boardTab = "available";
-      state.selectedOfferId = offerRow.dataset.selectOfferRow ?? null;
-      focusSelectedRoute(state);
-      render();
+    if (clickedOfferRow) {
+      event.preventDefault();
+      event.stopPropagation();
+      const contractOfferId = clickedOfferRow.dataset.selectOfferRow ?? "";
+      if (!contractOfferId) {
+        clearPendingAvailableOfferSelection();
+        return;
+      }
+      if (pendingAvailableOfferSelectionTimeout !== null && pendingAvailableOfferId === contractOfferId) {
+        clearPendingAvailableOfferSelection();
+        const detailButton = root.querySelector<HTMLButtonElement>(`[data-accept-selected-offer="${contractOfferId}"]`);
+        void acceptOffer(contractOfferId, detailButton ?? null);
+        return;
+      }
+      clearPendingAvailableOfferSelection();
+      pendingAvailableOfferId = contractOfferId;
+      pendingAvailableOfferSelectionTimeout = window.setTimeout(() => {
+        pendingAvailableOfferSelectionTimeout = null;
+        pendingAvailableOfferId = null;
+        selectAvailableOffer(contractOfferId);
+      }, 220);
       return;
     }
 
@@ -563,24 +599,6 @@ export function mountContractsTab(
       focusSelectedRoute(state);
       render();
     }
-  };
-
-  const handleDoubleClick = (event: MouseEvent) => {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target) {
-      return;
-    }
-
-    const offerRow = target.closest<HTMLElement>("[data-select-offer-row]");
-    if (!offerRow || target.closest("button, input, select, textarea, a, label")) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    const contractOfferId = offerRow.dataset.selectOfferRow ?? "";
-    const detailButton = root.querySelector<HTMLButtonElement>(`[data-accept-selected-offer="${contractOfferId}"]`);
-    void acceptOffer(contractOfferId, detailButton ?? null);
   };
 
   // Filter changes stay client-side; text fields debounce so typing does not constantly reset the user's selection.
@@ -730,7 +748,6 @@ export function mountContractsTab(
   };
 
   root.addEventListener("click", handleClick);
-  root.addEventListener("dblclick", handleDoubleClick);
   root.addEventListener("input", handleFilterChange);
   root.addEventListener("change", handleFilterChange);
   root.addEventListener("keydown", handleKeydown);
@@ -783,8 +800,8 @@ export function mountContractsTab(
         clearTimeout(textFilterDebounceTimeout);
         textFilterDebounceTimeout = null;
       }
+      clearPendingAvailableOfferSelection();
       root.removeEventListener("click", handleClick);
-      root.removeEventListener("dblclick", handleDoubleClick);
       root.removeEventListener("input", handleFilterChange);
       root.removeEventListener("change", handleFilterChange);
       root.removeEventListener("keydown", handleKeydown);

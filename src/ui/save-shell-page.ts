@@ -2215,7 +2215,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       height: 100%;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 628px;
+      grid-template-columns: minmax(0, 1fr) 596px;
       gap: 18px;
       overflow: hidden;
     }

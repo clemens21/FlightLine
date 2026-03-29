@@ -39,18 +39,6 @@ function markStep(label) {
   console.log(`[ui-contracts-workspace] +${Date.now() - suiteStartedAtMs}ms ${label}`);
 }
 
-async function forceRowDoubleClick(locator) {
-  await locator.waitFor({ state: "visible" });
-  await locator.evaluate((element) => {
-    element.scrollIntoView({ block: "center", inline: "center" });
-    element.dispatchEvent(new MouseEvent("dblclick", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }));
-  });
-}
-
 async function assertContractsHeaderSort(page, field) {
   const button = page.locator(`.contracts-board-table [data-sort-field='${field}']`).first();
   await clickUi(button);
@@ -205,7 +193,8 @@ try {
   const secondAvailableRow = page.locator("[data-select-offer-row]").nth(1);
   const hasSecondRow = (await secondAvailableRow.count()) > 0;
   const doubleClickTarget = hasSecondRow ? secondAvailableRow : firstAvailableRow;
-  await forceRowDoubleClick(doubleClickTarget);
+  await doubleClickTarget.scrollIntoViewIfNeeded();
+  await doubleClickTarget.dblclick();
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
   assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").count(), 1);
   assert.equal((await page.locator(".contracts-next-step").textContent())?.includes("Send to route plan"), true);

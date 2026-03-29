@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.14.1`
+- `0.14.2`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -76,6 +76,7 @@ The desktop preferred-window content-size correction advances the release to `0.
 The desktop preferred physical-pixel window-target update advances the release to `0.13.4`.
 The save-difficulty startup profiles, starter grants, persisted difficulty state, and ongoing aircraft and staffing economy modifiers advance the release to `0.14.0`.
 The staffing employees-pane profile fallback, compact detail redesign, and no-inner-scroll follow-up advance the release to `0.14.1`.
+The contracts double-click accept fix and route-map height trim advance the release to `0.14.2`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
