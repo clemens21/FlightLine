@@ -56,10 +56,14 @@ try {
   await waitForShellTitle(page, displayName);
 
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
+  assert.equal(await page.locator("[data-dispatch-ops-bar]").isVisible(), true);
+  assert.equal((await page.locator("[data-dispatch-ops-bar]").textContent())?.includes("Operations board"), true);
   await page.waitForFunction((registration) => {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
   }, uiRegressionRegistrations.draft);
+  assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Economics"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Route Load"), true);
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Advance time"), true);
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Commit draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), true);
@@ -85,6 +89,7 @@ try {
   assert.equal(await page.locator("[data-dispatch-discard-draft]").isVisible(), true);
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
+  assert.equal((await page.locator("[data-dispatch-selected-leg-detail]").textContent())?.includes("Attached Work"), true);
 
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Dispatch Source"), true);
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Contracts"), true);

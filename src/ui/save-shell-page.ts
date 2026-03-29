@@ -3698,23 +3698,57 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .dispatch-workspace {
       min-height: 0;
       display: grid;
-      gap: 18px;
+      gap: 16px;
     }
-    .dispatch-hero-card {
-      display: flex;
-      align-items: start;
-      justify-content: space-between;
+    .dispatch-ops-bar,
+    .dispatch-input-panel,
+    .dispatch-selected-aircraft-panel,
+    .dispatch-plan-panel,
+    .dispatch-validation-panel,
+    .dispatch-commit-bar {
+      box-shadow: var(--shadow);
+    }
+    .dispatch-ops-bar {
+      overflow: visible;
+    }
+    .dispatch-ops-bar > .panel-body {
+      overflow: visible;
+      display: grid;
       gap: 16px;
       padding: 18px 20px;
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      background: color-mix(in srgb, var(--panel-strong) 92%, transparent);
-      box-shadow: var(--shadow);
+    }
+    .dispatch-ops-bar-body {
+      display: grid;
+      grid-template-columns: minmax(280px, .92fr) minmax(0, 1.58fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .dispatch-ops-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .dispatch-ops-overview {
+      display: grid;
+      gap: 6px;
+      align-content: start;
+    }
+    .dispatch-ops-overview strong {
+      font-size: 24px;
+      line-height: 1.05;
+      letter-spacing: -.03em;
+    }
+    .dispatch-ops-card {
+      min-height: 0;
     }
     .dispatch-aircraft-strip {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(240px, 260px);
       gap: 12px;
+      overflow-x: auto;
+      padding: 0 2px 6px 0;
+      scrollbar-gutter: stable both-edges;
     }
     .dispatch-aircraft-card,
     body[data-theme="dark"] .dispatch-aircraft-card,
@@ -3723,11 +3757,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 18px;
-      padding: 14px 16px;
+      padding: 12px 14px;
       background: var(--panel);
       color: var(--text);
       display: grid;
-      gap: 10px;
+      gap: 8px;
       text-align: left;
       box-shadow: var(--shadow);
     }
@@ -3759,11 +3793,18 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-color: var(--accent);
       background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
     }
+    .dispatch-aircraft-summary-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--line);
+    }
     .dispatch-aircraft-card-head,
     .dispatch-input-card-head,
     .dispatch-input-section-head,
-    .dispatch-message-head,
-    .dispatch-leg-button-head {
+    .dispatch-message-head {
       display: flex;
       align-items: start;
       justify-content: space-between;
@@ -3782,21 +3823,28 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .dispatch-board {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(300px, .82fr) minmax(0, 1.18fr) minmax(300px, .82fr);
+      grid-template-columns: minmax(320px, .94fr) minmax(0, 1.42fr) minmax(330px, .92fr);
       gap: 18px;
       align-items: start;
     }
-    .dispatch-plan-column {
+    .dispatch-main-column,
+    .dispatch-side-column {
       min-height: 0;
       display: grid;
       gap: 18px;
+      align-content: start;
     }
     .dispatch-input-body,
-    .dispatch-timeline-body,
-    .dispatch-queue-body,
-    .dispatch-validation-body {
+    .dispatch-validation-body,
+    .dispatch-plan-body,
+    .dispatch-selected-aircraft-panel > .panel-body,
+    .dispatch-input-panel > .panel-body,
+    .dispatch-validation-panel > .panel-body,
+    .dispatch-plan-panel > .panel-body,
+    .dispatch-commit-bar > .panel-body {
       display: grid;
       gap: 14px;
+      overflow: visible;
     }
     .dispatch-readiness-stack {
       display: grid;
@@ -3805,6 +3853,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .dispatch-readiness-list {
       display: grid;
       gap: 10px;
+      max-height: clamp(260px, 42vh, 560px);
+      overflow: auto;
+      padding-right: 4px;
     }
     .dispatch-input-section {
       display: grid;
@@ -3826,9 +3877,15 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .dispatch-input-list,
     .dispatch-message-list,
-    .dispatch-queue-list {
+    .dispatch-queue-list,
+    .dispatch-source-list {
       display: grid;
       gap: 10px;
+    }
+    .dispatch-source-list {
+      max-height: clamp(240px, 42vh, 520px);
+      overflow: auto;
+      padding-right: 4px;
     }
     .dispatch-selected-work-actions {
       display: flex;
@@ -3876,14 +3933,36 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .dispatch-selected-aircraft-grid,
     .dispatch-detail-grid,
-    .dispatch-validation-summary,
     .dispatch-commit-metrics {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
-    .dispatch-commit-metrics {
+    .dispatch-selected-aircraft-grid--dense {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .dispatch-validation-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .dispatch-aircraft-support-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .dispatch-plan-summary,
+    .dispatch-selected-work-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .dispatch-plan-summary {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .dispatch-commit-metrics {
+      grid-template-columns: 1fr;
     }
     .dispatch-readiness-summary {
       display: block;
@@ -3913,39 +3992,29 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border: 1px solid var(--line);
       background: color-mix(in srgb, var(--panel) 86%, transparent);
     }
-    .dispatch-timeline-list {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      display: grid;
-      gap: 10px;
-    }
-    .dispatch-timeline-item {
-      display: grid;
-      grid-template-columns: 86px minmax(0, 1fr);
-      gap: 14px;
-      padding: 10px 0;
-      border-top: 1px solid var(--line);
-    }
-    .dispatch-timeline-item:first-child {
-      border-top: 0;
-      padding-top: 0;
-    }
-    .dispatch-timeline-time {
-      font-size: 12px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: var(--muted);
-    }
-    .dispatch-timeline-copy {
-      display: grid;
-      gap: 4px;
-    }
     .dispatch-queue-grid {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
-      gap: 18px;
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .dispatch-queue-region,
+    .dispatch-leg-detail-region {
+      min-height: 0;
+      display: grid;
+      gap: 12px;
+    }
+    .dispatch-subsection-head {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dispatch-queue-scroll {
+      max-height: clamp(260px, 44vh, 560px);
+      overflow: auto;
+      padding-right: 4px;
     }
     .dispatch-leg-button,
     body[data-theme="dark"] .dispatch-leg-button,
@@ -3954,17 +4023,37 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 16px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       background: var(--panel-strong);
       color: var(--text);
       display: grid;
-      gap: 10px;
+      gap: 8px;
       text-align: left;
       box-shadow: none;
     }
     .dispatch-leg-button.selected {
       border-color: var(--accent);
       background: color-mix(in srgb, var(--accent-soft) 58%, var(--panel-strong));
+    }
+    .dispatch-leg-button-route {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .dispatch-leg-button-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .dispatch-leg-button-stats strong {
+      color: var(--text);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-right: 6px;
     }
     .dispatch-leg-sequence {
       display: inline-flex;
@@ -3992,28 +4081,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-column: span 2;
     }
     .dispatch-commit-bar {
-      position: sticky;
-      bottom: 0;
-      z-index: 2;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 18px;
-      padding: 16px 18px;
-      border-radius: 20px;
-      border: 1px solid var(--line);
-      background: color-mix(in srgb, var(--panel-strong) 94%, transparent);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(18px);
+      position: static;
+      padding: 0;
+      backdrop-filter: none;
+      overflow: visible;
     }
     .dispatch-commit-copy {
       display: grid;
-      gap: 14px;
+      gap: 12px;
     }
     .dispatch-commit-actions {
       display: grid;
       gap: 10px;
       align-content: start;
-      min-width: 180px;
+      min-width: 0;
     }
     .dispatch-commit-metric {
       display: grid;
@@ -4061,9 +4142,15 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .aircraft-toolbar,
       .market-deals,
       .market-review-summary,
+      .dispatch-ops-bar-body,
+      .dispatch-ops-grid,
       .dispatch-board,
       .dispatch-queue-grid,
-        .dispatch-selected-aircraft-grid,
+      .dispatch-selected-aircraft-grid,
+      .dispatch-selected-aircraft-grid--dense,
+      .dispatch-aircraft-support-grid,
+      .dispatch-plan-summary,
+      .dispatch-selected-work-summary,
       .dispatch-detail-grid,
       .dispatch-validation-summary,
       .dispatch-commit-metrics,
@@ -4100,23 +4187,38 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .aircraft-hero-image {
         justify-self: start;
       }
-      .dispatch-hero-card,
-      .dispatch-commit-bar {
+      .dispatch-aircraft-strip {
+        grid-auto-columns: minmax(220px, 84vw);
+      }
+      .dispatch-aircraft-summary-head,
+      .dispatch-subsection-head {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .dispatch-leg-button-route {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+      .dispatch-leg-button-route > :last-child {
+        grid-column: 1 / -1;
+        justify-self: start;
+      }
+      .dispatch-leg-button-stats {
         grid-template-columns: 1fr;
+      }
+      .dispatch-source-list,
+      .dispatch-readiness-list,
+      .dispatch-queue-scroll {
+        max-height: none;
       }
       .dispatch-time-utility .dispatch-advance-form {
         grid-template-columns: 1fr;
       }
-        .dispatch-time-utility .dispatch-advance-form button {
-          grid-column: auto;
-        }
-        .dispatch-readiness-detail-grid {
-          grid-template-columns: 1fr;
-        }
-        .dispatch-timeline-item {
-          grid-template-columns: 1fr;
-          gap: 6px;
-        }
+      .dispatch-time-utility .dispatch-advance-form button {
+        grid-column: auto;
+      }
+      .dispatch-readiness-detail-grid {
+        grid-template-columns: 1fr;
+      }
       .aircraft-market-overlay {
         padding: 12px;
       }
