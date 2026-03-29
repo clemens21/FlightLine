@@ -17,6 +17,7 @@ interface PilotEmploymentPricingInput {
   certificationHours?: PilotVisibleCertificationHoursEntry[];
   statProfile: PilotVisibleStatProfile;
   marketSeed?: string;
+  priceMultiplier?: number;
 }
 
 function roundToNearest(value: number, increment: number): number {
@@ -249,7 +250,10 @@ export function estimateDirectHireSalary(input: PilotEmploymentPricingInput): nu
     + certificationExperiencePremium
     + statPremium;
 
-  return roundToNearest(salaryBeforeMarketTension * marketRateMultiplier(input.marketSeed, "direct"), 250);
+  return roundToNearest(
+    salaryBeforeMarketTension * marketRateMultiplier(input.marketSeed, "direct") * (input.priceMultiplier ?? 1),
+    250,
+  );
 }
 
 export function estimateContractHourlyRate(input: PilotEmploymentPricingInput): number {
@@ -268,7 +272,10 @@ export function estimateContractHourlyRate(input: PilotEmploymentPricingInput): 
     + certificationExperiencePremium
     + statWeight * 0.8;
 
-  return roundToNearest(hourlyRateBeforeMarketTension * marketRateMultiplier(input.marketSeed, "hourly"), 5);
+  return roundToNearest(
+    hourlyRateBeforeMarketTension * marketRateMultiplier(input.marketSeed, "hourly") * (input.priceMultiplier ?? 1),
+    5,
+  );
 }
 
 export function estimateContractEngagementFee(input: PilotEmploymentPricingInput): number {
@@ -287,5 +294,8 @@ export function estimateContractEngagementFee(input: PilotEmploymentPricingInput
     + certificationExperiencePremium
     + statWeight * 36;
 
-  return roundToNearest(engagementFeeBeforeMarketTension * marketRateMultiplier(input.marketSeed, "fee"), 250);
+  return roundToNearest(
+    engagementFeeBeforeMarketTension * marketRateMultiplier(input.marketSeed, "fee") * (input.priceMultiplier ?? 1),
+    250,
+  );
 }

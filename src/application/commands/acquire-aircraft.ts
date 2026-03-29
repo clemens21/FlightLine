@@ -15,6 +15,7 @@ import {
   normalizeUpperCode,
 } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
+import { aircraftPriceMultiplierForDifficulty } from "../../domain/save-runtime/difficulty-profile.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
 import type { AircraftReferenceRepository, AircraftLayoutRecord, AircraftModelRecord } from "../../infrastructure/reference/aircraft-reference.js";
@@ -109,11 +110,19 @@ function resolveCabinLayout(
   return defaultLayout;
 }
 
-function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: AircraftModelRecord, acquiredAtUtc: string): AcquisitionTerms {
+function deriveAcquisitionTerms(
+  command: AcquireAircraftCommand,
+  aircraftModel: AircraftModelRecord,
+  acquiredAtUtc: string,
+  priceMultiplier: number,
+): AcquisitionTerms {
+  const adjustedMarketValue = aircraftModel.marketValueUsd * priceMultiplier;
+  const adjustedLeaseRateMonthly = aircraftModel.targetLeaseRateMonthlyUsd * priceMultiplier;
+
   switch (command.payload.ownershipType) {
     case "owned": {
       return {
-        upfrontPaymentAmount: Math.round(aircraftModel.marketValueUsd),
+        upfrontPaymentAmount: Math.round(adjustedMarketValue),
         recurringPaymentAmount: null,
         paymentCadence: null,
         termMonths: null,
@@ -126,8 +135,8 @@ function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: 
       const termMonths = 60;
       const paymentCadence = "monthly";
       const rateBandOrApr = 7;
-      const upfrontPaymentAmount = Math.round(aircraftModel.marketValueUsd * 0.15);
-      const principalAmount = Math.max(0, aircraftModel.marketValueUsd - upfrontPaymentAmount);
+      const upfrontPaymentAmount = Math.round(adjustedMarketValue * 0.15);
+      const principalAmount = Math.max(0, adjustedMarketValue - upfrontPaymentAmount);
       const recurringPaymentAmount = Math.round(calculateFinanceRecurringPayment(principalAmount, rateBandOrApr, termMonths, paymentCadence));
 
       return {
@@ -143,7 +152,7 @@ function deriveAcquisitionTerms(command: AcquireAircraftCommand, aircraftModel: 
     case "leased": {
       const termMonths = 12;
       const paymentCadence = "monthly";
-      const recurringPaymentAmount = Math.round(aircraftModel.targetLeaseRateMonthlyUsd);
+      const recurringPaymentAmount = Math.round(adjustedLeaseRateMonthly);
       const upfrontPaymentAmount = Math.round(recurringPaymentAmount);
 
       return {
@@ -380,10 +389,13 @@ export async function handleAcquireAircraft(
   }
 
   const acquiredAtUtc = companyContext?.currentTimeUtc ?? command.issuedAtUtc;
+  const directAcquisitionPriceMultiplier = !marketOffer && companyContext
+    ? aircraftPriceMultiplierForDifficulty(companyContext.difficultyProfile)
+    : 1;
   const acquisitionTerms = aircraftModel
     ? marketOffer
       ? deriveMarketOfferTerms(command, marketOffer, acquiredAtUtc)
-      : deriveAcquisitionTerms(command, aircraftModel, acquiredAtUtc)
+      : deriveAcquisitionTerms(command, aircraftModel, acquiredAtUtc, directAcquisitionPriceMultiplier)
     : null;
 
   if (acquisitionTerms) {

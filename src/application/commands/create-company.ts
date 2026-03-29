@@ -4,24 +4,327 @@
  */
 
 import type { CommandResult, CreateCompanyCommand } from "./types.js";
-import { createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
+import { addUtcMonths, createPrefixedId, deriveFinancialPressureBand } from "./utils.js";
+import {
+  isRecognizedDifficultyProfile,
+  normalizeDifficultyProfile,
+  startingCashAmountForDifficulty,
+  staffingPriceMultiplierForDifficulty,
+} from "../../domain/save-runtime/difficulty-profile.js";
+import { estimateDirectHireSalary } from "../staffing/pilot-employment-pricing.js";
+import { reconcileNamedPilots } from "../staffing/named-pilot-roster.js";
 import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
+import type { AircraftModelRecord, AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 
 interface CreateCompanyDependencies {
   saveDatabase: SqliteFileDatabase;
   airportReference: AirportReferenceRepository;
+  aircraftReference: AircraftReferenceRepository;
 }
 
 interface SaveStateRow extends Record<string, unknown> {
   save_id: string;
   active_company_id: string | null;
+  difficulty_profile: string;
 }
 
-const startupStartingCashAmount = 3_500_000;
+interface StarterGrantResult {
+  starterAircraftId?: string;
+  starterStaffingPackageId?: string;
+}
+
 const startupProgressionTier = 1;
 const startupReputationScore = 0;
 const startupCompanyPhase = "startup";
+const easyStarterAircraftModelId = "cessna_208b_grand_caravan_ex_cargo";
+const easyStarterPilotQualificationGroup = "single_turboprop_utility";
+
+function buildStarterAircraftState(aircraftModel: AircraftModelRecord) {
+  return {
+    conditionValue: 1,
+    conditionBandInput: "excellent",
+    statusInput: "idle",
+    dispatchAvailable: 1,
+    airframeHoursTotal: 0,
+    airframeCyclesTotal: 0,
+    hoursSinceInspection: 0,
+    cyclesSinceInspection: 0,
+    hoursToService: aircraftModel.inspectionIntervalHours,
+    maintenanceStateInput: "current",
+    aogFlag: 0,
+  };
+}
+
+function buildStarterAircraftRegistration(companyId: string): string {
+  const compactSuffix = companyId.replace(/^company_/, "").replaceAll("-", "").slice(0, 5).toUpperCase();
+  return `FLT${compactSuffix}`;
+}
+
+function buildStarterPilotSalaryAmount(): number {
+  return estimateDirectHireSalary({
+    qualificationGroup: easyStarterPilotQualificationGroup,
+    certifications: ["SEPL"],
+    totalCareerHours: 1_400,
+    primaryQualificationFamilyHours: 1_100,
+    statProfile: {
+      operationalReliability: 6,
+      stressTolerance: 6,
+      procedureDiscipline: 6,
+      trainingAptitude: 6,
+    },
+    priceMultiplier: staffingPriceMultiplierForDifficulty("easy"),
+  });
+}
+
+function provisionEasyStarterPackage(
+  dependencies: CreateCompanyDependencies,
+  params: {
+    companyId: string;
+    homeBaseAirportId: string;
+    issuedAtUtc: string;
+  },
+): StarterGrantResult {
+  const starterAircraftModel = dependencies.aircraftReference.findModel(easyStarterAircraftModelId);
+
+  if (!starterAircraftModel) {
+    throw new Error(`Starter aircraft model ${easyStarterAircraftModelId} is missing from the aircraft reference catalog.`);
+  }
+
+  const starterLayout = dependencies.aircraftReference.findDefaultLayoutForModel(easyStarterAircraftModelId);
+  const starterState = buildStarterAircraftState(starterAircraftModel);
+  const starterAircraftId = createPrefixedId("aircraft");
+  const starterAcquisitionAgreementId = createPrefixedId("agreement");
+  const starterStaffingPackageId = createPrefixedId("staff");
+  const starterSalaryAmount = buildStarterPilotSalaryAmount();
+
+  dependencies.saveDatabase.run(
+    `INSERT INTO company_aircraft (
+      aircraft_id,
+      company_id,
+      aircraft_model_id,
+      active_cabin_layout_id,
+      registration,
+      display_name,
+      ownership_type,
+      current_airport_id,
+      delivery_state,
+      airframe_hours_total,
+      airframe_cycles_total,
+      condition_value,
+      status_input,
+      dispatch_available,
+      active_schedule_id,
+      active_maintenance_task_id,
+      acquired_at_utc
+    ) VALUES (
+      $aircraft_id,
+      $company_id,
+      $aircraft_model_id,
+      $active_cabin_layout_id,
+      $registration,
+      $display_name,
+      'owned',
+      $current_airport_id,
+      'available',
+      $airframe_hours_total,
+      $airframe_cycles_total,
+      $condition_value,
+      $status_input,
+      $dispatch_available,
+      NULL,
+      NULL,
+      $acquired_at_utc
+    )`,
+    {
+      $aircraft_id: starterAircraftId,
+      $company_id: params.companyId,
+      $aircraft_model_id: starterAircraftModel.modelId,
+      $active_cabin_layout_id: starterLayout?.layoutId ?? null,
+      $registration: buildStarterAircraftRegistration(params.companyId),
+      $display_name: `${starterAircraftModel.displayName} starter aircraft`,
+      $current_airport_id: params.homeBaseAirportId,
+      $airframe_hours_total: starterState.airframeHoursTotal,
+      $airframe_cycles_total: starterState.airframeCyclesTotal,
+      $condition_value: starterState.conditionValue,
+      $status_input: starterState.statusInput,
+      $dispatch_available: starterState.dispatchAvailable,
+      $acquired_at_utc: params.issuedAtUtc,
+    },
+  );
+
+  dependencies.saveDatabase.run(
+    `INSERT INTO acquisition_agreement (
+      acquisition_agreement_id,
+      aircraft_id,
+      agreement_type,
+      origin_offer_id,
+      start_at_utc,
+      upfront_payment_amount,
+      recurring_payment_amount,
+      payment_cadence,
+      term_months,
+      end_at_utc,
+      rate_band_or_apr,
+      status
+    ) VALUES (
+      $acquisition_agreement_id,
+      $aircraft_id,
+      'owned',
+      NULL,
+      $start_at_utc,
+      0,
+      NULL,
+      NULL,
+      NULL,
+      NULL,
+      NULL,
+      'active'
+    )`,
+    {
+      $acquisition_agreement_id: starterAcquisitionAgreementId,
+      $aircraft_id: starterAircraftId,
+      $start_at_utc: params.issuedAtUtc,
+    },
+  );
+
+  dependencies.saveDatabase.run(
+    `INSERT INTO maintenance_program_state (
+      aircraft_id,
+      condition_band_input,
+      hours_since_inspection,
+      cycles_since_inspection,
+      hours_to_service,
+      last_inspection_at_utc,
+      last_heavy_service_at_utc,
+      maintenance_state_input,
+      aog_flag,
+      updated_at_utc
+    ) VALUES (
+      $aircraft_id,
+      $condition_band_input,
+      $hours_since_inspection,
+      $cycles_since_inspection,
+      $hours_to_service,
+      $last_inspection_at_utc,
+      $last_heavy_service_at_utc,
+      $maintenance_state_input,
+      $aog_flag,
+      $updated_at_utc
+    )`,
+    {
+      $aircraft_id: starterAircraftId,
+      $condition_band_input: starterState.conditionBandInput,
+      $hours_since_inspection: starterState.hoursSinceInspection,
+      $cycles_since_inspection: starterState.cyclesSinceInspection,
+      $hours_to_service: starterState.hoursToService,
+      $last_inspection_at_utc: params.issuedAtUtc,
+      $last_heavy_service_at_utc: params.issuedAtUtc,
+      $maintenance_state_input: starterState.maintenanceStateInput,
+      $aog_flag: starterState.aogFlag,
+      $updated_at_utc: params.issuedAtUtc,
+    },
+  );
+
+  dependencies.saveDatabase.run(
+    `INSERT INTO staffing_package (
+      staffing_package_id,
+      company_id,
+      source_offer_id,
+      labor_category,
+      employment_model,
+      qualification_group,
+      coverage_units,
+      fixed_cost_amount,
+      variable_cost_rate,
+      service_region_code,
+      starts_at_utc,
+      ends_at_utc,
+      status
+    ) VALUES (
+      $staffing_package_id,
+      $company_id,
+      NULL,
+      'pilot',
+      'direct_hire',
+      $qualification_group,
+      1,
+      $fixed_cost_amount,
+      NULL,
+      NULL,
+      $starts_at_utc,
+      NULL,
+      'active'
+    )`,
+    {
+      $staffing_package_id: starterStaffingPackageId,
+      $company_id: params.companyId,
+      $qualification_group: easyStarterPilotQualificationGroup,
+      $fixed_cost_amount: starterSalaryAmount,
+      $starts_at_utc: params.issuedAtUtc,
+    },
+  );
+
+  dependencies.saveDatabase.run(
+    `INSERT INTO recurring_obligation (
+      recurring_obligation_id,
+      company_id,
+      obligation_type,
+      source_object_type,
+      source_object_id,
+      amount,
+      cadence,
+      next_due_at_utc,
+      end_at_utc,
+      status
+    ) VALUES (
+      $recurring_obligation_id,
+      $company_id,
+      'staffing',
+      'staffing_package',
+      $source_object_id,
+      $amount,
+      'monthly',
+      $next_due_at_utc,
+      NULL,
+      'active'
+    )`,
+    {
+      $recurring_obligation_id: createPrefixedId("obligation"),
+      $company_id: params.companyId,
+      $source_object_id: starterStaffingPackageId,
+      $amount: starterSalaryAmount,
+      $next_due_at_utc: addUtcMonths(params.issuedAtUtc, 1),
+    },
+  );
+
+  reconcileNamedPilots(
+    dependencies.saveDatabase,
+    params.companyId,
+    params.homeBaseAirportId,
+    params.issuedAtUtc,
+    dependencies.airportReference,
+  );
+
+  dependencies.saveDatabase.run(
+    `UPDATE named_pilot
+    SET home_airport_id = $home_airport_id,
+        current_airport_id = $current_airport_id,
+        updated_at_utc = $updated_at_utc
+    WHERE staffing_package_id = $staffing_package_id`,
+    {
+      $home_airport_id: params.homeBaseAirportId,
+      $current_airport_id: params.homeBaseAirportId,
+      $updated_at_utc: params.issuedAtUtc,
+      $staffing_package_id: starterStaffingPackageId,
+    },
+  );
+
+  return {
+    starterAircraftId,
+    starterStaffingPackageId,
+  };
+}
 
 // Creates the first company inside a save, including its starting finances, identity, and home-base footprint.
 export async function handleCreateCompany(
@@ -36,7 +339,7 @@ export async function handleCreateCompany(
   }
 
   const saveState = dependencies.saveDatabase.getOne<SaveStateRow>(
-    "SELECT save_id, active_company_id FROM save_game WHERE save_id = $save_id LIMIT 1",
+    "SELECT save_id, active_company_id, difficulty_profile FROM save_game WHERE save_id = $save_id LIMIT 1",
     { $save_id: command.saveId },
   );
 
@@ -48,6 +351,12 @@ export async function handleCreateCompany(
     hardBlockers.push(`Save ${command.saveId} already has an active company.`);
   }
 
+  const rawDifficultyProfile = command.payload.difficultyProfile ?? saveState?.difficulty_profile ?? "hard";
+  if (!isRecognizedDifficultyProfile(rawDifficultyProfile)) {
+    hardBlockers.push(`Difficulty profile ${rawDifficultyProfile} is not supported.`);
+  }
+  const difficultyProfile = normalizeDifficultyProfile(rawDifficultyProfile);
+  const startupStartingCashAmount = startingCashAmountForDifficulty(difficultyProfile);
   const starterAirport = dependencies.airportReference.findAirport(command.payload.starterAirportId);
 
   if (!starterAirport) {
@@ -67,12 +376,15 @@ export async function handleCreateCompany(
   }
 
   if (saveState && !saveState.active_company_id) {
-    if (!Number.isFinite(command.payload.startingCashAmount)) {
+    if (command.payload.startingCashAmount !== undefined && !Number.isFinite(command.payload.startingCashAmount)) {
       hardBlockers.push("Starting cash must be a finite number.");
-    } else if (command.payload.startingCashAmount < 0) {
+    } else if ((command.payload.startingCashAmount ?? 0) < 0) {
       hardBlockers.push("Starting cash cannot be negative.");
-    } else if (command.payload.startingCashAmount !== startupStartingCashAmount) {
-      hardBlockers.push(`Starting cash is fixed at ${startupStartingCashAmount} during company creation.`);
+    } else if (
+      command.payload.startingCashAmount !== undefined
+      && command.payload.startingCashAmount !== startupStartingCashAmount
+    ) {
+      hardBlockers.push(`Starting cash is fixed at ${startupStartingCashAmount} for ${difficultyProfile} difficulty during company creation.`);
     }
 
     if (command.payload.companyPhase && command.payload.companyPhase !== startupCompanyPhase) {
@@ -120,6 +432,7 @@ export async function handleCreateCompany(
   const baseRole = command.payload.baseRole ?? "home_base";
   const reserveBalanceAmount = command.payload.reserveBalanceAmount ?? null;
   const financialPressureBand = deriveFinancialPressureBand(startingCashAmount);
+  let starterGrantResult: StarterGrantResult = {};
 
   dependencies.saveDatabase.transaction(() => {
     dependencies.saveDatabase.run(
@@ -231,21 +544,31 @@ export async function handleCreateCompany(
         $source_object_type: "company",
         $source_object_id: companyId,
         $description: "Initial company capital established.",
-        $metadata_json: JSON.stringify({ reserveBalanceAmount }),
+        $metadata_json: JSON.stringify({ reserveBalanceAmount, difficultyProfile }),
       },
     );
 
     dependencies.saveDatabase.run(
       `UPDATE save_game
       SET active_company_id = $active_company_id,
+          difficulty_profile = $difficulty_profile,
           updated_at_utc = $updated_at_utc
       WHERE save_id = $save_id`,
       {
         $active_company_id: companyId,
+        $difficulty_profile: difficultyProfile,
         $updated_at_utc: command.issuedAtUtc,
         $save_id: command.saveId,
       },
     );
+
+    if (difficultyProfile === "easy") {
+      starterGrantResult = provisionEasyStarterPackage(dependencies, {
+        companyId,
+        homeBaseAirportId: starterAirport!.airportKey,
+        issuedAtUtc: command.issuedAtUtc,
+      });
+    }
 
     dependencies.saveDatabase.run(
       `INSERT INTO event_log_entry (
@@ -285,7 +608,10 @@ export async function handleCreateCompany(
           starterAirportId: starterAirport!.airportKey,
           starterAirportName: starterAirport!.name,
           baseRole,
+          difficultyProfile,
           financialPressureBand,
+          starterAircraftId: starterGrantResult.starterAircraftId ?? null,
+          starterStaffingPackageId: starterGrantResult.starterStaffingPackageId ?? null,
         }),
       },
     );
@@ -320,6 +646,8 @@ export async function handleCreateCompany(
         $status: "completed",
         $payload_json: JSON.stringify({
           ...command.payload,
+          difficultyProfile,
+          startingCashAmount,
           starterAirportId: starterAirport!.airportKey,
         }),
       },
@@ -331,8 +659,17 @@ export async function handleCreateCompany(
   return {
     success: true,
     commandId: command.commandId,
-    changedAggregateIds: [companyId, companyBaseId],
-    validationMessages: [`Company ${command.payload.displayName} created successfully.`, ...warnings],
+    changedAggregateIds: [
+      companyId,
+      companyBaseId,
+      ...(starterGrantResult.starterAircraftId ? [starterGrantResult.starterAircraftId] : []),
+      ...(starterGrantResult.starterStaffingPackageId ? [starterGrantResult.starterStaffingPackageId] : []),
+    ],
+    validationMessages: [
+      `Company ${command.payload.displayName} created successfully on ${difficultyProfile} difficulty.`,
+      ...(difficultyProfile === "easy" ? ["Easy difficulty granted a starter Caravan cargo aircraft and one utility pilot."] : []),
+      ...warnings,
+    ],
     hardBlockers: [],
     warnings,
     emittedEventIds: [eventLogEntryId],
@@ -341,7 +678,10 @@ export async function handleCreateCompany(
       companyId,
       companyBaseId,
       starterAirportId: starterAirport!.airportKey,
+      difficultyProfile,
       financialPressureBand,
+      starterAircraftId: starterGrantResult.starterAircraftId,
+      starterStaffingPackageId: starterGrantResult.starterStaffingPackageId,
     },
   };
 }

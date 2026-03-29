@@ -24,6 +24,11 @@ import { renderIncrementalSavePage } from "./save-shell-page.js";
 import { resolveAircraftImageAsset } from "./aircraft-image-cache.js";
 import { ensureStaffPortraitAsset, isValidStaffPortraitAssetId, readStaffPortraitAsset, resolveStaffPortraitAssetId, } from "./staff-portrait-cache.js";
 import { validateProposedSchedule } from "../application/dispatch/schedule-validation.js";
+import {
+    isRecognizedDifficultyProfile,
+    normalizeDifficultyProfile,
+    startingCashAmountForDifficulty,
+} from "../domain/save-runtime/difficulty-profile.js";
 import { planDispatchContractWork } from "./dispatch-contract-planning.js";
 import { launcherRoute, openSaveRoute, readConfirmDeleteSaveId, readFlashState, readForm, redirect, saveRoute, sendHtml, sendJson, withUiTiming } from "./server-http.js";
 import { createServerPageHandlers } from "./server-page-routes.js";
@@ -316,6 +321,24 @@ function parseOptionalFloatFormValue(rawValue) {
 function parseOptionalCadenceFormValue(rawValue) {
     return rawValue === "weekly" || rawValue === "monthly" ? rawValue : undefined;
 }
+function resolveCreateCompanySubmission(form) {
+    const rawDifficultyProfile = typeof form.get("difficultyProfile") === "string"
+        ? form.get("difficultyProfile").trim()
+        : "";
+    const difficultyProfile = rawDifficultyProfile.length > 0 ? rawDifficultyProfile : undefined;
+    const difficultyForFixedCash = difficultyProfile && isRecognizedDifficultyProfile(difficultyProfile)
+        ? normalizeDifficultyProfile(difficultyProfile)
+        : "hard";
+    const rawStartingCashAmount = form.get("startingCashAmount");
+    const parsedStartingCashAmount = parseOptionalIntegerFormValue(rawStartingCashAmount);
+    const startingCashAmount = typeof rawStartingCashAmount === "string" && rawStartingCashAmount.trim().length > 0
+        ? (parsedStartingCashAmount ?? Number.NaN)
+        : startingCashAmountForDifficulty(difficultyForFixedCash);
+    return {
+        difficultyProfile,
+        startingCashAmount,
+    };
+}
 // Route helpers centralize URL building so links, redirects, and client fallbacks stay aligned.
 // Request parsing and response helpers bridge raw Node HTTP primitives to the render and action handlers.
 async function listSaveIds() {
@@ -361,7 +384,7 @@ async function handleCreateSave(response, form) {
         actorType: "player",
         payload: {
             worldSeed,
-            difficultyProfile: "standard",
+            difficultyProfile: "hard",
             startTimeUtc: new Date().toISOString(),
         },
     });
@@ -386,6 +409,7 @@ async function handleDeleteSave(response, form) {
 async function handleCreateCompany(response, form) {
     const saveId = form.get("saveId") ?? "";
     const tab = normalizeTab(form.get("tab"));
+    const { difficultyProfile, startingCashAmount } = resolveCreateCompanySubmission(form);
     const result = await backend.dispatch({
         commandId: commandId("cmd_company"),
         saveId,
@@ -395,7 +419,8 @@ async function handleCreateCompany(response, form) {
         payload: {
             displayName: form.get("displayName")?.trim() || "FlightLine Regional",
             starterAirportId: form.get("starterAirportId")?.trim().toUpperCase() || "KDEN",
-            startingCashAmount: Number.parseInt(form.get("startingCashAmount") ?? "3500000", 10),
+            difficultyProfile,
+            startingCashAmount,
         },
     });
     redirect(response, saveRoute(saveId, {
@@ -1038,6 +1063,7 @@ async function handleBindRoutePlanApi(response, saveId, form) {
 async function handleCreateCompanyApi(response, saveId, form) {
     const tab = normalizeShellTab(form.get("tab"));
     const displayName = form.get("displayName")?.trim() || "FlightLine Regional";
+    const { difficultyProfile, startingCashAmount } = resolveCreateCompanySubmission(form);
     const result = await backend.dispatch({
         commandId: commandId("cmd_company_api"),
         saveId,
@@ -1047,7 +1073,8 @@ async function handleCreateCompanyApi(response, saveId, form) {
         payload: {
             displayName,
             starterAirportId: form.get("starterAirportId")?.trim().toUpperCase() || "KDEN",
-            startingCashAmount: Number.parseInt(form.get("startingCashAmount") ?? "3500000", 10),
+            difficultyProfile,
+            startingCashAmount,
         },
     });
     await sendShellActionResponse(response, saveId, tab, result.success

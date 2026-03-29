@@ -115,6 +115,7 @@ export class FlightLineBackend {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleCreateCompany(command, {
           saveDatabase: context.saveDatabase,
           airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
         }));
         if (!result) {
           return this.missingSaveResult(command.commandId, command.saveId);

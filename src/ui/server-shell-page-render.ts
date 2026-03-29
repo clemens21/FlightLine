@@ -1,5 +1,7 @@
 // @ts-nocheck
 
+import { difficultyProfileOptions } from "../domain/save-runtime/difficulty-profile.js";
+
 let contractsTabClientAssetPath;
 let escapeHtml;
 let formatMoney;
@@ -18,6 +20,30 @@ let saveRoute;
 let saveTabs;
 let starterAircraftOptions;
 let staffingPresets;
+
+function formatDifficultyStartingCapital(amount) {
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+    }).format(amount);
+}
+
+function renderCreateCompanyDifficultyChoices() {
+    return `<div class="choice-grid difficulty-choice-grid">${difficultyProfileOptions.map((option) => `<label class="choice-card difficulty-choice-card">
+      <input
+        type="radio"
+        name="difficultyProfile"
+        value="${escapeHtml(option.profile)}"
+        ${option.profile === "hard" ? "checked" : ""}
+      />
+      <div class="choice-card-copy">
+        <strong>${escapeHtml(option.label)}</strong>
+        <span class="muted">${escapeHtml(formatDifficultyStartingCapital(option.startingCashAmount))} starting capital</span>
+        <span class="muted">${escapeHtml(option.summary)}</span>
+      </div>
+    </label>`).join("")}</div>`;
+}
 
 export function createServerShellPageRenderers(deps) {
     ({
@@ -353,6 +379,21 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
     .action-group.tight { gap: 8px; }
     form.inline { display: inline-flex; gap: 8px; align-items: end; flex-wrap: wrap; }
     label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); min-width: 140px; }
+    .choice-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .choice-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-strong);
+      cursor: pointer;
+      min-width: 0;
+    }
+    .choice-card input { width: auto; margin-top: 4px; }
+    .choice-card-copy { display: grid; gap: 6px; min-width: 0; }
     input, select {
       width: 100%;
       border-radius: 12px;
@@ -1380,10 +1421,11 @@ function renderSavePage(model, saveIds, flash, activeTab, contractsPayload = nul
           <input name="starterAirportId" value="KDEN" />
         </label>
         <div class="summary-item">
-          <div class="eyebrow">Starting Capital</div>
-          <strong>$3,500,000</strong>
-          <div class="muted">Fixed startup cash for the current slice.</div>
+          <div class="eyebrow">Difficulty</div>
+          <strong>Choose your startup profile</strong>
+          <div class="muted">Difficulty stays with the save and adjusts startup capital plus ongoing buy and hire prices.</div>
         </div>
+        ${renderCreateCompanyDifficultyChoices()}
         <button type="submit">Create company</button>
       </form>`)}
       </div>`);

@@ -5,6 +5,7 @@
 
 import assert from "node:assert/strict";
 
+import { startingCashAmountForDifficulty } from "../dist/domain/save-runtime/difficulty-profile.js";
 import { uniqueSaveId } from "./helpers/flightline-testkit.mjs";
 import {
   allocatePort,
@@ -22,7 +23,7 @@ async function createBareSave(backend, saveId, startedAtUtc) {
     actorType: "player",
     payload: {
       worldSeed: `seed_${saveId}`,
-      difficultyProfile: "standard",
+      difficultyProfile: "hard",
       startTimeUtc: startedAtUtc,
     },
   });
@@ -64,14 +65,20 @@ async function postFormJson(baseUrl, path, fields) {
 }
 
 const highCashSaveId = uniqueSaveId("ui_company_cash_high");
-const nanCashSaveId = uniqueSaveId("ui_company_cash_nan");
+const easyMismatchSaveId = uniqueSaveId("ui_company_cash_easy_mismatch");
+const easyCreateSaveId = uniqueSaveId("ui_company_easy");
+const invalidDifficultySaveId = uniqueSaveId("ui_company_invalid_difficulty");
+const malformedCashSaveId = uniqueSaveId("ui_company_malformed_cash");
 let server = null;
 
 try {
   const backend = await createWorkspaceBackend();
   try {
     await createBareSave(backend, highCashSaveId, "2026-03-16T12:00:00.000Z");
-    await createBareSave(backend, nanCashSaveId, "2026-03-16T12:05:00.000Z");
+    await createBareSave(backend, easyMismatchSaveId, "2026-03-16T12:05:00.000Z");
+    await createBareSave(backend, easyCreateSaveId, "2026-03-16T12:10:00.000Z");
+    await createBareSave(backend, invalidDifficultySaveId, "2026-03-16T12:15:00.000Z");
+    await createBareSave(backend, malformedCashSaveId, "2026-03-16T12:20:00.000Z");
   } finally {
     await backend.close();
   }
@@ -84,8 +91,11 @@ try {
 
   const dashboardTab = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(highCashSaveId)}/tab/dashboard`);
   assert.equal(dashboardTab.tabId, "dashboard");
-  assert.match(dashboardTab.contentHtml, /Starting Capital/i);
-  assert.match(dashboardTab.contentHtml, /\$3,500,000/);
+  assert.match(dashboardTab.contentHtml, /Choose your startup profile/i);
+  assert.match(dashboardTab.contentHtml, /name="difficultyProfile"/i);
+  assert.match(dashboardTab.contentHtml, /Easy/i);
+  assert.match(dashboardTab.contentHtml, /Medium/i);
+  assert.match(dashboardTab.contentHtml, /Hard/i);
   assert.doesNotMatch(dashboardTab.contentHtml, /name="startingCashAmount"/i);
 
   const highCashResult = await postFormJson(
@@ -96,33 +106,85 @@ try {
       saveId: highCashSaveId,
       displayName: "Tampered High Cash Air",
       starterAirportId: "KDEN",
+      difficultyProfile: "hard",
       startingCashAmount: "175000000",
     },
   );
   assert.equal(highCashResult.response.ok, false);
   assert.equal(highCashResult.payload.success, false);
-  assert.match(highCashResult.payload.error ?? "", /Starting cash is fixed at 3500000/i);
+  assert.match(highCashResult.payload.error ?? "", /Starting cash is fixed at 3500000 for hard difficulty/i);
 
-  const nanCashResult = await postFormJson(
+  const easyMismatchResult = await postFormJson(
     server.baseUrl,
-    `/api/save/${encodeURIComponent(nanCashSaveId)}/actions/create-company`,
+    `/api/save/${encodeURIComponent(easyMismatchSaveId)}/actions/create-company`,
     {
       tab: "dashboard",
-      saveId: nanCashSaveId,
-      displayName: "Tampered NaN Cash Air",
+      saveId: easyMismatchSaveId,
+      displayName: "Tampered Easy Cash Air",
       starterAirportId: "KDEN",
-      startingCashAmount: "not_a_number",
+      difficultyProfile: "easy",
+      startingCashAmount: "3500000",
     },
   );
-  assert.equal(nanCashResult.response.ok, false);
-  assert.equal(nanCashResult.payload.success, false);
-  assert.match(nanCashResult.payload.error ?? "", /Starting cash must be a finite number/i);
+  assert.equal(easyMismatchResult.response.ok, false);
+  assert.equal(easyMismatchResult.payload.success, false);
+  assert.match(easyMismatchResult.payload.error ?? "", /Starting cash is fixed at 4500000 for easy difficulty/i);
+
+  const easyCreateResult = await postFormJson(
+    server.baseUrl,
+    `/api/save/${encodeURIComponent(easyCreateSaveId)}/actions/create-company`,
+    {
+      tab: "dashboard",
+      saveId: easyCreateSaveId,
+      displayName: "Easy Startup Air",
+      starterAirportId: "KDEN",
+      difficultyProfile: "easy",
+      startingCashAmount: String(startingCashAmountForDifficulty("easy")),
+    },
+  );
+  assert.equal(easyCreateResult.response.ok, true);
+  assert.equal(easyCreateResult.payload.success, true);
+
+  const invalidDifficultyResult = await postFormJson(
+    server.baseUrl,
+    `/api/save/${encodeURIComponent(invalidDifficultySaveId)}/actions/create-company`,
+    {
+      tab: "dashboard",
+      saveId: invalidDifficultySaveId,
+      displayName: "Unknown Difficulty Air",
+      starterAirportId: "KDEN",
+      difficultyProfile: "nightmare",
+      startingCashAmount: String(startingCashAmountForDifficulty("hard")),
+    },
+  );
+  assert.equal(invalidDifficultyResult.response.ok, false);
+  assert.equal(invalidDifficultyResult.payload.success, false);
+  assert.match(invalidDifficultyResult.payload.error ?? "", /Difficulty profile nightmare is not supported/i);
+
+  const malformedCashResult = await postFormJson(
+    server.baseUrl,
+    `/api/save/${encodeURIComponent(malformedCashSaveId)}/actions/create-company`,
+    {
+      tab: "dashboard",
+      saveId: malformedCashSaveId,
+      displayName: "Malformed Cash Air",
+      starterAirportId: "KDEN",
+      difficultyProfile: "hard",
+      startingCashAmount: "not-a-number",
+    },
+  );
+  assert.equal(malformedCashResult.response.ok, false);
+  assert.equal(malformedCashResult.payload.success, false);
+  assert.match(malformedCashResult.payload.error ?? "", /Starting cash must be a finite number/i);
 } finally {
   await Promise.allSettled([
     server?.stop(),
   ]);
   await Promise.all([
     removeWorkspaceSave(highCashSaveId),
-    removeWorkspaceSave(nanCashSaveId),
+    removeWorkspaceSave(easyMismatchSaveId),
+    removeWorkspaceSave(easyCreateSaveId),
+    removeWorkspaceSave(invalidDifficultySaveId),
+    removeWorkspaceSave(malformedCashSaveId),
   ]);
 }

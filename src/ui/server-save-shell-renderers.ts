@@ -1,5 +1,31 @@
 // @ts-nocheck
 
+import { difficultyProfileOptions } from "../domain/save-runtime/difficulty-profile.js";
+
+function formatDifficultyStartingCapital(amount) {
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 0,
+    }).format(amount);
+}
+
+function renderCreateCompanyDifficultyChoices(escapeHtml) {
+    return `<div class="choice-grid difficulty-choice-grid">${difficultyProfileOptions.map((option) => `<label class="choice-card difficulty-choice-card">
+      <input
+        type="radio"
+        name="difficultyProfile"
+        value="${escapeHtml(option.profile)}"
+        ${option.profile === "hard" ? "checked" : ""}
+      />
+      <div class="choice-card-copy">
+        <strong>${escapeHtml(option.label)}</strong>
+        <span class="muted">${escapeHtml(formatDifficultyStartingCapital(option.startingCashAmount))} starting capital</span>
+        <span class="muted">${escapeHtml(option.summary)}</span>
+      </div>
+    </label>`).join("")}</div>`;
+}
+
 export function createSaveShellRenderers(deps) {
     const {
         escapeHtml,
@@ -17,7 +43,7 @@ export function createSaveShellRenderers(deps) {
 
     const saveShellRenderers = {
         renderCreateCompany(saveId, tabId) {
-            return `<section class="panel"><div class="panel-head"><h3>Create Company</h3></div><div class="panel-body"><form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/create-company" class="actions" data-api-form>${renderHiddenContext(saveId, tabId)}<div class="action-group"><label>Display Name<input name="displayName" value="FlightLine Regional" /></label><label>Starter Airport<input name="starterAirportId" value="KDEN" /></label><div class="summary-item"><div class="eyebrow">Starting Capital</div><strong>$3,500,000</strong><div class="muted">Fixed startup cash for the current slice.</div></div></div><button type="submit" data-pending-label="Creating company...">Create company</button></form></div></section>`;
+            return `<section class="panel"><div class="panel-head"><h3>Create Company</h3></div><div class="panel-body"><form method="post" action="/api/save/${encodeURIComponent(saveId)}/actions/create-company" class="actions" data-api-form>${renderHiddenContext(saveId, tabId)}<div class="action-group"><label>Display Name<input name="displayName" value="FlightLine Regional" /></label><label>Starter Airport<input name="starterAirportId" value="KDEN" /></label></div><div class="summary-item"><div class="eyebrow">Difficulty</div><strong>Choose your startup profile</strong><div class="muted">Difficulty stays with the save and adjusts startup capital plus ongoing buy and hire prices.</div></div>${renderCreateCompanyDifficultyChoices(escapeHtml)}<button type="submit" data-pending-label="Creating company...">Create company</button></form></div></section>`;
         },
         renderOverview(saveId, tabId, source, airportRepo) {
             const company = source.companyContext;

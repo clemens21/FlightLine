@@ -13,6 +13,7 @@ import type {
   AircraftModelRecord,
 } from "../../infrastructure/reference/aircraft-reference.js";
 import { addUtcDays, calculateFinanceRecurringPayment } from "../commands/utils.js";
+import { aircraftPriceMultiplierForDifficulty } from "../../domain/save-runtime/difficulty-profile.js";
 import type { AircraftOfferTermsView } from "../queries/aircraft-market.js";
 
 export interface GeneratedAircraftOfferInput {
@@ -478,9 +479,10 @@ function buildLeaseTerms(
   model: AircraftModelRecord,
   state: SeededAirframeState,
   params: GenerateAircraftMarketParams,
+  difficultyPriceMultiplier: number,
   seed: string,
 ): AircraftOfferTermsView {
-  const baseMonthly = model.targetLeaseRateMonthlyUsd;
+  const baseMonthly = model.targetLeaseRateMonthlyUsd * difficultyPriceMultiplier;
   const multiplier = state.listingType === "new"
     ? randomBetween(`${seed}|lease`, 1.0, 1.08)
     : state.conditionValue >= 0.9
@@ -555,6 +557,7 @@ function listingLifecycle(
 
 // Generates one full candidate aircraft market snapshot that the reconciler can merge into persistent save state.
 export function generateAircraftMarket(params: GenerateAircraftMarketParams): GeneratedAircraftMarket {
+  const difficultyPriceMultiplier = aircraftPriceMultiplierForDifficulty(params.companyContext.difficultyProfile);
   const countProfile = listingCountProfile(params.targetCount);
   const generatedAtUtc = params.companyContext.currentTimeUtc;
   const expiresAtUtc = addUtcDays(generatedAtUtc, 3650);
@@ -610,9 +613,9 @@ export function generateAircraftMarket(params: GenerateAircraftMarketParams): Ge
 
     const state = seededAirframeState(offerSeed, model, listingType);
     const lifecycle = listingLifecycle(generatedAtUtc, model, listingType, state, ageProfile, offerSeed);
-    const askingPurchasePriceAmount = roundCurrency(model.marketValueUsd * state.priceMultiplier);
+    const askingPurchasePriceAmount = roundCurrency(model.marketValueUsd * state.priceMultiplier * difficultyPriceMultiplier);
     const financeTerms = buildFinanceTerms(model, askingPurchasePriceAmount, params, state, offerSeed);
-    const leaseTerms = buildLeaseTerms(model, state, params, offerSeed);
+    const leaseTerms = buildLeaseTerms(model, state, params, difficultyPriceMultiplier, offerSeed);
     let registration = buildRegistration(offerSeed);
     while (registrationSet.has(registration)) {
       registration = buildRegistration(`${offerSeed}|retry|${registrationSet.size}`);

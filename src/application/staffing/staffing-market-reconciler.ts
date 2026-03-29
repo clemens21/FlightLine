@@ -10,6 +10,7 @@ import {
   estimateContractHourlyRate as estimateContractHourlyRateFromProfile,
   estimateDirectHireSalary as estimateDirectHireSalaryFromProfile,
 } from "./pilot-employment-pricing.js";
+import { staffingPriceMultiplierForDifficulty } from "../../domain/save-runtime/difficulty-profile.js";
 import type {
   EmploymentModel,
   PilotCertificationCode,
@@ -237,24 +238,27 @@ function buildVisibleStatProfile(qualificationGroup: string, generatedSeed: stri
   };
 }
 
-function estimateDirectSalary(profile: GeneratedPilotCandidateProfile): number {
+function estimateDirectSalary(profile: GeneratedPilotCandidateProfile, priceMultiplier: number): number {
   return estimateDirectHireSalaryFromProfile({
     ...profile,
     marketSeed: profile.generatedSeed,
+    priceMultiplier,
   });
 }
 
-function estimateContractHourlyRate(profile: GeneratedPilotCandidateProfile): number {
+function estimateContractHourlyRate(profile: GeneratedPilotCandidateProfile, priceMultiplier: number): number {
   return estimateContractHourlyRateFromProfile({
     ...profile,
     marketSeed: profile.generatedSeed,
+    priceMultiplier,
   });
 }
 
-function estimateContractEngagementFee(profile: GeneratedPilotCandidateProfile): number {
+function estimateContractEngagementFee(profile: GeneratedPilotCandidateProfile, priceMultiplier: number): number {
   return estimateContractEngagementFeeFromProfile({
     ...profile,
     marketSeed: profile.generatedSeed,
+    priceMultiplier,
   });
 }
 
@@ -849,6 +853,7 @@ export function generateStaffingMarket(
   airportReference: AirportReferenceRepository,
   refreshReason: "scheduled" | "manual" | "bootstrap",
 ): GeneratedStaffingMarket {
+  const priceMultiplier = staffingPriceMultiplierForDifficulty(companyContext.difficultyProfile);
   const demandLimit = 6;
   const demand = expandMarketDemand(
     loadQualificationDemand(saveDatabase, companyContext, aircraftReference).slice(0, demandLimit),
@@ -892,7 +897,7 @@ export function generateStaffingMarket(
         candidateSeed,
       );
       const directPricingExplanation = buildPricingExplanation(candidateProfile, "direct_hire", undefined);
-      const contractHourlyRate = estimateContractHourlyRate(candidateProfile);
+      const contractHourlyRate = estimateContractHourlyRate(candidateProfile, priceMultiplier);
       const contractPricingExplanation = buildPricingExplanation(candidateProfile, "contract_hire", contractHourlyRate);
       const availabilityMix = chooseAvailabilityMix(candidateSeed, entry.marketFitTier, candidateIndex);
       const candidateOffers: GeneratedPilotCandidateOffer[] = [];
@@ -906,7 +911,7 @@ export function generateStaffingMarket(
           employmentModel: "direct_hire",
           qualificationGroup: entry.qualificationGroup,
           certifications: candidateProfile.certifications,
-          fixedCostAmount: estimateDirectSalary(candidateProfile),
+          fixedCostAmount: estimateDirectSalary(candidateProfile, priceMultiplier),
           startsAtUtc,
           currentAirportId: companyContext.homeBaseAirportId,
           explanationMetadata: buildOfferExplanationMetadata(candidateProfile, directPricingExplanation),
@@ -926,7 +931,7 @@ export function generateStaffingMarket(
           employmentModel: "contract_hire",
           qualificationGroup: entry.qualificationGroup,
           certifications: candidateProfile.certifications,
-          fixedCostAmount: estimateContractEngagementFee(candidateProfile),
+          fixedCostAmount: estimateContractEngagementFee(candidateProfile, priceMultiplier),
           variableCostRate: contractHourlyRate,
           startsAtUtc,
           endsAtUtc: chooseContractEndUtc(startsAtUtc, candidateSeed),

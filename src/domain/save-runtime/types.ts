@@ -5,7 +5,7 @@
 
 import type { CompanyId, JsonObject, SaveId, UtcIsoString } from "../common/primitives.js";
 
-export type DifficultyProfile = "relaxed" | "standard" | "challenging";
+export type DifficultyProfile = "easy" | "medium" | "hard";
 
 export interface SaveGame {
   saveId: SaveId;

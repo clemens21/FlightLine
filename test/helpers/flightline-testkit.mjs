@@ -9,9 +9,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { FlightLineBackend } from "../../dist/index.js";
+import { startingCashAmountForDifficulty } from "../../dist/domain/save-runtime/difficulty-profile.js";
 import { buildGeneratedSaveId } from "../../dist/ui/save-slot-files.js";
 
-const startupStartingCashAmount = 3_500_000;
+const startupStartingCashAmount = startingCashAmountForDifficulty("hard");
 let saveIdSequence = 0;
 
 function deriveFinancialPressureBand(currentCashAmount) {
@@ -71,9 +72,11 @@ export async function createCompanySave(
     startedAtUtc = "2026-03-16T13:00:00.000Z",
     displayName = `Test Carrier ${saveId}`,
     starterAirportId = "KDEN",
-    startingCashAmount = startupStartingCashAmount,
+    difficultyProfile = "hard",
+    startingCashAmount = startingCashAmountForDifficulty(difficultyProfile),
   } = {},
 ) {
+  const canonicalStartingCashAmount = startingCashAmountForDifficulty(difficultyProfile);
   await dispatchOrThrow(backend, {
     commandId: `cmd_${saveId}_save`,
     saveId,
@@ -82,7 +85,7 @@ export async function createCompanySave(
     actorType: "player",
     payload: {
       worldSeed: `seed_${saveId}`,
-      difficultyProfile: "standard",
+      difficultyProfile,
       startTimeUtc: startedAtUtc,
     },
   });
@@ -96,11 +99,12 @@ export async function createCompanySave(
     payload: {
       displayName,
       starterAirportId,
-      startingCashAmount: startupStartingCashAmount,
+      difficultyProfile,
+      startingCashAmount: canonicalStartingCashAmount,
     },
   });
 
-  if (startingCashAmount !== startupStartingCashAmount) {
+  if (startingCashAmount !== canonicalStartingCashAmount) {
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       const companyRow = context.saveDatabase.getOne(
         "SELECT active_company_id AS companyId FROM save_game WHERE save_id = $save_id LIMIT 1",

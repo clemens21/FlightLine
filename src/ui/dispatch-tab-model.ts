@@ -572,7 +572,9 @@ function buildDispatchLegView(
     plannedDepartureUtc: leg.plannedDepartureUtc,
     plannedArrivalUtc: leg.plannedArrivalUtc,
     ...(leg.linkedCompanyContractId ? { linkedCompanyContractId: leg.linkedCompanyContractId } : {}),
-    ...(leg.linkedCompanyContractIds.length > 0 ? { linkedCompanyContractIds: leg.linkedCompanyContractIds } : {}),
+    ...(Array.isArray(leg.linkedCompanyContractIds) && leg.linkedCompanyContractIds.length > 0
+      ? { linkedCompanyContractIds: leg.linkedCompanyContractIds }
+      : {}),
     ...(leg.assignedQualificationGroup ? { assignedQualificationGroup: leg.assignedQualificationGroup } : {}),
     ...(() => {
       const requiredPilotCertificationCode = leg.assignedQualificationGroup

@@ -9,6 +9,7 @@ await syncDistSaveSchema();
 
 await import("./backend-smoke.test.mjs");
 await import("./command-validation.test.mjs");
+await import("./difficulty-economy.test.mjs");
 await import("./utc-timestamp-ingress.test.mjs");
 await import("./save-slot-files.test.mjs");
 await import("./contracts-board-lifecycle.test.mjs");

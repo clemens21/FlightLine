@@ -61,7 +61,8 @@ export interface CreateSaveGamePayload {
 export interface CreateCompanyPayload {
   displayName: string;
   starterAirportId: AirportId;
-  startingCashAmount: CurrencyAmount;
+  startingCashAmount?: CurrencyAmount;
+  difficultyProfile?: DifficultyProfile | string;
   reserveBalanceAmount?: CurrencyAmount;
   baseRole?: BaseRole;
   companyPhase?: CompanyPhase;

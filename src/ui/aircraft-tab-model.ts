@@ -2084,6 +2084,7 @@ function normalizeCompanyContext(
     saveId: companyContext.saveId ?? "synthetic_aircraft_tab",
     companyId: companyContext.companyId ?? "company_synthetic",
     worldSeed: companyContext.worldSeed ?? "synthetic_world_seed",
+    difficultyProfile: companyContext.difficultyProfile ?? "hard",
     displayName: companyContext.displayName ?? "Synthetic Carrier",
     reputationScore: companyContext.reputationScore ?? 50,
     companyPhase: companyContext.companyPhase ?? "startup",

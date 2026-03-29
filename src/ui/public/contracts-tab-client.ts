@@ -166,7 +166,9 @@ const defaultMapState: MapState = {
   centerLongitudeNorm: 0.5,
   centerLatitudeNorm: 0.36,
 };
-const initialUrl = new URL(window.location.href);
+const initialUrl = typeof window === "undefined"
+  ? new URL("http://localhost/")
+  : new URL(window.location.href);
 const initialContractsView = initialUrl.searchParams.get("contractsView");
 const activeContractStates = new Set(["accepted", "assigned", "active"]);
 const closedContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);

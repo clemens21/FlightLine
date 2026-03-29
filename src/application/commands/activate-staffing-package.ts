@@ -8,6 +8,7 @@ import { addUtcMonths, createPrefixedId, deriveFinancialPressureBand } from "./u
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import { reconcileNamedPilots } from "../staffing/named-pilot-roster.js";
 import { normalizeOptionalUtcTimestamp } from "../../domain/common/utc.js";
+import { staffingPriceMultiplierForDifficulty } from "../../domain/save-runtime/difficulty-profile.js";
 import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibility.js";
 import { parsePilotCertificationsJson, pilotCertificationsToJson } from "../../domain/staffing/pilot-certifications.js";
 import type { EmploymentModel, LaborCategory } from "../../domain/staffing/types.js";
@@ -137,8 +138,17 @@ export async function handleActivateStaffingPackage(
   const effectiveEmploymentModel = marketOffer?.employmentModel ?? command.payload.employmentModel;
   const qualificationGroup = (marketOffer?.qualificationGroup ?? command.payload.qualificationGroup).trim();
   const effectiveCoverageUnits = marketOffer?.coverageUnits ?? command.payload.coverageUnits;
-  const effectiveFixedCostAmount = marketOffer?.fixedCostAmount ?? command.payload.fixedCostAmount;
-  const effectiveVariableCostRate = marketOffer?.variableCostRate ?? command.payload.variableCostRate ?? null;
+  const priceMultiplier = !marketOffer && companyContext
+    ? staffingPriceMultiplierForDifficulty(companyContext.difficultyProfile)
+    : 1;
+  const requestedFixedCostAmount = marketOffer?.fixedCostAmount ?? command.payload.fixedCostAmount;
+  const requestedVariableCostRate = marketOffer?.variableCostRate ?? command.payload.variableCostRate ?? null;
+  const effectiveFixedCostAmount = Number.isFinite(requestedFixedCostAmount)
+    ? Math.round(Number(requestedFixedCostAmount) * priceMultiplier)
+    : requestedFixedCostAmount;
+  const effectiveVariableCostRate = requestedVariableCostRate !== null && Number.isFinite(requestedVariableCostRate)
+    ? Math.round(Number(requestedVariableCostRate) * priceMultiplier)
+    : requestedVariableCostRate;
   const requestedBaseAirportId = command.payload.baseAirportId?.trim().toUpperCase() || "";
   const effectiveBaseAirportId = requestedBaseAirportId || companyContext?.homeBaseAirportId || "";
   const effectiveServiceRegionCode = command.payload.serviceRegionCode?.trim() || null;

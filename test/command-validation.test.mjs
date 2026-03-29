@@ -10,10 +10,13 @@ import {
   createTestHarness,
   uniqueSaveId,
 } from "./helpers/flightline-testkit.mjs";
+import { startingCashAmountForDifficulty } from "../dist/domain/save-runtime/difficulty-profile.js";
 
-const startupStartingCashAmount = 3_500_000;
+const hardStartingCashAmount = startingCashAmountForDifficulty("hard");
+const mediumStartingCashAmount = startingCashAmountForDifficulty("medium");
+const easyStartingCashAmount = startingCashAmountForDifficulty("easy");
 
-async function createBareSave(backend, saveId, startedAtUtc) {
+async function createBareSave(backend, saveId, startedAtUtc, difficultyProfile = "hard") {
   const result = await backend.dispatch({
     commandId: `cmd_${saveId}_save`,
     saveId,
@@ -22,7 +25,7 @@ async function createBareSave(backend, saveId, startedAtUtc) {
     actorType: "player",
     payload: {
       worldSeed: `seed_${saveId}`,
-      difficultyProfile: "standard",
+      difficultyProfile,
       startTimeUtc: startedAtUtc,
     },
   });
@@ -50,7 +53,7 @@ try {
     },
   });
   assert.equal(highCashResult.success, false);
-  assert.equal(highCashResult.hardBlockers.some((entry) => /Starting cash is fixed at 3500000/i.test(entry)), true);
+  assert.equal(highCashResult.hardBlockers.some((entry) => /Starting cash is fixed at 3500000 for hard difficulty/i.test(entry)), true);
   assert.equal(await backend.loadCompanyContext(highCashSaveId), null);
 
   const nanCashSaveId = uniqueSaveId("company_cash_nan");
@@ -84,7 +87,7 @@ try {
     payload: {
       displayName: "Bogus Phase Air",
       starterAirportId: "KDEN",
-      startingCashAmount: startupStartingCashAmount,
+      startingCashAmount: hardStartingCashAmount,
       companyPhase: "bogus_phase",
     },
   });
@@ -104,7 +107,7 @@ try {
     payload: {
       displayName: "NaN Tier Air",
       starterAirportId: "KDEN",
-      startingCashAmount: startupStartingCashAmount,
+      startingCashAmount: hardStartingCashAmount,
       progressionTier: Number.NaN,
     },
   });
@@ -124,7 +127,7 @@ try {
     payload: {
       displayName: "Tier Five Hundred Air",
       starterAirportId: "KDEN",
-      startingCashAmount: startupStartingCashAmount,
+      startingCashAmount: hardStartingCashAmount,
       progressionTier: 500,
     },
   });
@@ -147,7 +150,7 @@ try {
     payload: {
       displayName: "NaN Reputation Air",
       starterAirportId: "KDEN",
-      startingCashAmount: startupStartingCashAmount,
+      startingCashAmount: hardStartingCashAmount,
       startingReputationScore: Number.NaN,
     },
   });
@@ -170,16 +173,72 @@ try {
     payload: {
       displayName: "Canonical Startup Air",
       starterAirportId: "KDEN",
-      startingCashAmount: startupStartingCashAmount,
+      startingCashAmount: hardStartingCashAmount,
     },
   });
   assert.equal(validCompanyResult.success, true, validCompanyResult.hardBlockers?.[0] ?? "Expected valid company creation.");
   const validCompanyContext = await backend.loadCompanyContext(validSaveId);
   assert.ok(validCompanyContext);
-  assert.equal(validCompanyContext.currentCashAmount, startupStartingCashAmount);
+  assert.equal(validCompanyContext.currentCashAmount, hardStartingCashAmount);
+  assert.equal(validCompanyContext.difficultyProfile, "hard");
   assert.equal(validCompanyContext.companyPhase, "startup");
   assert.equal(validCompanyContext.progressionTier, 1);
   assert.equal(validCompanyContext.reputationScore, 0);
+
+  const mediumSaveId = uniqueSaveId("company_medium");
+  const mediumStartedAtUtc = "2026-03-16T12:35:00.000Z";
+  await createBareSave(backend, mediumSaveId, mediumStartedAtUtc, "medium");
+  const mediumCompanyResult = await backend.dispatch({
+    commandId: `cmd_${mediumSaveId}_company_medium`,
+    saveId: mediumSaveId,
+    commandName: "CreateCompany",
+    issuedAtUtc: mediumStartedAtUtc,
+    actorType: "player",
+    payload: {
+      displayName: "Medium Startup Air",
+      starterAirportId: "KDEN",
+      difficultyProfile: "medium",
+      startingCashAmount: mediumStartingCashAmount,
+    },
+  });
+  assert.equal(mediumCompanyResult.success, true, mediumCompanyResult.hardBlockers?.[0] ?? "Expected medium company creation.");
+  const mediumCompanyContext = await backend.loadCompanyContext(mediumSaveId);
+  assert.ok(mediumCompanyContext);
+  assert.equal(mediumCompanyContext.currentCashAmount, mediumStartingCashAmount);
+  assert.equal(mediumCompanyContext.difficultyProfile, "medium");
+  assert.equal(mediumCompanyContext.activeAircraftCount, 0);
+  assert.equal(mediumCompanyContext.activeStaffingPackageCount, 0);
+
+  const easySaveId = uniqueSaveId("company_easy");
+  const easyStartedAtUtc = "2026-03-16T12:40:00.000Z";
+  await createBareSave(backend, easySaveId, easyStartedAtUtc, "easy");
+  const easyCompanyResult = await backend.dispatch({
+    commandId: `cmd_${easySaveId}_company_easy`,
+    saveId: easySaveId,
+    commandName: "CreateCompany",
+    issuedAtUtc: easyStartedAtUtc,
+    actorType: "player",
+    payload: {
+      displayName: "Easy Startup Air",
+      starterAirportId: "KDEN",
+      difficultyProfile: "easy",
+      startingCashAmount: easyStartingCashAmount,
+    },
+  });
+  assert.equal(easyCompanyResult.success, true, easyCompanyResult.hardBlockers?.[0] ?? "Expected easy company creation.");
+  const easyCompanyContext = await backend.loadCompanyContext(easySaveId);
+  assert.ok(easyCompanyContext);
+  assert.equal(easyCompanyContext.currentCashAmount, easyStartingCashAmount);
+  assert.equal(easyCompanyContext.difficultyProfile, "easy");
+  assert.equal(easyCompanyContext.activeAircraftCount, 1);
+  assert.equal(easyCompanyContext.activeStaffingPackageCount, 1);
+  const easyFleetState = await backend.loadFleetState(easySaveId);
+  assert.ok(easyFleetState);
+  assert.equal(easyFleetState.aircraft.length, 1);
+  const easyStaffingState = await backend.loadStaffingState(easySaveId);
+  assert.ok(easyStaffingState);
+  assert.equal(easyStaffingState.staffingPackages.length, 1);
+  assert.equal(easyStaffingState.namedPilots.length, 1);
 
   const staffingSaveId = uniqueSaveId("staffing_cost_validation");
   const staffingStartedAtUtc = await createCompanySave(backend, staffingSaveId, {
@@ -254,7 +313,7 @@ try {
   assert.equal(staffingState.namedPilots.length, 0);
   const companyContextAfterStaffingFailures = await backend.loadCompanyContext(staffingSaveId);
   assert.ok(companyContextAfterStaffingFailures);
-  assert.equal(companyContextAfterStaffingFailures.currentCashAmount, startupStartingCashAmount);
+  assert.equal(companyContextAfterStaffingFailures.currentCashAmount, hardStartingCashAmount);
 } finally {
   await harness.cleanup();
 }

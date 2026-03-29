@@ -6,6 +6,7 @@
 import type { CommandResult, CreateSaveGameCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
 import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
+import { normalizeDifficultyProfile } from "../../domain/save-runtime/difficulty-profile.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 
 interface CreateSaveGameDependencies {
@@ -63,6 +64,7 @@ export async function handleCreateSaveGame(
     command.payload.airportSnapshotVersion ?? (await dependencies.resolveAirportSnapshotVersion());
   const aircraftSnapshotVersion =
     command.payload.aircraftSnapshotVersion ?? (await dependencies.resolveAircraftSnapshotVersion());
+  const difficultyProfile = normalizeDifficultyProfile(command.payload.difficultyProfile);
   const eventLogEntryId = createPrefixedId("event");
 
   dependencies.saveDatabase.transaction(() => {
@@ -94,7 +96,7 @@ export async function handleCreateSaveGame(
         $created_at_utc: command.issuedAtUtc,
         $updated_at_utc: command.issuedAtUtc,
         $world_seed: command.payload.worldSeed,
-        $difficulty_profile: command.payload.difficultyProfile,
+        $difficulty_profile: difficultyProfile,
         $airport_snapshot_version: airportSnapshotVersion,
         $aircraft_snapshot_version: aircraftSnapshotVersion,
       },
@@ -155,6 +157,7 @@ export async function handleCreateSaveGame(
           airportSnapshotVersion,
           aircraftSnapshotVersion,
           saveFilePath: dependencies.saveFilePath,
+          difficultyProfile,
         }),
       },
     );
@@ -187,7 +190,10 @@ export async function handleCreateSaveGame(
         $issued_at_utc: command.issuedAtUtc,
         $completed_at_utc: command.issuedAtUtc,
         $status: "completed",
-        $payload_json: JSON.stringify(command.payload),
+        $payload_json: JSON.stringify({
+          ...command.payload,
+          difficultyProfile,
+        }),
       },
     );
   });

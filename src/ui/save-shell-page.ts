@@ -939,6 +939,21 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .action-group.tight { gap: 8px; }
     form.inline { display: inline-flex; gap: 8px; align-items: end; flex-wrap: wrap; }
     label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); min-width: 140px; }
+    .choice-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .choice-card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(12, 19, 29, 0.72);
+      min-width: 0;
+      cursor: pointer;
+    }
+    .choice-card input { width: auto; margin-top: 4px; }
+    .choice-card-copy { display: grid; gap: 6px; min-width: 0; }
     input, select {
       width: 100%;
       border-radius: 12px;

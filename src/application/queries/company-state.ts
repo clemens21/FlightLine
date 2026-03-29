@@ -7,12 +7,15 @@ import type { SaveId, UtcIsoString } from "../../domain/common/primitives.js";
 import type { CompanyPhase } from "../../domain/company/types.js";
 import type { FinancialPressureBand } from "../../domain/finance/types.js";
 import { normalizeUtcTimestamp } from "../../domain/common/utc.js";
+import { normalizeDifficultyProfile } from "../../domain/save-runtime/difficulty-profile.js";
+import type { DifficultyProfile } from "../../domain/save-runtime/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 
 interface CompanyContextRow extends Record<string, unknown> {
   saveId: string;
   worldSeed: string;
   activeCompanyId: string;
+  difficultyProfile: string;
   displayName: string;
   reputationScore: number;
   companyPhase: CompanyPhase;
@@ -36,6 +39,7 @@ export interface CompanyContext {
   saveId: SaveId;
   companyId: string;
   worldSeed: string;
+  difficultyProfile: DifficultyProfile;
   displayName: string;
   reputationScore: number;
   companyPhase: CompanyPhase;
@@ -61,6 +65,7 @@ export function loadActiveCompanyContext(
       sg.save_id AS saveId,
       sg.world_seed AS worldSeed,
       sg.active_company_id AS activeCompanyId,
+      sg.difficulty_profile AS difficultyProfile,
       c.display_name AS displayName,
       c.reputation_score AS reputationScore,
       c.company_phase AS companyPhase,
@@ -126,6 +131,7 @@ export function loadActiveCompanyContext(
     saveId: row.saveId,
     companyId: row.activeCompanyId,
     worldSeed: row.worldSeed,
+    difficultyProfile: normalizeDifficultyProfile(row.difficultyProfile),
     displayName: row.displayName,
     reputationScore: row.reputationScore,
     companyPhase: row.companyPhase,

@@ -7,6 +7,8 @@ import { addUtcMonths, createPrefixedId } from "./utils.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import { loadNamedPilotRoster } from "../staffing/named-pilot-roster.js";
 import { estimateDirectHireSalary } from "../staffing/pilot-employment-pricing.js";
+import { staffingPriceMultiplierForDifficulty } from "../../domain/save-runtime/difficulty-profile.js";
+import type { DifficultyProfile } from "../../domain/save-runtime/types.js";
 import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibility.js";
 import type { EmploymentModel, PilotCertificationCode, PilotVisibleProfile } from "../../domain/staffing/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
@@ -85,6 +87,7 @@ function describeConversionBlock(displayName: string, availabilityState: string)
 function resolveDirectSalaryAmount(
   saveDatabase: SqliteFileDatabase,
   companyId: string,
+  difficultyProfile: DifficultyProfile,
   sourceOfferId: string | null,
   sourceCandidateProfileId: string | undefined,
   qualificationGroup: string,
@@ -138,6 +141,7 @@ function resolveDirectSalaryAmount(
     primaryQualificationFamilyHours: candidateProfile.primaryQualificationFamilyHours,
     certificationHours: candidateProfile.certificationHours,
     statProfile: candidateProfile.statProfile,
+    priceMultiplier: staffingPriceMultiplierForDifficulty(difficultyProfile),
   });
 }
 
@@ -211,6 +215,7 @@ export async function handleConvertNamedPilotToDirectHire(
   const directSalaryAmount = resolveDirectSalaryAmount(
     dependencies.saveDatabase,
     companyContext.companyId,
+    companyContext.difficultyProfile,
     staffingPackage.sourceOfferId,
     namedPilot.sourceCandidateProfileId,
     namedPilot.qualificationGroup,
