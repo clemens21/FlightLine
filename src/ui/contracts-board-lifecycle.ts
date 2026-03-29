@@ -16,12 +16,12 @@ export interface EnsuredContractBoardResult {
 function readMinimumContractBoardOfferCount(): number {
   const rawValue = process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT?.trim();
   if (!rawValue) {
-    return 400;
+    return 1200;
   }
 
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed)) {
-    return 400;
+    return 1200;
   }
 
   return Math.max(24, parsed);

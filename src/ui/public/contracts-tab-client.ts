@@ -18,12 +18,15 @@ import type {
 import type { NotificationLevel, ShellSummaryPayload } from "../save-shell-model.js";
 
 interface FilterState {
-  routeSearchText: string;
+  departureSearchText: string;
+  destinationSearchText: string;
   nearestAircraftSearchText: string;
   readyAircraft: boolean;
   noReadyAircraft: boolean;
-  payloadMin: string;
-  payloadMax: string;
+  passengerPayloadMin: string;
+  passengerPayloadMax: string;
+  cargoPayloadMin: string;
+  cargoPayloadMax: string;
   distanceMin: string;
   distanceMax: string;
   hoursRemainingMin: string;
@@ -41,7 +44,8 @@ interface MapState {
 }
 
 interface AppliedTextFilters {
-  routeSearchText: string;
+  departureSearchText: string;
+  destinationSearchText: string;
   nearestAircraftSearchText: string;
 }
 
@@ -159,7 +163,13 @@ const maxMapZoom = 6;
 const boardMapPaddingPx = 72;
 const plannerMapPaddingPx = 96;
 const openStreetMapTileUrl = "https://tile.openstreetmap.org";
-const debouncedTextFilterNames = new Set(["routeSearchText", "nearestAircraftSearchText", "plannerSearchText", "plannerDestinationCode"]);
+const debouncedTextFilterNames = new Set([
+  "departureSearchText",
+  "destinationSearchText",
+  "nearestAircraftSearchText",
+  "plannerSearchText",
+  "plannerDestinationCode",
+]);
 const textFilterDebounceMs = 300;
 const defaultMapState: MapState = {
   zoom: 2,
@@ -209,12 +219,15 @@ export function mountContractsTab(
   const state: ContractsUiState = {
     payload: initialPayload,
     filters: {
-      routeSearchText: "",
+      departureSearchText: "",
+      destinationSearchText: "",
       nearestAircraftSearchText: "",
       readyAircraft: false,
       noReadyAircraft: false,
-      payloadMin: "",
-      payloadMax: "",
+      passengerPayloadMin: "",
+      passengerPayloadMax: "",
+      cargoPayloadMin: "",
+      cargoPayloadMax: "",
       distanceMin: "",
       distanceMax: "",
       hoursRemainingMin: "",
@@ -225,7 +238,8 @@ export function mountContractsTab(
       payoutMax: "",
     },
     appliedTextFilters: {
-      routeSearchText: "",
+      departureSearchText: "",
+      destinationSearchText: "",
       nearestAircraftSearchText: "",
     },
     plannerFilters: {
@@ -653,7 +667,8 @@ export function mountContractsTab(
       textFilterDebounceTimeout = setTimeout(() => {
         textFilterDebounceTimeout = null;
         state.appliedTextFilters = {
-          routeSearchText: state.filters.routeSearchText,
+          departureSearchText: state.filters.departureSearchText,
+          destinationSearchText: state.filters.destinationSearchText,
           nearestAircraftSearchText: state.filters.nearestAircraftSearchText,
         };
         state.appliedPlannerTextFilters = {
@@ -1199,7 +1214,10 @@ export function mountContractsTab(
     delete popover.dataset.contractsBoardPopoverVertical;
 
     if (controlType === "search") {
-      const preferredWidth = Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
+      const searchFieldCount = popover.querySelectorAll(".contracts-board-search-field").length;
+      const preferredWidth = searchFieldCount > 1
+        ? Math.max(260, Math.min(340, Math.round(headerRect.width + 28)))
+        : Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
       const width = Math.min(preferredWidth, window.innerWidth - (viewportPadding * 2));
       const left = clampViewportLeft(toggleRect.right - width, width);
       const top = Math.max(viewportTop, Math.min(
@@ -2151,35 +2169,62 @@ function renderContractsBoardActivePopover(
 
   switch (activePopover) {
     case "routeSearch":
-      return renderContractsBoardSearchControl(
+      return renderContractsBoardSearchGroupControl(
         "routeSearch",
-        "routeSearchText",
-        "Airport, city, or route code",
-        "Search route",
-        state.filters.routeSearchText,
+        [
+          {
+            fieldName: "departureSearchText",
+            label: "Departure",
+            placeholder: "Search departure",
+            ariaLabel: "Search departure airport",
+            value: state.filters.departureSearchText,
+          },
+          {
+            fieldName: "destinationSearchText",
+            label: "Destination",
+            placeholder: "Search destination",
+            ariaLabel: "Search destination airport",
+            value: state.filters.destinationSearchText,
+          },
+        ],
       );
     case "aircraftSearch":
-      return renderContractsBoardSearchControl(
+      return renderContractsBoardSearchGroupControl(
         "aircraftSearch",
-        "nearestAircraftSearchText",
-        "Search aircraft tail",
-        "Search nearest aircraft tail number",
-        state.filters.nearestAircraftSearchText,
+        [
+          {
+            fieldName: "nearestAircraftSearchText",
+            label: "Tail number",
+            placeholder: "Search aircraft tail",
+            ariaLabel: "Search nearest aircraft tail number",
+            value: state.filters.nearestAircraftSearchText,
+          },
+        ],
       );
     case "payloadFilter":
       return renderContractsBoardFilterControl(
         "payloadFilter",
-        renderContractsCompactField(
-          "Payload",
-          renderContractsRangeFields("payloadMin", "payloadMax", {
+        `${renderContractsCompactField(
+          "Passengers",
+          renderContractsRangeFields("passengerPayloadMin", "passengerPayloadMax", {
             minimum: 0,
             step: 1,
             minPlaceholder: "Min",
             maxPlaceholder: "Max",
-            minValue: state.filters.payloadMin,
-            maxValue: state.filters.payloadMax,
+            minValue: state.filters.passengerPayloadMin,
+            maxValue: state.filters.passengerPayloadMax,
           }),
-        ),
+        )}${renderContractsCompactField(
+          "Cargo (lb)",
+          renderContractsRangeFields("cargoPayloadMin", "cargoPayloadMax", {
+            minimum: 0,
+            step: 100,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.filters.cargoPayloadMin,
+            maxValue: state.filters.cargoPayloadMax,
+          }),
+        )}`,
       );
     case "aircraftFilter":
       return renderContractsBoardFilterControl(
@@ -2254,14 +2299,17 @@ function renderContractsBoardActivePopover(
   }
 }
 
-function renderContractsBoardSearchControl(
+function renderContractsBoardSearchGroupControl(
   popoverKey: ContractsBoardPopoverKey,
-  fieldName: keyof FilterState,
-  placeholder: string,
-  ariaLabel: string,
-  value: string,
+  fields: Array<{
+    fieldName: keyof FilterState;
+    label: string;
+    placeholder: string;
+    ariaLabel: string;
+    value: string;
+  }>,
 ): string {
-  return `<div class="contracts-board-header-popover contracts-board-header-popover--search" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="search"><input type="search" class="contracts-board-inline-search" name="${escapeHtml(String(fieldName))}" value="${escapeHtml(value)}" data-contracts-board-field="${escapeHtml(String(fieldName))}" placeholder="${escapeHtml(placeholder)}" aria-label="${escapeHtml(ariaLabel)}" /></div>`;
+  return `<div class="contracts-board-header-popover contracts-board-header-popover--search" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="search"><div class="contracts-board-popover-body contracts-board-popover-body--search">${fields.map((field) => `<label class="contracts-board-search-field"><span class="eyebrow">${escapeHtml(field.label)}</span><input type="search" class="contracts-board-inline-search" name="${escapeHtml(String(field.fieldName))}" value="${escapeHtml(field.value)}" data-contracts-board-field="${escapeHtml(String(field.fieldName))}" placeholder="${escapeHtml(field.placeholder)}" aria-label="${escapeHtml(field.ariaLabel)}" /></label>`).join("")}</div></div>`;
 }
 
 function renderContractsBoardFilterControl(popoverKey: ContractsBoardPopoverKey, bodyMarkup: string): string {
@@ -2565,8 +2613,10 @@ function getClosedContracts(payload: ContractsViewPayload): ContractsViewCompany
 
 // Derived collections centralize filter rules so selection, counts, and rendering all agree on the same visible set.
 function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
-  const payloadMin = Number.parseInt(state.filters.payloadMin, 10);
-  const payloadMax = Number.parseInt(state.filters.payloadMax, 10);
+  const passengerPayloadMin = Number.parseInt(state.filters.passengerPayloadMin, 10);
+  const passengerPayloadMax = Number.parseInt(state.filters.passengerPayloadMax, 10);
+  const cargoPayloadMin = Number.parseInt(state.filters.cargoPayloadMin, 10);
+  const cargoPayloadMax = Number.parseInt(state.filters.cargoPayloadMax, 10);
   const distanceMin = Number.parseInt(state.filters.distanceMin, 10);
   const distanceMax = Number.parseInt(state.filters.distanceMax, 10);
   const hoursRemainingMin = Number.parseInt(state.filters.hoursRemainingMin, 10);
@@ -2575,7 +2625,8 @@ function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
   const dueHoursMax = Number.parseInt(state.filters.dueHoursMax, 10);
   const minPayout = Number.parseInt(state.filters.payoutMin, 10);
   const maxPayout = Number.parseInt(state.filters.payoutMax, 10);
-  const routeSearchText = state.appliedTextFilters.routeSearchText.trim().toLowerCase();
+  const departureSearchText = state.appliedTextFilters.departureSearchText.trim().toLowerCase();
+  const destinationSearchText = state.appliedTextFilters.destinationSearchText.trim().toLowerCase();
   const nearestAircraftSearchText = state.appliedTextFilters.nearestAircraftSearchText.trim().toLowerCase();
 
   return state.payload.offers.filter((offer) => {
@@ -2586,7 +2637,7 @@ function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
       return false;
     }
 
-    if (routeSearchText && !buildRouteSearchHaystack(offer).includes(routeSearchText)) {
+    if (!matchesRouteSearchFilters(offer, departureSearchText, destinationSearchText)) {
       return false;
     }
 
@@ -2598,7 +2649,7 @@ function getFilteredOffers(state: ContractsUiState): ContractsViewOffer[] {
       return false;
     }
 
-    if (!matchesNumericRange(routePayloadAmount(offer), payloadMin, payloadMax)) {
+    if (!matchesPayloadFilters(offer, passengerPayloadMin, passengerPayloadMax, cargoPayloadMin, cargoPayloadMax)) {
       return false;
     }
 
@@ -2626,8 +2677,10 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
   const source = state.boardTab === "closed"
     ? getClosedContracts(state.payload)
     : getActiveContracts(state.payload);
-  const payloadMin = Number.parseInt(state.filters.payloadMin, 10);
-  const payloadMax = Number.parseInt(state.filters.payloadMax, 10);
+  const passengerPayloadMin = Number.parseInt(state.filters.passengerPayloadMin, 10);
+  const passengerPayloadMax = Number.parseInt(state.filters.passengerPayloadMax, 10);
+  const cargoPayloadMin = Number.parseInt(state.filters.cargoPayloadMin, 10);
+  const cargoPayloadMax = Number.parseInt(state.filters.cargoPayloadMax, 10);
   const distanceMin = Number.parseInt(state.filters.distanceMin, 10);
   const distanceMax = Number.parseInt(state.filters.distanceMax, 10);
   const hoursRemainingMin = Number.parseInt(state.filters.hoursRemainingMin, 10);
@@ -2636,7 +2689,8 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
   const dueHoursMax = Number.parseInt(state.filters.dueHoursMax, 10);
   const minPayout = Number.parseInt(state.filters.payoutMin, 10);
   const maxPayout = Number.parseInt(state.filters.payoutMax, 10);
-  const routeSearchText = state.appliedTextFilters.routeSearchText.trim().toLowerCase();
+  const departureSearchText = state.appliedTextFilters.departureSearchText.trim().toLowerCase();
+  const destinationSearchText = state.appliedTextFilters.destinationSearchText.trim().toLowerCase();
   const nearestAircraftSearchText = state.appliedTextFilters.nearestAircraftSearchText.trim().toLowerCase();
 
   return source.filter((contract) => {
@@ -2647,7 +2701,7 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
       return false;
     }
 
-    if (routeSearchText && !buildRouteSearchHaystack(contract).includes(routeSearchText)) {
+    if (!matchesRouteSearchFilters(contract, departureSearchText, destinationSearchText)) {
       return false;
     }
 
@@ -2659,7 +2713,7 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
       return false;
     }
 
-    if (!matchesNumericRange(routePayloadAmount(contract), payloadMin, payloadMax)) {
+    if (!matchesPayloadFilters(contract, passengerPayloadMin, passengerPayloadMax, cargoPayloadMin, cargoPayloadMax)) {
       return false;
     }
 
@@ -2805,6 +2859,35 @@ function matchesNumericRange(value: number, min: number, max: number): boolean {
   return true;
 }
 
+function hasActiveNumericRange(min: number, max: number): boolean {
+  return !Number.isNaN(min) || !Number.isNaN(max);
+}
+
+function matchesPayloadFilters(
+  route: Pick<RouteLike, "volumeType" | "passengerCount" | "cargoWeightLb">,
+  passengerPayloadMin: number,
+  passengerPayloadMax: number,
+  cargoPayloadMin: number,
+  cargoPayloadMax: number,
+): boolean {
+  const passengerRangeActive = hasActiveNumericRange(passengerPayloadMin, passengerPayloadMax);
+  const cargoRangeActive = hasActiveNumericRange(cargoPayloadMin, cargoPayloadMax);
+
+  if (route.volumeType === "passenger") {
+    if (!passengerRangeActive && cargoRangeActive) {
+      return false;
+    }
+
+    return !passengerRangeActive || matchesNumericRange(route.passengerCount ?? 0, passengerPayloadMin, passengerPayloadMax);
+  }
+
+  if (!cargoRangeActive && passengerRangeActive) {
+    return false;
+  }
+
+  return !cargoRangeActive || matchesNumericRange(route.cargoWeightLb ?? 0, cargoPayloadMin, cargoPayloadMax);
+}
+
 function routePayloadAmount(route: Pick<RouteLike, "volumeType" | "passengerCount" | "cargoWeightLb">): number {
   return route.volumeType === "cargo"
     ? route.cargoWeightLb ?? 0
@@ -2874,6 +2957,18 @@ function buildRouteSearchHaystack(route: RouteLike): string {
     route.destination.municipality,
     `${route.origin.code} ${route.destination.code}`,
   ].filter((value): value is string => Boolean(value)).join(" ").toLowerCase();
+}
+
+function matchesRouteSearchFilters(route: RouteLike, departureSearchText: string, destinationSearchText: string): boolean {
+  if (departureSearchText && !matchesAirportFilter(route.origin, departureSearchText)) {
+    return false;
+  }
+
+  if (destinationSearchText && !matchesAirportFilter(route.destination, destinationSearchText)) {
+    return false;
+  }
+
+  return true;
 }
 
 function buildAircraftSearchHaystack(

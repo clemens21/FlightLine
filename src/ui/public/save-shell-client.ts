@@ -204,6 +204,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
 
   // Local shell state mirrors the latest shell, tab, and clock payloads so incremental responses can update only what changed.
   const tabCache = new Map<SavePageTab, SaveTabPayload>();
+  const tabLoadInFlight = new Map<SavePageTab, Promise<SaveTabPayload>>();
+  const warmOnOpenTabIds: SavePageTab[] = ["contracts", "aircraft", "staffing"];
   let shell: ShellSummaryPayload | null = null;
   let activeTab: SavePageTab = config.initialTab;
   let contractsController: ContractsTabController | null = null;
@@ -222,6 +224,8 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   let helpCenterOpen = false;
   let activeHelpSection: HelpCenterSection = "home";
   let pendingOverviewFinanceFocus = false;
+  let tabCacheGeneration = 0;
+  let warmedCoreTabs = false;
   const activeHelpTopics: Record<Exclude<HelpCenterSection, "home">, string | null> = {
     next: firstHelpTopicId("next"),
     blocked: firstHelpTopicId("blocked"),
@@ -237,6 +241,80 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
   ];
 
   loaderTitleNode.textContent = `Opening ${config.saveId}`;
+
+  function invalidateTabCache(): void {
+    tabCacheGeneration += 1;
+    tabCache.clear();
+    tabLoadInFlight.clear();
+  }
+
+  function replaceTabCacheWith(payload: SaveTabPayload): void {
+    invalidateTabCache();
+    tabCache.set(payload.tabId, payload);
+  }
+
+  async function requestTabPayload(tabId: SavePageTab, force = false): Promise<SaveTabPayload> {
+    if (!force) {
+      const cached = tabCache.get(tabId);
+      if (cached) {
+        return cached;
+      }
+
+      const inFlight = tabLoadInFlight.get(tabId);
+      if (inFlight) {
+        return inFlight;
+      }
+    }
+
+    const requestGeneration = tabCacheGeneration;
+    const request = (async () => {
+      const response = await fetch(`/api/save/${encodeURIComponent(config.saveId)}/tab/${tabId}`);
+      const payload = (await response.json()) as SaveTabPayload | { error: string };
+      if (!response.ok || !("contentHtml" in payload)) {
+        throw new Error("error" in payload ? payload.error : `Could not load ${tabId}.`);
+      }
+
+      if (requestGeneration === tabCacheGeneration) {
+        tabCache.set(tabId, payload);
+      }
+
+      return payload;
+    })();
+
+    tabLoadInFlight.set(tabId, request);
+    try {
+      return await request;
+    } finally {
+      if (tabLoadInFlight.get(tabId) === request) {
+        tabLoadInFlight.delete(tabId);
+      }
+    }
+  }
+
+  function warmCoreTabsOnOpen(): void {
+    if (warmedCoreTabs) {
+      return;
+    }
+
+    warmedCoreTabs = true;
+    const tabsToWarm = warmOnOpenTabIds.filter((tabId) => tabId !== activeTab && !tabCache.has(tabId));
+    if (tabsToWarm.length === 0) {
+      return;
+    }
+
+    window.setTimeout(() => {
+      void Promise.allSettled(
+        tabsToWarm.map((tabId) => requestTabPayload(tabId).catch((error) => {
+          console.warn("[save-shell] tab warm failed", {
+            saveId: config.saveId,
+            tabId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        })),
+      );
+    }, 0);
+  }
 
   // Top-bar helpers keep the chrome synchronized as theme, shell, and clock data change independently.
   function syncSettingsMenuTheme(): void {
@@ -606,8 +684,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       renderShellChrome(result.shell);
       applyClockPayload(result.clock);
       if (result.tab) {
-        tabCache.clear();
-        tabCache.set(result.tab.tabId, result.tab);
+        replaceTabCacheWith(result.tab);
         activeTab = result.tab.tabId;
         renderTab(result.tab);
       } else if (clockPayload && contractsController) {
@@ -662,7 +739,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
           plannerClearUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/clear`,
           plannerAcceptUrl: `/api/save/${encodeURIComponent(config.saveId)}/contracts/planner/accept`,
           onShellUpdate(nextShell) {
-            tabCache.clear();
+            invalidateTabCache();
             renderShellChrome(nextShell);
           },
           onMessage(message) {
@@ -720,6 +797,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       history.replaceState(null, "", buildSaveUrl(config.saveId, prefetched.initialTab));
       showShellScreen();
       void loadClock(undefined, false);
+      warmCoreTabsOnOpen();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown shell handoff failure.";
       console.error("[save-shell] apply prefetched payload crashed", error);
@@ -753,6 +831,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       history.replaceState(null, "", buildSaveUrl(config.saveId, tabId));
       showShellScreen();
       await loadClock(undefined, false);
+      warmCoreTabsOnOpen();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not open the save.";
       console.error("[save-shell] direct hydration failed", error);
@@ -781,13 +860,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     tabLoadingNode.textContent = `Loading ${tabId}...`;
 
     try {
-      const response = await fetch(`/api/save/${encodeURIComponent(config.saveId)}/tab/${tabId}`);
-      const payload = (await response.json()) as SaveTabPayload | { error: string };
-      if (!response.ok || !("contentHtml" in payload)) {
-        throw new Error("error" in payload ? payload.error : `Could not load ${tabId}.`);
-      }
-
-      tabCache.set(tabId, payload);
+      const payload = await requestTabPayload(tabId, force);
       renderShellChrome(payload.shell);
       renderTab(payload);
       history.replaceState(null, "", buildSaveUrl(config.saveId, tabId));
@@ -943,8 +1016,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
           renderShellChrome(result.shell);
           applyClockPayload(result.clock);
           if (result.tab) {
-            tabCache.clear();
-            tabCache.set(result.tab.tabId, result.tab);
+            replaceTabCacheWith(result.tab);
             activeTab = result.tab.tabId;
             renderTab(result.tab);
           } else if (clockPayload && contractsController) {
@@ -1069,8 +1141,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
         applyClockPayload(result.clock);
 
         if (result.tab) {
-          tabCache.clear();
-          tabCache.set(result.tab.tabId, result.tab);
+          replaceTabCacheWith(result.tab);
           activeTab = result.tab.tabId;
           renderTab(result.tab);
         }

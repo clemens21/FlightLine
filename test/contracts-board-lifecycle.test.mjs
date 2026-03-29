@@ -61,7 +61,7 @@ try {
   assert.ok(firstBoard.companyContext);
   assert.ok(firstBoard.contractBoard);
   assert.equal(firstBoard.refreshed, true);
-  assert.ok(firstBoard.contractBoard.offers.length >= 400);
+  assert.ok(firstBoard.contractBoard.offers.length >= 1200);
 
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));

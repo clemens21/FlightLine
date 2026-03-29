@@ -52,7 +52,7 @@ interface RouteCandidate {
 function readContractBoardTargetScale(): number {
   const rawValue = process.env.FLIGHTLINE_CONTRACT_BOARD_TARGET_SCALE?.trim();
   if (!rawValue) {
-    return 2;
+    return 6;
   }
 
   const parsed = Number.parseFloat(rawValue);

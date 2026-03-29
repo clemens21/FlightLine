@@ -2447,6 +2447,19 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       width: var(--contracts-board-popover-width, 240px);
       max-width: calc(100vw - 24px);
       transform: translateY(-50%);
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow);
+    }
+    .contracts-board-popover-body--search {
+      display: grid;
+      gap: 8px;
+    }
+    .contracts-board-search-field {
+      display: grid;
+      gap: 6px;
     }
     .contracts-board-inline-search,
     .contracts-board-inline-search:is(input) {

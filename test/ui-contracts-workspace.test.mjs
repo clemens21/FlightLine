@@ -142,23 +142,38 @@ try {
   markStep("header sorts");
 
   const baselineContractRows = await page.locator(".contracts-board-table tbody tr").count();
-  const firstRouteCode = firstRouteCellText.match(/\b[A-Z]{3,4}\b/)?.[0] ?? "";
-  assert.ok(firstRouteCode.length > 0);
+  const routeCodes = firstRouteCellText.match(/\b[A-Z]{3,4}\b/g) ?? [];
+  const departureCode = routeCodes[0] ?? "";
+  const destinationCode = routeCodes[1] ?? "";
+  assert.ok(departureCode.length > 0);
+  assert.ok(destinationCode.length > 0);
   await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-contracts-board-popover='routeSearch']");
     return popover instanceof HTMLElement
       && popover.classList.contains("contracts-board-header-popover--search")
-      && popover.querySelector(".contracts-board-inline-search") instanceof HTMLInputElement;
+      && popover.querySelector("input[name='departureSearchText']") instanceof HTMLInputElement
+      && popover.querySelector("input[name='destinationSearchText']") instanceof HTMLInputElement;
   });
-  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='routeSearchText']").fill(firstRouteCode);
+  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']").fill(departureCode);
   await page.waitForFunction(([expectedCode, expectedCount]) => {
     const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
     return rows.length > 0
       && rows.length <= expectedCount
       && rows.every((row) => (row.textContent ?? "").includes(expectedCode));
-  }, [firstRouteCode, baselineContractRows]);
-  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='routeSearchText']").fill("");
+  }, [departureCode, baselineContractRows]);
+  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='destinationSearchText']").fill(destinationCode);
+  await page.waitForFunction(([expectedDeparture, expectedDestination, expectedCount]) => {
+    const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
+    return rows.length > 0
+      && rows.length <= expectedCount
+      && rows.every((row) => {
+        const text = row.textContent ?? "";
+        return text.includes(expectedDeparture) && text.includes(expectedDestination);
+      });
+  }, [departureCode, destinationCode, baselineContractRows]);
+  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']").fill("");
+  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='destinationSearchText']").fill("");
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".contracts-board-table tbody tr").length === expectedCount, baselineContractRows);
   await page.keyboard.press("Escape");
   markStep("route search");
@@ -184,6 +199,55 @@ try {
   await page.keyboard.press("Escape");
   markStep("nearest aircraft controls");
 
+  const payloadSamples = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
+    const passengerRow = rows.find((row) => /(\d[\d,]*)\s*pax/.test(row.textContent ?? ""));
+    const cargoRow = rows.find((row) => /(\d[\d,]*)\s*lb cargo/.test(row.textContent ?? ""));
+    const parseValue = (row, pattern) => {
+      const text = row?.textContent ?? "";
+      const match = text.match(pattern);
+      return match ? Number.parseInt(match[1].replaceAll(",", ""), 10) : null;
+    };
+    return {
+      passengerValue: parseValue(passengerRow, /(\d[\d,]*)\s*pax/),
+      cargoValue: parseValue(cargoRow, /(\d[\d,]*)\s*lb cargo/),
+      rowCount: rows.length,
+    };
+  });
+  assert.ok(typeof payloadSamples.passengerValue === "number");
+  assert.ok(typeof payloadSamples.cargoValue === "number");
+
+  await clickUi(page.locator("button[aria-label='Payload filter']").first().locator("svg"));
+  await page.waitForFunction(() => {
+    const popover = document.querySelector("[data-contracts-board-popover='payloadFilter']");
+    return popover instanceof HTMLElement
+      && popover.classList.contains("contracts-board-header-popover--filter")
+      && popover.querySelector("input[name='passengerPayloadMin']") instanceof HTMLInputElement
+      && popover.querySelector("input[name='passengerPayloadMax']") instanceof HTMLInputElement
+      && popover.querySelector("input[name='cargoPayloadMin']") instanceof HTMLInputElement
+      && popover.querySelector("input[name='cargoPayloadMax']") instanceof HTMLInputElement;
+  });
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='passengerPayloadMin']").fill(String(Math.max(0, payloadSamples.passengerValue - 1)));
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='passengerPayloadMax']").fill(String(payloadSamples.passengerValue + 1));
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
+    return rows.length > 0 && rows.every((row) => /\bpax\b/.test(row.textContent ?? ""));
+  });
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='passengerPayloadMin']").fill("");
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='passengerPayloadMax']").fill("");
+  await page.waitForFunction((expectedCount) => document.querySelectorAll(".contracts-board-table tbody tr").length === expectedCount, payloadSamples.rowCount);
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='cargoPayloadMin']").fill(String(Math.max(0, payloadSamples.cargoValue - 100)));
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='cargoPayloadMax']").fill(String(payloadSamples.cargoValue + 100));
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
+    return rows.length > 0 && rows.every((row) => /\blb cargo\b/.test(row.textContent ?? ""));
+  });
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='cargoPayloadMin']").fill("");
+  await page.locator("[data-contracts-board-popover='payloadFilter'] input[name='cargoPayloadMax']").fill("");
+  await page.waitForFunction((expectedCount) => document.querySelectorAll(".contracts-board-table tbody tr").length === expectedCount, payloadSamples.rowCount);
+  await page.keyboard.press("Escape");
+  markStep("payload filter");
+
   const firstAvailableRow = page.locator("[data-select-offer-row]").first();
   await clickUi(firstAvailableRow);
   await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
@@ -193,8 +257,25 @@ try {
   const secondAvailableRow = page.locator("[data-select-offer-row]").nth(1);
   const hasSecondRow = (await secondAvailableRow.count()) > 0;
   const doubleClickTarget = hasSecondRow ? secondAvailableRow : firstAvailableRow;
-  await doubleClickTarget.scrollIntoViewIfNeeded();
-  await doubleClickTarget.dblclick();
+  await doubleClickTarget.evaluate((element) => {
+    element.scrollIntoView({ block: "center" });
+    if (element instanceof HTMLElement) {
+      element.click();
+      element.click();
+      return;
+    }
+
+    element.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+    element.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }));
+  });
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
   assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").count(), 1);
   assert.equal((await page.locator(".contracts-next-step").textContent())?.includes("Send to route plan"), true);

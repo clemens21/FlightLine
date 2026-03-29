@@ -172,6 +172,17 @@ try {
   server = await startUiServer(port);
   browser = await launchBrowser();
   const page = await browser.newPage();
+  const warmedTabResponses = [];
+  const onResponse = (response) => {
+    const url = new URL(response.url());
+    const match = url.pathname.match(new RegExp(`^/api/save/${seededSaveId}/tab/(contracts|aircraft|staffing)$`));
+    if (!match || response.status() >= 400) {
+      return;
+    }
+
+    warmedTabResponses.push(match[1]);
+  };
+  page.on("response", onResponse);
 
   await page.goto(`${server.baseUrl}/`, { waitUntil: "domcontentloaded" });
   await waitForLauncher(page);
@@ -263,6 +274,21 @@ try {
   await waitForCompanyClock(page);
   seededSaveOpenScriptFailures.stop();
   assert.deepEqual(seededSaveOpenScriptFailures.failures, []);
+  await page.waitForFunction(() => document.querySelector("[data-shell-tab='contracts']") instanceof HTMLElement);
+  await page.waitForFunction(() => document.querySelector("[data-shell-tab='aircraft']") instanceof HTMLElement);
+  await page.waitForFunction(() => document.querySelector("[data-shell-tab='staffing']") instanceof HTMLElement);
+  await page.waitForFunction(() => true);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (["contracts", "aircraft", "staffing"].every((tabId) => warmedTabResponses.includes(tabId))) {
+      break;
+    }
+    await page.waitForTimeout(250);
+  }
+  assert.deepEqual(
+    [...new Set(warmedTabResponses)].sort(),
+    ["aircraft", "contracts", "staffing"],
+  );
+  const warmedRequestCount = warmedTabResponses.length;
 
   await clickUi(page.locator("[data-shell-tab='contracts']"));
   await page.waitForFunction(() => document.querySelectorAll("[data-select-offer-row]").length > 0);
@@ -270,6 +296,8 @@ try {
   await page.waitForFunction(() => document.querySelector("[data-aircraft-tab-host]") instanceof HTMLElement);
   await clickUi(page.locator("[data-shell-tab='staffing']"));
   await page.waitForFunction(() => document.querySelector("[data-staffing-roster]") instanceof HTMLElement);
+  await page.waitForTimeout(250);
+  assert.equal(warmedTabResponses.length, warmedRequestCount);
 
   await clickUi(page.locator("[data-settings-menu] summary"));
   await page.waitForFunction(() => document.querySelector("[data-settings-menu]")?.open === true);
