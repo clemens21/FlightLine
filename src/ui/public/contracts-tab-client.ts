@@ -1267,14 +1267,22 @@ export function mountContractsTab(
         : Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
       const width = Math.min(preferredWidth, window.innerWidth - (viewportPadding * 2));
       const left = clampViewportLeft(toggleRect.right - width, width);
-      const top = isSearchGroup
-        ? Math.max(viewportTop, Math.min(Math.round(toggleRect.bottom + 8), viewportBottom))
+      popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
+      popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
+      let top = isSearchGroup
+        ? Math.round(toggleRect.bottom + 8)
         : Math.max(viewportTop, Math.min(
           Math.round(toggleRect.top + (toggleRect.height / 2)),
           viewportBottom,
         ));
-      popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
-      popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
+      if (isSearchGroup) {
+        const popoverHeight = Math.max(120, Math.ceil(popover.getBoundingClientRect().height));
+        if (top + popoverHeight > viewportBottom) {
+          top = Math.max(viewportTop, Math.round(toggleRect.top - popoverHeight - 8));
+        }
+        const maxTop = Math.max(viewportTop, viewportBottom - popoverHeight);
+        top = Math.max(viewportTop, Math.min(top, maxTop));
+      }
       popover.style.setProperty("--contracts-board-popover-top", `${Math.round(top - stageRect.top)}px`);
       return;
     }

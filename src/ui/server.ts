@@ -57,6 +57,7 @@ const uiBrowserModuleAssetUrls = new Map<string, URL>([
     ["aircraft-image-sources", new URL("./aircraft-image-sources.js", import.meta.url)],
     ["aircraft-tab-model", new URL("./aircraft-tab-model.js", import.meta.url)],
     ["clock-calendar-model", new URL("./clock-calendar-model.js", import.meta.url)],
+    ["contracts-board-model", new URL("./contracts-board-model.js", import.meta.url)],
     ["contracts-view-model", new URL("./contracts-view-model.js", import.meta.url)],
     ["dispatch-tab-model", new URL("./dispatch-tab-model.js", import.meta.url)],
     ["save-shell-model", new URL("./save-shell-model.js", import.meta.url)],
