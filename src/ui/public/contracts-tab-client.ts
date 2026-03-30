@@ -170,14 +170,27 @@ const maxMapZoom = 6;
 const boardMapPaddingPx = 72;
 const plannerMapPaddingPx = 96;
 const openStreetMapTileUrl = "https://tile.openstreetmap.org";
-const debouncedTextFilterNames = new Set([
+const debouncedFilterNames = new Set([
   "departureSearchText",
   "destinationSearchText",
   "nearestAircraftSearchText",
+  "passengerPayloadMin",
+  "passengerPayloadMax",
+  "cargoPayloadMin",
+  "cargoPayloadMax",
+  "distanceMin",
+  "distanceMax",
+  "hoursRemainingMin",
+  "hoursRemainingMax",
+  "dueHoursMin",
+  "dueHoursMax",
+  "payoutMin",
+  "payoutMax",
   "plannerSearchText",
   "plannerDestinationCode",
 ]);
-const textFilterDebounceMs = 300;
+const filterDebounceMs = 180;
+const emptyPlannerCandidates: PlannerCandidateView[] = [];
 const defaultMapState: MapState = {
   zoom: 2,
   centerLongitudeNorm: 0.5,
@@ -302,6 +315,9 @@ export function mountContractsTab(
   let cachedBoardViewState: ContractsBoardViewState | null = null;
   let cachedBoardViewKey = "";
   let cachedBoardPayload: ContractsViewPayload | null = null;
+  let cachedPlannerCandidates: PlannerCandidateView[] | null = null;
+  let cachedPlannerCandidatesKey = "";
+  let cachedPlannerPayload: ContractsViewPayload | null = null;
 
   function getBoardViewCacheKey(nextState: ContractsUiState): string {
     return JSON.stringify({
@@ -331,6 +347,30 @@ export function mountContractsTab(
     cachedBoardViewKey = nextKey;
     cachedBoardViewState = nextBoardViewState;
     return nextBoardViewState;
+  }
+
+  function getPlannerCandidatesCacheKey(nextState: ContractsUiState): string {
+    return JSON.stringify({
+      plannerFilters: nextState.plannerFilters,
+      appliedPlannerTextFilters: nextState.appliedPlannerTextFilters,
+    });
+  }
+
+  function getCachedPlannerCandidates(nextState: ContractsUiState): PlannerCandidateView[] {
+    const nextKey = getPlannerCandidatesCacheKey(nextState);
+    if (
+      cachedPlannerCandidates
+      && cachedPlannerPayload === nextState.payload
+      && cachedPlannerCandidatesKey === nextKey
+    ) {
+      return cachedPlannerCandidates;
+    }
+
+    const nextPlannerCandidates = getFilteredPlannerCandidates(nextState);
+    cachedPlannerPayload = nextState.payload;
+    cachedPlannerCandidatesKey = nextKey;
+    cachedPlannerCandidates = nextPlannerCandidates;
+    return nextPlannerCandidates;
   }
 
   function clearPendingAvailableOfferSelection(): void {
@@ -709,10 +749,7 @@ export function mountContractsTab(
       };
     }
 
-    if (debouncedTextFilterNames.has(target.name)) {
-      const focusState = captureFocusState(root);
-      render(focusState);
-
+    if (debouncedFilterNames.has(target.name)) {
       if (textFilterDebounceTimeout) {
         clearTimeout(textFilterDebounceTimeout);
       }
@@ -730,7 +767,7 @@ export function mountContractsTab(
         };
         ensureActiveTabSelection(state);
         render(captureFocusState(root));
-      }, textFilterDebounceMs);
+      }, filterDebounceMs);
       return;
     }
 
@@ -1091,9 +1128,13 @@ export function mountContractsTab(
   }
 
   function render(focusState: FocusState | null = null): void {
-    ensurePlannerFilterDefaults(state);
+    if (state.workspaceTab === "planning") {
+      ensurePlannerFilterDefaults(state);
+    }
     const boardViewState = getCachedBoardViewState(state);
-    const plannerCandidates = getFilteredPlannerCandidates(state);
+    const plannerCandidates = state.workspaceTab === "planning"
+      ? getCachedPlannerCandidates(state)
+      : emptyPlannerCandidates;
     ensureActiveTabSelection(state, boardViewState);
     const selectedRoute = resolveSelectedRoute(state, boardViewState);
     const availableCount = boardViewState.availableCount;
