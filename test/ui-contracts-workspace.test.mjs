@@ -107,6 +107,18 @@ try {
   assert.equal(headerText.includes("Nearest Aircraft"), true);
   assert.equal(headerText.includes("Route"), true);
   assert.equal(headerText.includes("Due"), true);
+  const headerOrder = await contractsBoardTable.locator("thead th").evaluateAll((cells) =>
+    cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  assert.deepEqual(headerOrder.slice(0, 7), [
+    "Route",
+    "Payload",
+    "Payout",
+    "Distance",
+    "Hours Left",
+    "Due",
+    "Nearest Aircraft",
+  ]);
 
   const routeHeaderStyle = await contractsBoardTable.locator("button[aria-label='Route search']").first().evaluate((button) => {
     const headerControl = button.closest(".table-header-control");
@@ -155,6 +167,28 @@ try {
       && popover.querySelector("input[name='departureSearchText']") instanceof HTMLInputElement
       && popover.querySelector("input[name='destinationSearchText']") instanceof HTMLInputElement;
   });
+  const routeSearchPopoverBounds = await page.evaluate(() => {
+    const popover = document.querySelector("[data-contracts-board-popover='routeSearch']");
+    if (!(popover instanceof HTMLElement)) {
+      return null;
+    }
+
+    const bounds = popover.getBoundingClientRect();
+    return {
+      left: bounds.left,
+      right: bounds.right,
+      top: bounds.top,
+      bottom: bounds.bottom,
+      width: bounds.width,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  assert.ok(routeSearchPopoverBounds);
+  assert.ok(routeSearchPopoverBounds.width >= 320);
+  assert.ok(routeSearchPopoverBounds.left >= 0);
+  assert.ok(routeSearchPopoverBounds.right <= routeSearchPopoverBounds.viewportWidth);
+  assert.ok(routeSearchPopoverBounds.bottom <= routeSearchPopoverBounds.viewportHeight);
   await page.locator("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']").fill(departureCode);
   await page.waitForFunction(([expectedCode, expectedCount]) => {
     const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];

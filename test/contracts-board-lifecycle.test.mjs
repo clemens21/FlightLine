@@ -35,7 +35,7 @@ try {
     actorType: "player",
     payload: {
       worldSeed: "contracts-test-seed",
-      difficultyProfile: "standard",
+      difficultyProfile: "hard",
       startTimeUtc: startedAtUtc,
     },
   });
@@ -52,6 +52,7 @@ try {
       displayName: "Contracts Test Air",
       starterAirportId: "KDEN",
       startingCashAmount: 3_500_000,
+      difficultyProfile: "hard",
     },
   });
 
@@ -66,10 +67,23 @@ try {
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));
   assert.ok(uniqueOrigins.size > 1);
+  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v2:/);
   assert.ok(
     firstBoard.contractBoard.offers.some((offer) => uniqueOrigins.has(offer.destinationAirportId)),
     "Expected at least one chained route opportunity in the board.",
   );
+  const passengerOffers = firstBoard.contractBoard.offers.filter(
+    (offer) => offer.offerStatus === "available" && offer.volumeType === "passenger",
+  );
+  const passengerOrigins = new Map();
+  for (const offer of passengerOffers) {
+    passengerOrigins.set(offer.originAirportId, (passengerOrigins.get(offer.originAirportId) ?? 0) + 1);
+  }
+  assert.ok(passengerOrigins.size >= 24);
+  const homeBasePassengerShare = passengerOffers.length > 0
+    ? (passengerOrigins.get("KDEN") ?? 0) / passengerOffers.length
+    : 0;
+  assert.ok(homeBasePassengerShare < 0.15);
 
   const firstAvailableOffer = firstBoard.contractBoard.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(firstAvailableOffer);

@@ -15,6 +15,13 @@ import type {
   ContractsViewOffer,
   ContractsViewPayload,
 } from "../contracts-view-model.js";
+import {
+  applyContractsBoardViewState,
+  type ContractsBoardCompanyContractLike,
+  type ContractsBoardCompanyContractRowView,
+  type ContractsBoardOfferRowView,
+  type ContractsBoardViewState,
+} from "../contracts-board-model.js";
 import type { NotificationLevel, ShellSummaryPayload } from "../save-shell-model.js";
 
 interface FilterState {
@@ -129,11 +136,11 @@ type ContractsBoardScope = "all" | "my_contracts";
 type ContractsWorkspaceTab = "board" | "planning";
 type SortField = "route" | "payload" | "nearestAircraft" | "distanceNm" | "hoursRemaining" | "dueUtc" | "payout";
 type SortDirection = "asc" | "desc";
-type RouteLike = ContractsViewOffer | ContractsViewCompanyContract;
+type RouteLike = ContractsViewOffer | ContractsBoardCompanyContractLike;
 
 type SelectedRoute =
   | { kind: "offer"; route: ContractsViewOffer }
-  | { kind: "company_contract"; route: ContractsViewCompanyContract };
+  | { kind: "company_contract"; route: ContractsBoardCompanyContractLike };
 
 export interface MountContractsTabOptions {
   viewUrl: string;
@@ -182,6 +189,19 @@ const initialUrl = typeof window === "undefined"
 const initialContractsView = initialUrl.searchParams.get("contractsView");
 const activeContractStates = new Set(["accepted", "assigned", "active"]);
 const closedContractStates = new Set(["completed", "late_completed", "failed", "cancelled"]);
+
+function computeBoardViewState(state: ContractsUiState): ContractsBoardViewState {
+  return applyContractsBoardViewState(state.payload, {
+    filters: state.filters,
+    appliedTextFilters: state.appliedTextFilters,
+    boardTab: state.boardTab,
+    boardScope: state.boardScope,
+    sortField: state.sortField,
+    sortDirection: state.sortDirection,
+    selectedOfferId: state.selectedOfferId,
+    selectedCompanyContractId: state.selectedCompanyContractId,
+  });
+}
 
 export function resolveCompanyContractBadgeState(
   contract: ContractsViewCompanyContract,
@@ -279,6 +299,39 @@ export function mountContractsTab(
   let activeBoardPopover: ContractsBoardPopoverKey | null = null;
   let pendingAvailableOfferSelectionTimeout: number | null = null;
   let pendingAvailableOfferId: string | null = null;
+  let cachedBoardViewState: ContractsBoardViewState | null = null;
+  let cachedBoardViewKey = "";
+  let cachedBoardPayload: ContractsViewPayload | null = null;
+
+  function getBoardViewCacheKey(nextState: ContractsUiState): string {
+    return JSON.stringify({
+      boardTab: nextState.boardTab,
+      boardScope: nextState.boardScope,
+      sortField: nextState.sortField,
+      sortDirection: nextState.sortDirection,
+      selectedOfferId: nextState.selectedOfferId,
+      selectedCompanyContractId: nextState.selectedCompanyContractId,
+      filters: nextState.filters,
+      appliedTextFilters: nextState.appliedTextFilters,
+    });
+  }
+
+  function getCachedBoardViewState(nextState: ContractsUiState): ContractsBoardViewState {
+    const nextKey = getBoardViewCacheKey(nextState);
+    if (
+      cachedBoardViewState
+      && cachedBoardPayload === nextState.payload
+      && cachedBoardViewKey === nextKey
+    ) {
+      return cachedBoardViewState;
+    }
+
+    const nextBoardViewState = computeBoardViewState(nextState);
+    cachedBoardPayload = nextState.payload;
+    cachedBoardViewKey = nextKey;
+    cachedBoardViewState = nextBoardViewState;
+    return nextBoardViewState;
+  }
 
   function clearPendingAvailableOfferSelection(): void {
     if (pendingAvailableOfferSelectionTimeout !== null) {
@@ -719,7 +772,7 @@ export function mountContractsTab(
       ...state.map,
       zoom: nextZoom,
     };
-    renderVisibleMap(root, state, resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state)));
+    renderVisibleMap(root, state, resolveSelectedRoute(state));
   };
 
   const handlePointerDown = (event: PointerEvent) => {
@@ -747,7 +800,7 @@ export function mountContractsTab(
     };
     lastX = event.clientX;
     lastY = event.clientY;
-    renderVisibleMap(root, state, resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state)));
+    renderVisibleMap(root, state, resolveSelectedRoute(state));
   };
 
   const handlePointerUp = (event: PointerEvent) => {
@@ -878,10 +931,6 @@ export function mountContractsTab(
       state.acceptanceNextStepTab = "planning";
       state.acceptanceNextStepOfferId = contractOfferId;
       state.acceptanceNextStepCompanyContractId = acceptedCompanyContract?.companyContractId ?? null;
-
-      if (!getFilteredOffers(state).some((offer) => offer.contractOfferId === state.selectedOfferId)) {
-        state.selectedOfferId = selectDefaultOfferId(state.payload);
-      }
 
       state.selectedCompanyContractId = acceptedCompanyContract?.companyContractId
         ?? state.selectedCompanyContractId;
@@ -1043,17 +1092,14 @@ export function mountContractsTab(
 
   function render(focusState: FocusState | null = null): void {
     ensurePlannerFilterDefaults(state);
-    const filteredOffers = getFilteredOffers(state);
-    const filteredCompanyContracts = getFilteredCompanyContracts(state);
+    const boardViewState = getCachedBoardViewState(state);
     const plannerCandidates = getFilteredPlannerCandidates(state);
-    const sortedOffers = sortOffers(filteredOffers, state);
-    const sortedCompanyContracts = sortCompanyContracts(filteredCompanyContracts, state.payload.currentTimeUtc, state);
-    ensureActiveTabSelection(state, sortedOffers, sortedCompanyContracts);
-    const selectedRoute = resolveSelectedRoute(state, sortedOffers, sortedCompanyContracts);
-    const availableCount = state.payload.offers.filter((offer) => offer.offerStatus === "available").length;
-    const activeCount = getActiveContracts(state.payload).length;
-    const riskyActiveCount = getFilteredCompanyContracts({ ...state, boardTab: "active", boardScope: "my_contracts" }).length;
-    const closedCount = getClosedContracts(state.payload).length;
+    ensureActiveTabSelection(state, boardViewState);
+    const selectedRoute = resolveSelectedRoute(state, boardViewState);
+    const availableCount = boardViewState.availableCount;
+    const activeCount = boardViewState.activeCount;
+    const riskyActiveCount = boardViewState.riskyActiveCount;
+    const closedCount = boardViewState.closedCount;
     const routePlanCount = state.payload.routePlan?.items.length ?? 0;
     const selectedLabel = selectedRoute
       ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
@@ -1094,8 +1140,8 @@ export function mountContractsTab(
             <div class="contracts-board-stage" data-contracts-board-stage>
               <div class="contracts-board-wrap">
                 ${state.boardTab === "available"
-                  ? renderOffersTable(sortedOffers, state.selectedOfferId, state, activeBoardPopover)
-                  : renderCompanyContractsTable(sortedCompanyContracts, state.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state, selectedRoute, activeBoardPopover)}
+                  ? renderOffersTable(boardViewState.visibleOffers, boardViewState.selectedOfferId, state, activeBoardPopover)
+                  : renderCompanyContractsTable(boardViewState.visibleCompanyContracts, boardViewState.selectedCompanyContractId, state.payload.currentTimeUtc, state.boardTab, state, selectedRoute, activeBoardPopover)}
               </div>
               ${renderContractsBoardActivePopover(state, activeBoardPopover)}
             </div>
@@ -1215,15 +1261,18 @@ export function mountContractsTab(
 
     if (controlType === "search") {
       const searchFieldCount = popover.querySelectorAll(".contracts-board-search-field").length;
+      const isSearchGroup = popover.dataset.contractsBoardSearchGroup === "true";
       const preferredWidth = searchFieldCount > 1
-        ? Math.max(260, Math.min(340, Math.round(headerRect.width + 28)))
+        ? Math.max(320, Math.min(420, Math.round(headerRect.width + 140)))
         : Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
       const width = Math.min(preferredWidth, window.innerWidth - (viewportPadding * 2));
       const left = clampViewportLeft(toggleRect.right - width, width);
-      const top = Math.max(viewportTop, Math.min(
-        Math.round(toggleRect.top + (toggleRect.height / 2)),
-        viewportBottom,
-      ));
+      const top = isSearchGroup
+        ? Math.max(viewportTop, Math.min(Math.round(toggleRect.bottom + 8), viewportBottom))
+        : Math.max(viewportTop, Math.min(
+          Math.round(toggleRect.top + (toggleRect.height / 2)),
+          viewportBottom,
+        ));
       popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
       popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
       popover.style.setProperty("--contracts-board-popover-top", `${Math.round(top - stageRect.top)}px`);
@@ -1349,7 +1398,7 @@ function renderWorkspaceTab(tabId: ContractsWorkspaceTab, label: string, activeT
 }
 
 function renderOffersTable(
-  offers: ContractsViewOffer[],
+  offers: ContractsBoardOfferRowView[],
   selectedOfferId: string | null,
   state: ContractsUiState,
   activePopover: ContractsBoardPopoverKey | null,
@@ -1376,16 +1425,12 @@ function renderOffersTable(
             },
             sortField: "payload",
           })}
-          ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
-            search: {
-              key: "aircraftSearch",
-              label: "Nearest Aircraft search",
-            },
+          ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
             filter: {
-              key: "aircraftFilter",
-              label: "Nearest Aircraft filter",
+              key: "payoutFilter",
+              label: "Payout filter",
             },
-            sortField: "nearestAircraft",
+            sortField: "payout",
           })}
           ${renderContractsBoardHeaderCell("Distance", state, activePopover, {
             filter: {
@@ -1408,24 +1453,28 @@ function renderOffersTable(
             },
             sortField: "dueUtc",
           })}
-          ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
-            filter: {
-              key: "payoutFilter",
-              label: "Payout filter",
+          ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
+            search: {
+              key: "aircraftSearch",
+              label: "Nearest Aircraft search",
             },
-            sortField: "payout",
+            filter: {
+              key: "aircraftFilter",
+              label: "Nearest Aircraft filter",
+            },
+            sortField: "nearestAircraft",
           })}
         </tr>
       </thead>
       <tbody>
-        ${offers.map((offer) => renderOfferRow(offer, selectedOfferId === offer.contractOfferId, state.payload.currentTimeUtc)).join("")}
+        ${offers.map((offer) => renderOfferRow(offer, selectedOfferId === offer.route.contractOfferId, state.payload.currentTimeUtc)).join("")}
       </tbody>
     </table>
   `;
 }
 
 function renderCompanyContractsTable(
-  contracts: ContractsViewCompanyContract[],
+  contracts: ContractsBoardCompanyContractRowView[],
   selectedCompanyContractId: string | null,
   currentTimeUtc: string,
   boardTab: ContractsBoardTab,
@@ -1461,16 +1510,12 @@ function renderCompanyContractsTable(
             },
             sortField: "payload",
           })}
-          ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
-            search: {
-              key: "aircraftSearch",
-              label: "Nearest Aircraft search",
-            },
+          ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
             filter: {
-              key: "aircraftFilter",
-              label: "Nearest Aircraft filter",
+              key: "payoutFilter",
+              label: "Payout filter",
             },
-            sortField: "nearestAircraft",
+            sortField: "payout",
           })}
           ${renderContractsBoardHeaderCell("Distance", state, activePopover, {
             filter: {
@@ -1493,30 +1538,34 @@ function renderCompanyContractsTable(
             },
             sortField: "dueUtc",
           })}
-          ${renderContractsBoardHeaderCell("Payout", state, activePopover, {
-            filter: {
-              key: "payoutFilter",
-              label: "Payout filter",
+          ${renderContractsBoardHeaderCell("Nearest Aircraft", state, activePopover, {
+            search: {
+              key: "aircraftSearch",
+              label: "Nearest Aircraft search",
             },
-            sortField: "payout",
+            filter: {
+              key: "aircraftFilter",
+              label: "Nearest Aircraft filter",
+            },
+            sortField: "nearestAircraft",
           })}
           <th></th>
         </tr>
       </thead>
       <tbody>
-        ${contracts.map((contract) => renderCompanyContractRow(contract, selectedCompanyContractId === contract.companyContractId, currentTimeUtc, boardTab)).join("")}
+        ${contracts.map((contract) => renderCompanyContractRow(contract, selectedCompanyContractId === contract.route.companyContractId, currentTimeUtc, boardTab)).join("")}
       </tbody>
     </table>
   `;
 }
 
 function renderCompanyContractRow(
-  contract: ContractsViewCompanyContract,
+  contractView: ContractsBoardCompanyContractRowView,
   isSelected: boolean,
   currentTimeUtc: string,
   boardTab: ContractsBoardTab,
 ): string {
-  const remainingHours = routeHoursRemaining(contract, currentTimeUtc);
+  const contract = contractView.route;
   const workBadgeHtml = renderContractWorkStateBadge(contract.workState);
   const urgencyBadgeHtml = contract.urgencyBand === "stable" ? "" : renderUrgencyBadge(contract.urgencyBand);
   const primaryActionHtml = boardTab === "active" ? renderCompanyContractPrimaryAction(contract) : "";
@@ -1538,28 +1587,29 @@ function renderCompanyContractRow(
         </div>
       </td>
       <td>${escapeHtml(formatPayload(contract))}</td>
-      <td>${renderAircraftCueCell(contract.nearestRelevantAircraft)}</td>
-      <td>${escapeHtml(formatDistance(routeDistanceNm(contract)))}</td>
-      <td>${escapeHtml(formatHoursLeft(remainingHours))}</td>
-      <td>${renderDueCell(contract.deadlineUtc, currentTimeUtc)}</td>
       <td>${escapeHtml(formatMoney(contract.payoutAmount))}</td>
+      <td>${escapeHtml(formatDistance(contractView.distanceNm))}</td>
+      <td>${escapeHtml(formatHoursLeft(contractView.hoursRemaining))}</td>
+      <td>${renderDueCell(contract.deadlineUtc, currentTimeUtc)}</td>
+      <td>${renderAircraftCueCell(contract.nearestRelevantAircraft)}</td>
       <td>${actionsHtml ? `<div class="contract-row-actions">${actionsHtml}</div>` : ``}</td>
     </tr>
   `;
 }
 
-function renderOfferRow(offer: ContractsViewOffer, isSelected: boolean, currentTimeUtc: string): string {
+function renderOfferRow(offerView: ContractsBoardOfferRowView, isSelected: boolean, currentTimeUtc: string): string {
+  const offer = offerView.route;
   return `
     <tr class="contract-row ${isSelected ? "selected" : ""} ${offer.matchesPlannerEndpoint ? "matches-endpoint" : ""}" data-select-offer-row="${escapeHtml(offer.contractOfferId)}">
       <td>
         ${renderRouteColumn(offer.origin, offer.destination)}
       </td>
       <td>${escapeHtml(formatPayload(offer))}</td>
-      <td>${renderAircraftCueCell(offer.nearestRelevantAircraft)}</td>
-      <td>${escapeHtml(formatDistance(routeDistanceNm(offer)))}</td>
-      <td>${escapeHtml(formatHoursLeft(offer.timeRemainingHours))}</td>
-      <td>${renderDueCell(offer.latestCompletionUtc, currentTimeUtc)}</td>
       <td>${escapeHtml(formatMoney(offer.payoutAmount))}</td>
+      <td>${escapeHtml(formatDistance(offerView.distanceNm))}</td>
+      <td>${escapeHtml(formatHoursLeft(offerView.hoursRemaining))}</td>
+      <td>${renderDueCell(offer.latestCompletionUtc, currentTimeUtc)}</td>
+      <td>${renderAircraftCueCell(offer.nearestRelevantAircraft)}</td>
     </tr>
   `;
 }
@@ -2309,7 +2359,8 @@ function renderContractsBoardSearchGroupControl(
     value: string;
   }>,
 ): string {
-  return `<div class="contracts-board-header-popover contracts-board-header-popover--search" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="search"><div class="contracts-board-popover-body contracts-board-popover-body--search">${fields.map((field) => `<label class="contracts-board-search-field"><span class="eyebrow">${escapeHtml(field.label)}</span><input type="search" class="contracts-board-inline-search" name="${escapeHtml(String(field.fieldName))}" value="${escapeHtml(field.value)}" data-contracts-board-field="${escapeHtml(String(field.fieldName))}" placeholder="${escapeHtml(field.placeholder)}" aria-label="${escapeHtml(field.ariaLabel)}" /></label>`).join("")}</div></div>`;
+  const isMultiField = fields.length > 1;
+  return `<div class="contracts-board-header-popover contracts-board-header-popover--search${isMultiField ? " contracts-board-header-popover--search-group" : ""}" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="search" data-contracts-board-search-group="${isMultiField ? "true" : "false"}"><div class="contracts-board-popover-body contracts-board-popover-body--search">${fields.map((field) => `<label class="contracts-board-search-field"><span class="eyebrow">${escapeHtml(field.label)}</span><input type="search" class="contracts-board-inline-search" name="${escapeHtml(String(field.fieldName))}" value="${escapeHtml(field.value)}" data-contracts-board-field="${escapeHtml(String(field.fieldName))}" placeholder="${escapeHtml(field.placeholder)}" aria-label="${escapeHtml(field.ariaLabel)}" /></label>`).join("")}</div></div>`;
 }
 
 function renderContractsBoardFilterControl(popoverKey: ContractsBoardPopoverKey, bodyMarkup: string): string {
@@ -3007,45 +3058,40 @@ function buildAirportOptions(...airportCollections: ContractsViewAirport[][]): A
 
 function ensureActiveTabSelection(
   state: ContractsUiState,
-  filteredOffers: ContractsViewOffer[] = getFilteredOffers(state),
-  filteredCompanyContracts: ContractsViewCompanyContract[] = getFilteredCompanyContracts(state),
+  boardViewState: ContractsBoardViewState = computeBoardViewState(state),
 ): void {
   if (state.boardTab === "available") {
-    if (!filteredOffers.some((offer) => offer.contractOfferId === state.selectedOfferId)) {
-      state.selectedOfferId = filteredOffers[0]?.contractOfferId ?? null;
-    }
+    state.selectedOfferId = boardViewState.selectedOfferId;
     return;
   }
 
-  if (!filteredCompanyContracts.some((contract) => contract.companyContractId === state.selectedCompanyContractId)) {
-    state.selectedCompanyContractId = filteredCompanyContracts[0]?.companyContractId ?? selectDefaultCompanyContractId(state.payload, state.boardTab);
-  }
+  state.selectedCompanyContractId = boardViewState.selectedCompanyContractId
+    ?? selectDefaultCompanyContractId(state.payload, state.boardTab);
 }
 
 function resolveSelectedRoute(
   state: ContractsUiState,
-  filteredOffers: ContractsViewOffer[],
-  filteredCompanyContracts: ContractsViewCompanyContract[],
+  boardViewState: ContractsBoardViewState = computeBoardViewState(state),
 ): SelectedRoute | null {
   if (state.boardTab === "available") {
-    const selectedOffer = filteredOffers.find((offer) => offer.contractOfferId === state.selectedOfferId)
-      ?? filteredOffers[0]
+    const selectedOffer = boardViewState.visibleOffers.find((offer) => offer.route.contractOfferId === state.selectedOfferId)
+      ?? boardViewState.visibleOffers[0]
       ?? null;
 
-    state.selectedOfferId = selectedOffer?.contractOfferId ?? null;
-    return selectedOffer ? { kind: "offer", route: selectedOffer } : null;
+    state.selectedOfferId = selectedOffer?.route.contractOfferId ?? null;
+    return selectedOffer ? { kind: "offer", route: selectedOffer.route } : null;
   }
 
-  const selectedCompanyContract = filteredCompanyContracts.find((contract) => contract.companyContractId === state.selectedCompanyContractId)
-    ?? filteredCompanyContracts[0]
+  const selectedCompanyContract = boardViewState.visibleCompanyContracts.find((contract) => contract.route.companyContractId === state.selectedCompanyContractId)
+    ?? boardViewState.visibleCompanyContracts[0]
     ?? null;
 
-  state.selectedCompanyContractId = selectedCompanyContract?.companyContractId ?? null;
-  return selectedCompanyContract ? { kind: "company_contract", route: selectedCompanyContract } : null;
+  state.selectedCompanyContractId = selectedCompanyContract?.route.companyContractId ?? null;
+  return selectedCompanyContract ? { kind: "company_contract", route: selectedCompanyContract.route } : null;
 }
 
-function focusSelectedRoute(state: ContractsUiState): void {
-  const selectedRoute = resolveSelectedRoute(state, getFilteredOffers(state), getFilteredCompanyContracts(state));
+function focusSelectedRoute(state: ContractsUiState, boardViewState: ContractsBoardViewState = computeBoardViewState(state)): void {
+  const selectedRoute = resolveSelectedRoute(state, boardViewState);
 
   if (!selectedRoute) {
     state.map = { ...defaultMapState };

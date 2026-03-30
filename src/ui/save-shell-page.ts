@@ -2298,7 +2298,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       top: 0;
       z-index: 4;
     }
-    .contracts-board-table { min-width: 1180px; }
+    .contracts-board-table { min-width: 1260px; }
     .contracts-board-table th,
     .contracts-board-table td {
       position: relative;
@@ -2453,9 +2453,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: var(--panel-strong);
       box-shadow: var(--shadow);
     }
+    .contracts-board-header-popover--search-group {
+      transform: none;
+      padding: 12px;
+      border-radius: 16px;
+    }
     .contracts-board-popover-body--search {
       display: grid;
       gap: 8px;
+    }
+    .contracts-board-header-popover--search-group .contracts-board-popover-body--search {
+      gap: 10px;
     }
     .contracts-board-search-field {
       display: grid;

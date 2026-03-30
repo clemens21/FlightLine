@@ -191,6 +191,8 @@ const ARCHETYPE_PROFILES: ArchetypeProfile[] = [
   },
 ];
 
+const contractBoardGenerationProfileVersion = "contracts:v2";
+
 function stableHash(input: string): number {
   let hash = 2166136261;
 
@@ -251,9 +253,9 @@ function scoreOriginOpportunity(homeBase: AirportRecord, candidate: AirportRecor
   return (
     candidate.contractGenerationWeight * 20 +
     Math.max(candidate.passengerScore, candidate.cargoScore, candidate.businessScore, candidate.remoteScore) * 0.42 +
-    (candidate.marketRegion === homeBase.marketRegion ? 12 : 0) +
-    (candidate.isoCountry === homeBase.isoCountry ? 8 : 0) +
-    (candidate.continent === homeBase.continent ? 5 : 0) +
+    (candidate.marketRegion === homeBase.marketRegion ? 8 : 0) +
+    (candidate.isoCountry === homeBase.isoCountry ? 5 : 0) +
+    (candidate.continent === homeBase.continent ? 3 : 0) +
     (candidate.scheduledService ? 6 : 0) +
     ((candidate.airportSize ?? 3) * 2) +
     randomUnit(`${seed}|origin_noise`) * 5
@@ -308,23 +310,30 @@ function selectOriginPool(
   addBucket(
     "regional",
     remaining.filter((airport) => airport.marketRegion && airport.marketRegion === homeBase.marketRegion),
-    18,
+    14,
   );
   addBucket(
     "country",
     remaining.filter(
       (airport) => airport.isoCountry && airport.isoCountry === homeBase.isoCountry && airport.marketRegion !== homeBase.marketRegion,
     ),
-    14,
+    10,
   );
   addBucket(
     "continent",
     remaining.filter(
       (airport) => airport.continent && airport.continent === homeBase.continent && airport.isoCountry !== homeBase.isoCountry,
     ),
-    12,
+    8,
   );
-  addBucket("global", remaining, 28);
+  addBucket(
+    "off_continent",
+    remaining.filter(
+      (airport) => airport.continent && homeBase.continent && airport.continent !== homeBase.continent,
+    ),
+    20,
+  );
+  addBucket("global", remaining, 24);
 
   return [...selected.values()];
 }
@@ -680,16 +689,18 @@ function buildOffer(
 }
 
 function buildGenerationContextHash(companyContext: CompanyContext, footprintOrigins: AirportRecord[]): string {
-  return makeSeed(
+  return `${contractBoardGenerationProfileVersion}:${makeSeed(
+    contractBoardGenerationProfileVersion,
     companyContext.companyId,
     companyContext.homeBaseAirportId,
+    String(readContractBoardTargetScale()),
     String(companyContext.activeAircraftCount),
     String(companyContext.activeStaffingPackageCount),
     companyContext.financialPressureBand,
     companyContext.companyPhase,
     String(companyContext.activeContractCount),
     ...footprintOrigins.map((airport) => airport.airportKey),
-  );
+  )}`;
 }
 
 function buildRouteCandidates(
@@ -723,11 +734,11 @@ function buildRouteCandidates(
         origin.contractGenerationWeight * 4 +
         destination.contractGenerationWeight * 8 +
         distanceFit * 14 +
-        (footprintOriginIds.has(origin.airportKey) ? 12 : 0) +
+        (footprintOriginIds.has(origin.airportKey) ? 6 : 0) +
         (originPoolIds.has(destination.airportKey) ? 11 : 0) +
         (footprintOriginIds.has(destination.airportKey) ? 10 : 0) +
         (destination.airportKey === homeBase.airportKey ? 10 : 0) +
-        (origin.airportKey === homeBase.airportKey ? 6 : 0) +
+        (origin.airportKey === homeBase.airportKey ? 2 : 0) +
         (destination.marketRegion === origin.marketRegion ? 6 : 0) +
         (destination.isoCountry === origin.isoCountry ? 4 : 0) +
         randomUnit(`${seed}|route_noise`) * 6;
@@ -777,7 +788,7 @@ export function generateContractBoard(
     (sum, profile) => sum + scaledTargetCount(profile.targetCount, targetScale),
     0,
   );
-  const originCap = Math.max(12, Math.ceil(targetOfferCount / Math.max(originPool.length, 1)) + 8);
+  const originCap = Math.max(10, Math.ceil(targetOfferCount / Math.max(originPool.length, 1)) - 6);
   const destinationCap = 72;
 
   if (!homeBase || originPool.length === 0 || uniqueCandidates.length === 0) {

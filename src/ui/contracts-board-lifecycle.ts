@@ -13,6 +13,8 @@ export interface EnsuredContractBoardResult {
   refreshed: boolean;
 }
 
+const contractBoardGenerationContextPrefix = "contracts:v2:";
+
 function readMinimumContractBoardOfferCount(): number {
   const rawValue = process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT?.trim();
   if (!rawValue) {
@@ -50,8 +52,9 @@ export async function ensureActiveContractBoard(
   const activeBoard = contractBoard;
   const boardExpired = !activeBoard || new Date(activeBoard.expiresAtUtc).getTime() <= new Date(companyContext.currentTimeUtc).getTime();
   const boardUndersized = activeBoard != null && activeBoard.offers.length < minimumContractBoardOfferCount;
+  const boardGenerationOutdated = activeBoard != null && !activeBoard.generationContextHash.startsWith(contractBoardGenerationContextPrefix);
 
-  if (activeBoard && !boardExpired && !boardUndersized) {
+  if (activeBoard && !boardExpired && !boardUndersized && !boardGenerationOutdated) {
     console.log(`[ui:timing] contracts-board ${saveId} refresh=${refreshReason} reused ${Date.now() - startedAtMs}ms offers=${activeBoard.offers.length}`);
     return {
       companyContext,

@@ -10,6 +10,7 @@ import { mountContractsTab, type ContractsTabController } from "./contracts-tab-
 import { mountDispatchTab, type DispatchTabController } from "./dispatch-tab-client.js";
 import { mountStaffingTab, type StaffingTabController } from "./staffing-tab-client.js";
 import type { ClockPanelPayload, ClockRateMode } from "../clock-calendar-model.js";
+import { warmContractsBoardViewPayload } from "../contracts-board-model.js";
 import type {
   NotificationLevel,
   SaveBootstrapPayload,
@@ -250,7 +251,14 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
 
   function replaceTabCacheWith(payload: SaveTabPayload): void {
     invalidateTabCache();
+    warmTabPayload(payload);
     tabCache.set(payload.tabId, payload);
+  }
+
+  function warmTabPayload(payload: SaveTabPayload): void {
+    if (payload.tabId === "contracts" && payload.contractsPayload) {
+      warmContractsBoardViewPayload(payload.contractsPayload);
+    }
   }
 
   async function requestTabPayload(tabId: SavePageTab, force = false): Promise<SaveTabPayload> {
@@ -275,6 +283,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       }
 
       if (requestGeneration === tabCacheGeneration) {
+        warmTabPayload(payload);
         tabCache.set(tabId, payload);
       }
 
@@ -789,6 +798,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     try {
       console.info("[save-shell] apply prefetched payload start", { tabId: prefetched.initialTab });
       activeTab = prefetched.initialTab;
+      warmTabPayload(prefetched.tab);
       tabCache.set(prefetched.tab.tabId, prefetched.tab);
       renderShellChrome(prefetched.bootstrap.shell);
       renderShellChrome(prefetched.tab.shell);
