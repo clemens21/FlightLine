@@ -27,6 +27,7 @@ await import("./staff-portrait-cache.test.mjs");
 await import("./pilot-certifications.test.mjs");
 
 await import("./contracts-view.test.mjs");
+await import("./contracts-board-model.test.mjs");
 await import("./contracts-fit-bucket-truth.test.mjs");
 await import("./contracts-dispatch-lifecycle.test.mjs");
 await import("./contracts-tab-client.test.mjs");

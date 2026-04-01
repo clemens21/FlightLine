@@ -153,9 +153,9 @@ function getIndexedPayload(payload: ContractsViewPayload): ContractsBoardIndexed
     return cached;
   }
 
-  const availableOffers = payload.offers
+  const availableOffers = diversifyDefaultOfferOrder(payload.offers
     .filter((offer) => offer.offerStatus === "available")
-    .map((offer) => buildOfferRowView(offer));
+    .map((offer) => buildOfferRowView(offer)));
   const activeContracts = payload.acceptedContracts
     .filter((contract) => activeContractStates.has(contract.contractState))
     .map((contract) => buildCompanyContractRowView(contract, payload.currentTimeUtc));
@@ -173,6 +173,122 @@ function getIndexedPayload(payload: ContractsViewPayload): ContractsBoardIndexed
 
   indexedPayloadCache.set(payload, indexed);
   return indexed;
+}
+
+function diversifyDefaultOfferOrder(views: ContractsBoardOfferRowView[]): ContractsBoardOfferRowView[] {
+  if (views.length <= 2) {
+    return views;
+  }
+
+  const passengerBuckets = buildVolumeBuckets(views, "passenger");
+  const cargoBuckets = buildVolumeBuckets(views, "cargo");
+  const volumeCounts = {
+    passenger: views.filter((entry) => entry.route.volumeType === "passenger").length,
+    cargo: views.filter((entry) => entry.route.volumeType === "cargo").length,
+  };
+  const result: ContractsBoardOfferRowView[] = [];
+  let preferredVolumeType: ContractsViewOffer["volumeType"] = volumeCounts.passenger >= volumeCounts.cargo
+    ? "passenger"
+    : "cargo";
+
+  while (result.length < views.length) {
+    const nextEntry = takeNextBucketOffer(
+      preferredVolumeType === "passenger" ? passengerBuckets : cargoBuckets,
+    ) ?? takeNextBucketOffer(
+      preferredVolumeType === "passenger" ? cargoBuckets : passengerBuckets,
+    );
+
+    if (!nextEntry) {
+      break;
+    }
+
+    result.push(nextEntry);
+    volumeCounts[nextEntry.route.volumeType] = Math.max(0, volumeCounts[nextEntry.route.volumeType] - 1);
+    const alternateVolumeType: ContractsViewOffer["volumeType"] = nextEntry.route.volumeType === "passenger"
+      ? "cargo"
+      : "passenger";
+    preferredVolumeType = volumeCounts[alternateVolumeType] > 0
+      ? alternateVolumeType
+      : nextEntry.route.volumeType;
+  }
+
+  return result;
+}
+
+interface ContractsBoardVolumeBucket {
+  offerViews: ContractsBoardOfferRowView[];
+  nextIndex: number;
+}
+
+interface ContractsBoardVolumeBuckets {
+  buckets: ContractsBoardVolumeBucket[];
+  nextBucketIndex: number;
+}
+
+function buildVolumeBuckets(
+  views: ContractsBoardOfferRowView[],
+  volumeType: ContractsViewOffer["volumeType"],
+): ContractsBoardVolumeBuckets {
+  const bucketMap = new Map<string, ContractsBoardOfferRowView[]>();
+
+  for (const view of views) {
+    if (view.route.volumeType !== volumeType) {
+      continue;
+    }
+
+    const originKey = view.route.origin.code;
+    const bucket = bucketMap.get(originKey);
+    if (bucket) {
+      bucket.push(view);
+    } else {
+      bucketMap.set(originKey, [view]);
+    }
+  }
+
+  const buckets = [...bucketMap.entries()]
+    .map(([originCode, offerViews]) => ({
+      originCode,
+      offerViews,
+      nextIndex: 0,
+      topPayoutAmount: offerViews[0]?.route.payoutAmount ?? 0,
+    }))
+    .sort((left, right) =>
+      right.topPayoutAmount - left.topPayoutAmount
+      || left.originCode.localeCompare(right.originCode))
+    .map((entry) => ({
+      offerViews: entry.offerViews,
+      nextIndex: entry.nextIndex,
+    }));
+
+  return {
+    buckets,
+    nextBucketIndex: 0,
+  };
+}
+
+function takeNextBucketOffer(volumeBuckets: ContractsBoardVolumeBuckets): ContractsBoardOfferRowView | null {
+  const { buckets } = volumeBuckets;
+  if (buckets.length === 0) {
+    return null;
+  }
+
+  for (let attempt = 0; attempt < buckets.length; attempt += 1) {
+    const bucketIndex = (volumeBuckets.nextBucketIndex + attempt) % buckets.length;
+    const bucket = buckets[bucketIndex];
+    if (!bucket) {
+      continue;
+    }
+    const nextOffer = bucket.offerViews[bucket.nextIndex];
+    if (!nextOffer) {
+      continue;
+    }
+
+    bucket.nextIndex += 1;
+    volumeBuckets.nextBucketIndex = (bucketIndex + 1) % buckets.length;
+    return nextOffer;
+  }
+
+  return null;
 }
 
 function buildOfferRowView(offer: ContractsViewOffer): ContractsBoardOfferRowView {

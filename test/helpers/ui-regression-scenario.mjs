@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 
-import { addAcceptedContractToRoutePlan } from "../../dist/ui/route-plan-state.js";
+import { addAcceptedContractToRoutePlan, loadRoutePlanState } from "../../dist/ui/route-plan-state.js";
 import {
   acquireAircraft,
   activateStaffingPackage,
@@ -170,6 +170,90 @@ export async function seedUiRegressionSave(backend, {
       const mutation = addAcceptedContractToRoutePlan(context.saveDatabase, saveId, companyContractId);
       assert.equal(mutation.success, true);
     }
+
+    const routePlan = loadRoutePlanState(context.saveDatabase, saveId);
+    assert.ok(routePlan?.endpointAirportId);
+    const activeOfferWindow = context.saveDatabase.getOne(
+      `SELECT offer_window_id AS offerWindowId
+       FROM offer_window
+       WHERE company_id = $company_id
+         AND window_type = 'contract_board'
+         AND status = 'active'
+       ORDER BY generated_at_utc DESC
+       LIMIT 1`,
+      {
+        $company_id: companyContext.companyId,
+      },
+    );
+    assert.ok(activeOfferWindow?.offerWindowId);
+    const guaranteedPlannerDestinationAirportId = routePlan.endpointAirportId === "KDEN" ? "KCOS" : "KDEN";
+
+    context.saveDatabase.run(
+      `INSERT INTO contract_offer (
+        contract_offer_id,
+        offer_window_id,
+        company_id,
+        archetype,
+        origin_airport_id,
+        destination_airport_id,
+        volume_type,
+        passenger_count,
+        cargo_weight_lb,
+        earliest_start_utc,
+        latest_completion_utc,
+        payout_amount,
+        penalty_model_json,
+        likely_role,
+        difficulty_band,
+        explanation_metadata_json,
+        generated_seed,
+        offer_status
+      ) VALUES (
+        $contract_offer_id,
+        $offer_window_id,
+        $company_id,
+        $archetype,
+        $origin_airport_id,
+        $destination_airport_id,
+        $volume_type,
+        $passenger_count,
+        NULL,
+        $earliest_start_utc,
+        $latest_completion_utc,
+        $payout_amount,
+        $penalty_model_json,
+        $likely_role,
+        $difficulty_band,
+        $explanation_metadata_json,
+        $generated_seed,
+        'available'
+      )`,
+      {
+        $contract_offer_id: `offer_${saveId}_planner_candidate`,
+        $offer_window_id: activeOfferWindow.offerWindowId,
+        $company_id: companyContext.companyId,
+        $archetype: "regional_passenger_run",
+        $origin_airport_id: routePlan.endpointAirportId,
+        $destination_airport_id: guaranteedPlannerDestinationAirportId,
+        $volume_type: "passenger",
+        $passenger_count: 5,
+        $earliest_start_utc: "2026-03-16T18:45:00.000Z",
+        $latest_completion_utc: "2026-03-16T22:30:00.000Z",
+        $payout_amount: 14_800,
+        $penalty_model_json: JSON.stringify({
+          lateCompletionPenaltyPercent: 18,
+          cancellationPenaltyPercent: 12,
+        }),
+        $likely_role: "commuter_passenger_turboprop",
+        $difficulty_band: "moderate",
+        $explanation_metadata_json: JSON.stringify({
+          fit_bucket: "flyable_with_reposition",
+          seed_source: "ui_regression_scenario",
+        }),
+        $generated_seed: `ui_regression_candidate_${saveId}`,
+      },
+    );
+
     await context.saveDatabase.persist();
   });
 

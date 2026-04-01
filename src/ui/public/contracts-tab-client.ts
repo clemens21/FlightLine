@@ -296,7 +296,7 @@ export function mountContractsTab(
     sortField: null,
     sortDirection: "asc",
     boardScope: initialContractsView === "my_contracts" ? "my_contracts" : "all",
-    selectedOfferId: selectDefaultOfferId(initialPayload),
+    selectedOfferId: null,
     selectedCompanyContractId: selectDefaultCompanyContractId(initialPayload, "active"),
     acceptanceNextStepTab: null,
     acceptanceNextStepOfferId: null,
