@@ -165,7 +165,7 @@ try {
   const destinationCode = routeCodes[1] ?? "";
   assert.ok(departureCode.length > 0);
   assert.ok(destinationCode.length > 0);
-  await clickUi(page.locator("button[aria-label='Route search']").first().locator("svg"));
+  await clickUi(page.locator("button[aria-label='Route search']").first());
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-contracts-board-popover='routeSearch']");
     return popover instanceof HTMLElement
@@ -242,7 +242,7 @@ try {
   await page.keyboard.press("Escape");
   markStep("route search");
 
-  await clickUi(page.locator("button[aria-label='Nearest Aircraft search']").first().locator("svg"));
+  await clickUi(page.locator("button[aria-label='Nearest Aircraft search']").first());
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-contracts-board-popover='aircraftSearch']");
     return popover instanceof HTMLElement
@@ -251,7 +251,7 @@ try {
   });
   await page.keyboard.press("Escape");
 
-  await clickUi(page.locator("button[aria-label='Nearest Aircraft filter']").first().locator("svg"));
+  await clickUi(page.locator("button[aria-label='Nearest Aircraft filter']").first());
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-contracts-board-popover='aircraftFilter']");
     return popover instanceof HTMLElement
@@ -281,7 +281,7 @@ try {
   assert.ok(typeof payloadSamples.passengerValue === "number");
   assert.ok(typeof payloadSamples.cargoValue === "number");
 
-  await clickUi(page.locator("button[aria-label='Payload filter']").first().locator("svg"));
+  await clickUi(page.locator("button[aria-label='Payload filter']").first());
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-contracts-board-popover='payloadFilter']");
     return popover instanceof HTMLElement
@@ -392,12 +392,17 @@ try {
   assert.equal(plannerBodyLayout.plannerOverflowY, "hidden");
   assert.ok(["auto", "scroll"].includes(plannerBodyLayout.anchorOverflowY));
   const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
-  const initialPlannerAddCount = await plannerAddButtons.count();
+  let initialPlannerAddCount = await plannerAddButtons.count();
+  if (initialPlannerAddCount === 0) {
+    const inChainAnchorRow = page.locator(".planner-anchor-table tbody tr").filter({ has: page.locator("button[data-plan-start-contract][disabled]") }).first();
+    assert.equal(await inChainAnchorRow.count(), 1);
+    await clickUi(inChainAnchorRow);
+    await page.waitForFunction(() => document.querySelectorAll(".planner-candidate-panel [data-planner-add-candidate]").length > 0);
+    initialPlannerAddCount = await plannerAddButtons.count();
+  }
   assert.ok(initialPlannerAddCount > 0);
-  const selectedAnchorRoute = (await page.locator(".planner-anchor-table tbody tr.selected td").first().textContent()) ?? "";
-  const selectedAnchorCodes = selectedAnchorRoute.match(/\b[A-Z]{3,4}\b/g) ?? [];
-  const selectedAnchorDestinationCode = selectedAnchorCodes[1] ?? "";
-  assert.ok(selectedAnchorDestinationCode.length > 0);
+  const plannerNextOriginCode = ((await page.locator(".planner-setup-grid .planner-setup-metric").nth(1).locator("strong").textContent()) ?? "").trim();
+  assert.ok(plannerNextOriginCode.length > 0);
   await page.waitForFunction((expectedOriginCode) => {
     const rows = [...document.querySelectorAll(".planner-candidate-table tbody tr")];
     return rows.length > 0 && rows.every((row) => {
@@ -405,7 +410,7 @@ try {
       const text = (routeCell?.textContent ?? "").replace(/\s+/g, " ").trim();
       return text.includes(`Departure: ${expectedOriginCode} -`);
     });
-  }, selectedAnchorDestinationCode);
+  }, plannerNextOriginCode);
   const plannerAircraftSelect = page.locator("select[name='plannerAircraftId']");
   const plannerAircraftOptions = await plannerAircraftSelect.locator("option").evaluateAll((options) =>
     options.map((option) => ({
