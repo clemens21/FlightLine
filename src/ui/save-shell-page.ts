@@ -2561,6 +2561,66 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 18px;
     }
+    .planner-anchor-panel .panel-body,
+    .planner-candidate-panel .panel-body {
+      display: grid;
+      gap: 14px;
+    }
+    .planner-anchor-list {
+      display: grid;
+      gap: 10px;
+    }
+    .planner-anchor-card,
+    .planner-setup-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: var(--panel-strong);
+      display: grid;
+      gap: 10px;
+    }
+    .planner-anchor-card {
+      cursor: pointer;
+    }
+    .planner-anchor-card.selected {
+      border-color: rgba(111,201,212,.3);
+      background: color-mix(in srgb, var(--accent-soft) 26%, var(--panel-strong));
+    }
+    .planner-setup-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .planner-setup-metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: var(--panel);
+      display: grid;
+      gap: 6px;
+    }
+    .planner-setup-metric strong {
+      font-size: 15px;
+    }
+    .planner-control-row {
+      display: grid;
+      grid-template-columns: minmax(240px, .42fr) minmax(0, .58fr);
+      gap: 12px;
+      align-items: end;
+    }
+    .planner-aircraft-picker,
+    .planner-aircraft-brief {
+      display: grid;
+      gap: 8px;
+    }
+    .planner-inline-callout {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 12px;
+      background: var(--panel);
+      display: grid;
+      gap: 6px;
+    }
     .planner-summary-panel {
       min-height: 0;
     }
@@ -2610,10 +2670,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
       gap: 18px;
       min-height: 0;
-    }
-    .planner-candidate-panel .panel-body {
-      display: grid;
-      gap: 14px;
     }
     .planner-candidate-panel {
       min-height: 0;
@@ -4215,10 +4271,14 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .contracts-grid,
       .contracts-side-column,
       .planner-workbench,
+      .planner-setup-grid,
       .planner-summary-grid,
       .contracts-selected-grid {
         grid-template-columns: 1fr;
         height: auto;
+      }
+      .planner-control-row {
+        grid-template-columns: 1fr;
       }
       .market-option-list {
         grid-template-columns: 1fr;

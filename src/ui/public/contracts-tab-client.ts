@@ -6,6 +6,7 @@
  */
 
 import type {
+  ContractsPlannerAircraft,
   ContractsViewAcceptedContract,
   ContractsRoutePlanItem,
   ContractsViewAirport,
@@ -62,31 +63,23 @@ interface AppliedTextFilters {
   nearestAircraftSearchText: string;
 }
 
-interface PlannerFilterState {
-  plannerSearchText: string;
-  plannerDestinationCode: string;
-  plannerVolumeType: string;
-  plannerFitBucket: string;
-  plannerMatchCurrentEndpoint: boolean;
-  plannerMatchCurrentEndpointTouched: boolean;
-}
-
-interface AppliedPlannerTextFilters {
-  plannerSearchText: string;
-  plannerDestinationCode: string;
-}
-
 interface PlannerReviewState {
   isOpen: boolean;
   selectedRoutePlanItemIds: string[];
 }
 
-type PlannerCandidateState = "actionable" | "planned" | "stale" | "unavailable";
+type PlannerCandidateState = "actionable" | "blocked";
 
 interface PlannerCandidateView {
   offer: ContractsViewOffer;
+  blockedReason: string | null;
   state: PlannerCandidateState;
   detail: string;
+}
+
+interface PlannerSelectionState {
+  acceptedContractId: string | null;
+  aircraftId: string;
 }
 
 interface PlannerChainSummary {
@@ -114,8 +107,7 @@ interface ContractsUiState {
   payload: ContractsViewPayload;
   filters: FilterState;
   appliedTextFilters: AppliedTextFilters;
-  plannerFilters: PlannerFilterState;
-  appliedPlannerTextFilters: AppliedPlannerTextFilters;
+  plannerSelection: PlannerSelectionState;
   plannerReview: PlannerReviewState;
   workspaceTab: ContractsWorkspaceTab;
   boardTab: ContractsBoardTab;
@@ -186,8 +178,6 @@ const debouncedFilterNames = new Set([
   "dueHoursMax",
   "payoutMin",
   "payoutMax",
-  "plannerSearchText",
-  "plannerDestinationCode",
 ]);
 const filterDebounceMs = 180;
 const emptyPlannerCandidates: PlannerCandidateView[] = [];
@@ -275,17 +265,9 @@ export function mountContractsTab(
       destinationSearchText: "",
       nearestAircraftSearchText: "",
     },
-    plannerFilters: {
-      plannerSearchText: "",
-      plannerDestinationCode: "",
-      plannerVolumeType: "all",
-      plannerFitBucket: "all",
-      plannerMatchCurrentEndpoint: Boolean(initialPayload.routePlan?.endpointAirportId),
-      plannerMatchCurrentEndpointTouched: false,
-    },
-    appliedPlannerTextFilters: {
-      plannerSearchText: "",
-      plannerDestinationCode: "",
+    plannerSelection: {
+      acceptedContractId: selectDefaultPlannerAcceptedContractId(initialPayload),
+      aircraftId: "",
     },
     plannerReview: {
       isOpen: false,
@@ -351,8 +333,9 @@ export function mountContractsTab(
 
   function getPlannerCandidatesCacheKey(nextState: ContractsUiState): string {
     return JSON.stringify({
-      plannerFilters: nextState.plannerFilters,
-      appliedPlannerTextFilters: nextState.appliedPlannerTextFilters,
+      plannerSelection: nextState.plannerSelection,
+      routePlanId: nextState.payload.routePlan?.routePlanId ?? null,
+      routePlanItemCount: nextState.payload.routePlan?.items.length ?? 0,
     });
   }
 
@@ -580,12 +563,45 @@ export function mountContractsTab(
     if (openRoutePlanButton) {
       event.preventDefault();
       event.stopPropagation();
+      const selectedAcceptedContractId = openRoutePlanButton.dataset.openRoutePlan ?? "";
+      if (selectedAcceptedContractId && state.payload.acceptedContracts.some((contract) => contract.companyContractId === selectedAcceptedContractId)) {
+        state.plannerSelection = {
+          ...state.plannerSelection,
+          acceptedContractId: selectedAcceptedContractId,
+        };
+      }
       state.workspaceTab = "planning";
       state.acceptanceNextStepTab = null;
       state.acceptanceNextStepOfferId = null;
       state.acceptanceNextStepCompanyContractId = null;
       focusPlannerChain(state);
       render();
+      return;
+    }
+
+    const plannerSelectContractButton = target.closest<HTMLElement>("[data-planner-select-contract]");
+    if (plannerSelectContractButton && !target.closest("button, input, select, textarea, a")) {
+      event.preventDefault();
+      event.stopPropagation();
+      const acceptedContractId = plannerSelectContractButton.dataset.plannerSelectContract ?? "";
+      if (acceptedContractId) {
+        state.plannerSelection = {
+          ...state.plannerSelection,
+          acceptedContractId,
+        };
+        render();
+      }
+      return;
+    }
+
+    const plannerStartContractButton = target.closest<HTMLButtonElement>("[data-plan-start-contract]");
+    if (plannerStartContractButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const acceptedContractId = plannerStartContractButton.dataset.planStartContract ?? "";
+      if (acceptedContractId) {
+        void startPlannerFromAcceptedContract(acceptedContractId, plannerStartContractButton);
+      }
       return;
     }
 
@@ -727,9 +743,9 @@ export function mountContractsTab(
     }
 
     const isBoardFilter = Object.hasOwn(state.filters, target.name);
-    const isPlannerFilter = Object.hasOwn(state.plannerFilters, target.name);
+    const isPlannerAircraftSelect = target.name === "plannerAircraftId";
 
-    if (!isBoardFilter && !isPlannerFilter) {
+    if (!isBoardFilter && !isPlannerAircraftSelect) {
       return;
     }
 
@@ -740,12 +756,9 @@ export function mountContractsTab(
         [target.name]: nextValue,
       };
     } else {
-      state.plannerFilters = {
-        ...state.plannerFilters,
-        [target.name]: nextValue,
-        ...(target.name === "plannerMatchCurrentEndpoint"
-          ? { plannerMatchCurrentEndpointTouched: true }
-          : {}),
+      state.plannerSelection = {
+        ...state.plannerSelection,
+        aircraftId: String(nextValue),
       };
     }
 
@@ -760,10 +773,6 @@ export function mountContractsTab(
           departureSearchText: state.filters.departureSearchText,
           destinationSearchText: state.filters.destinationSearchText,
           nearestAircraftSearchText: state.filters.nearestAircraftSearchText,
-        };
-        state.appliedPlannerTextFilters = {
-          plannerSearchText: state.plannerFilters.plannerSearchText,
-          plannerDestinationCode: state.plannerFilters.plannerDestinationCode,
         };
         ensureActiveTabSelection(state);
         render(captureNamedControlFocus(root));
@@ -876,6 +885,7 @@ export function mountContractsTab(
     }
 
     state.payload = result.payload;
+    ensurePlannerSelections(state);
     ensureActiveTabSelection(state);
     focusSelectedRoute(state);
     render();
@@ -891,6 +901,7 @@ export function mountContractsTab(
         ...state.payload,
         currentTimeUtc: nextCurrentTimeUtc,
       };
+      ensurePlannerSelections(state);
 
       if (Date.parse(nextCurrentTimeUtc) >= Date.parse(state.payload.board.expiresAtUtc)) {
         await refreshContractsView();
@@ -959,6 +970,7 @@ export function mountContractsTab(
 
       state.payload = result.payload;
       closePlannerReview(state);
+      ensurePlannerSelections(state);
       const acceptedCompanyContract = result.payload.companyContracts.find((contract) => contract.originContractOfferId === contractOfferId) ?? null;
       state.message = {
         tone: "notice",
@@ -968,6 +980,12 @@ export function mountContractsTab(
       state.acceptanceNextStepTab = "planning";
       state.acceptanceNextStepOfferId = contractOfferId;
       state.acceptanceNextStepCompanyContractId = acceptedCompanyContract?.companyContractId ?? null;
+      if (acceptedCompanyContract?.companyContractId) {
+        state.plannerSelection = {
+          ...state.plannerSelection,
+          acceptedContractId: acceptedCompanyContract.companyContractId,
+        };
+      }
 
       state.selectedCompanyContractId = acceptedCompanyContract?.companyContractId
         ?? state.selectedCompanyContractId;
@@ -1032,6 +1050,7 @@ export function mountContractsTab(
       }
 
       state.payload = result.payload;
+      ensurePlannerSelections(state);
       state.message = {
         tone: "notice",
         text: result.message ?? "Contract cancelled.",
@@ -1056,6 +1075,73 @@ export function mountContractsTab(
     }
   }
 
+  async function executePlannerAction(url: string, body: URLSearchParams): Promise<{
+    success: boolean;
+    message?: string;
+    payload?: ContractsViewPayload;
+    shell?: ShellSummaryPayload;
+    error?: string;
+    notificationLevel?: NotificationLevel;
+  }> {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body,
+    });
+
+    return response.json() as Promise<{
+      success: boolean;
+      message?: string;
+      payload?: ContractsViewPayload;
+      shell?: ShellSummaryPayload;
+      error?: string;
+      notificationLevel?: NotificationLevel;
+    }>;
+  }
+
+  function applyPlannerActionResult(
+    result: {
+      success: boolean;
+      message?: string;
+      payload?: ContractsViewPayload;
+      shell?: ShellSummaryPayload;
+      error?: string;
+      notificationLevel?: NotificationLevel;
+    },
+  ): boolean {
+    if (!result.success || !result.payload || !result.shell) {
+      state.message = {
+        tone: "error",
+        text: result.error ?? result.message ?? "Could not update the route plan.",
+      };
+      options.onMessage?.(state.message);
+      render();
+      return false;
+    }
+
+    state.payload = result.payload;
+    closePlannerReview(state);
+    state.message = {
+      tone: "notice",
+      text: result.message ?? "Route plan updated.",
+      notificationLevel: result.notificationLevel,
+    };
+    state.acceptanceNextStepTab = null;
+    ensurePlannerSelections(state);
+    ensureActiveTabSelection(state);
+    if (state.workspaceTab === "planning") {
+      focusPlannerChain(state);
+    } else {
+      focusSelectedRoute(state);
+    }
+    options.onShellUpdate?.(result.shell);
+    options.onMessage?.(state.message);
+    render();
+    return true;
+  }
+
   async function plannerAction(
     url: string,
     body: URLSearchParams,
@@ -1071,49 +1157,8 @@ export function mountContractsTab(
     button.textContent = pendingLabel;
 
     try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
-        },
-        body,
-      });
-      const result = await response.json() as {
-        success: boolean;
-        message?: string;
-        payload?: ContractsViewPayload;
-        shell?: ShellSummaryPayload;
-        error?: string;
-        notificationLevel?: NotificationLevel;
-      };
-
-      if (!response.ok || !result.success || !result.payload || !result.shell) {
-        state.message = {
-          tone: "error",
-          text: result.error ?? result.message ?? "Could not update the route plan.",
-        };
-        options.onMessage?.(state.message);
-        render();
-        return;
-      }
-
-      state.payload = result.payload;
-      closePlannerReview(state);
-      state.message = {
-        tone: "notice",
-        text: result.message ?? "Route plan updated.",
-        notificationLevel: result.notificationLevel,
-      };
-      state.acceptanceNextStepTab = null;
-      ensureActiveTabSelection(state);
-      if (state.workspaceTab === "planning") {
-        focusPlannerChain(state);
-      } else {
-        focusSelectedRoute(state);
-      }
-      options.onShellUpdate?.(result.shell);
-      options.onMessage?.(state.message);
-      render();
+      const result = await executePlannerAction(url, body);
+      applyPlannerActionResult(result);
     } catch (error) {
       state.message = {
         tone: "error",
@@ -1127,9 +1172,67 @@ export function mountContractsTab(
     }
   }
 
+  async function startPlannerFromAcceptedContract(
+    companyContractId: string,
+    button: HTMLButtonElement,
+  ): Promise<void> {
+    if (!options.plannerAddUrl) {
+      return;
+    }
+
+    const originalLabel = button.textContent ?? "Start route";
+    button.disabled = true;
+    button.textContent = "Starting...";
+
+    try {
+      const currentRoutePlanItemCount = state.payload.routePlan?.items.length ?? 0;
+      const selectedAcceptedContract = state.payload.acceptedContracts.find((contract) => contract.companyContractId === companyContractId) ?? null;
+
+      if (!selectedAcceptedContract) {
+        state.message = {
+          tone: "error",
+          text: "That accepted contract is no longer available for route planning.",
+        };
+        options.onMessage?.(state.message);
+        render();
+        return;
+      }
+
+      if (currentRoutePlanItemCount > 0 && !selectedAcceptedContract.routePlanItemId) {
+        const clearResult = await executePlannerAction(options.plannerClearUrl, new URLSearchParams());
+        if (!applyPlannerActionResult(clearResult)) {
+          return;
+        }
+      }
+
+      const addResult = await executePlannerAction(
+        options.plannerAddUrl,
+        new URLSearchParams({ sourceType: "accepted_contract", sourceId: companyContractId }),
+      );
+      if (applyPlannerActionResult(addResult)) {
+        state.plannerSelection = {
+          ...state.plannerSelection,
+          acceptedContractId: companyContractId,
+        };
+        focusPlannerChain(state);
+        render();
+      }
+    } catch (error) {
+      state.message = {
+        tone: "error",
+        text: error instanceof Error ? error.message : "Could not start route planning from the selected contract.",
+      };
+      options.onMessage?.(state.message);
+      render();
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+
   function render(focusState: NamedControlFocusState | null = null): void {
     if (state.workspaceTab === "planning") {
-      ensurePlannerFilterDefaults(state);
+      ensurePlannerSelections(state);
     }
     const boardViewState = getCachedBoardViewState(state);
     const plannerCandidates = state.workspaceTab === "planning"
@@ -1142,16 +1245,18 @@ export function mountContractsTab(
     const riskyActiveCount = boardViewState.riskyActiveCount;
     const closedCount = boardViewState.closedCount;
     const routePlanCount = state.payload.routePlan?.items.length ?? 0;
+    const selectedPlannerAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
+    const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedPlannerAcceptedContract);
     const selectedLabel = selectedRoute
       ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
       : "Select a row to focus the route map.";
     const toolbarHeadline = state.workspaceTab === "planning"
-      ? renderPlannerHeadline(state.payload, plannerCandidates.length)
+      ? renderPlannerHeadline(state, plannerCandidates.length)
       : state.boardTab === "active" && state.boardScope === "my_contracts"
         ? `${riskyActiveCount} at-risk / overdue contracts`
         : renderHeadline(state.boardTab, availableCount, activeCount, closedCount);
     const toolbarSubtitle = state.workspaceTab === "planning"
-      ? `Route plan endpoint ${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "-")} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
+      ? `${selectedPlannerAcceptedContract ? `Anchor ${escapeHtml(selectedPlannerAcceptedContract.origin.code)} -> ${escapeHtml(selectedPlannerAcceptedContract.destination.code)} | next origin ${escapeHtml(plannerEndpointAirport?.code ?? selectedPlannerAcceptedContract.destination.code)}` : "Select accepted work to begin route planning."} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
       : state.boardTab === "active" && state.boardScope === "my_contracts"
         ? `Filtered to risky accepted work | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`
         : `Board expires ${escapeHtml(formatDate(state.payload.board.expiresAtUtc))} | ${escapeHtml(formatDate(state.payload.currentTimeUtc))} company time`;
@@ -1212,7 +1317,7 @@ export function mountContractsTab(
         <div class="panel-head">
           <div>
             <h3>Route Planning</h3>
-            <span class="muted">${escapeHtml(renderPlannerHeadline(state.payload, plannerCandidates.length))}</span>
+            <span class="muted">${escapeHtml(renderPlannerHeadline(state, plannerCandidates.length))}</span>
           </div>
           <div class="planner-panel-actions">
             ${state.payload.routePlan?.items.length
@@ -1621,16 +1726,16 @@ function renderOfferRow(offerView: ContractsBoardOfferRowView, isSelected: boole
   `;
 }
 
-function renderPlannerHeadline(payload: ContractsViewPayload, candidateCount: number = 0): string {
-  const itemCount = payload.routePlan?.items.length ?? 0;
-  const endpointAirportId = payload.routePlan?.endpointAirportId ?? "-";
-  if (itemCount === 0) {
-    return candidateCount > 0
-      ? `Save a chain of offers and accepted work. ${candidateCount} planner candidate${candidateCount === 1 ? "" : "s"} available.`
-      : "Save a chain of offers and accepted work.";
+function renderPlannerHeadline(state: ContractsUiState, candidateCount: number = 0): string {
+  const selectedAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
+  const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
+  const routePlanCount = state.payload.routePlan?.items.length ?? 0;
+
+  if (!selectedAcceptedContract) {
+    return `${state.payload.acceptedContracts.length} accepted contract${state.payload.acceptedContracts.length === 1 ? "" : "s"} ready to anchor a route`;
   }
 
-  return `${itemCount} item${itemCount === 1 ? "" : "s"} | endpoint ${endpointAirportId} | ${candidateCount} candidate${candidateCount === 1 ? "" : "s"}`;
+  return `${candidateCount} next-leg candidate${candidateCount === 1 ? "" : "s"} from ${plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code} | ${routePlanCount} item${routePlanCount === 1 ? "" : "s"} in saved chain`;
 }
 
 function renderPlannerPanel(
@@ -1640,52 +1745,55 @@ function renderPlannerPanel(
   state: ContractsUiState,
 ): string {
   const summary = buildPlannerChainSummary(routePlan);
+  const selectedAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
+  const selectedAircraft = resolveSelectedPlannerAircraft(state);
   const routePlanHtml = routePlan && routePlan.items.length > 0
     ? renderPlannerRoutePlan(routePlan, plannerReview)
-    : `<div class="empty-state compact">Saved route plans and accepted work will appear here.</div>`;
+    : `<div class="empty-state compact">Start from an accepted contract, then add next-leg candidates here.</div>`;
 
   return `
     <div class="planner-shell">
-      <section class="panel planner-summary-panel">
+      <section class="panel planner-anchor-panel">
         <div class="panel-head">
           <div>
-            <h4>Route summary</h4>
-            <span class="muted">${escapeHtml(summary.itemCount === 0 ? "No route chain is built yet." : `${summary.itemCount} chained items | ${summary.acceptedWorkCount} accepted work | ${summary.plannedCandidateCount} planned candidate${summary.plannedCandidateCount === 1 ? "" : "s"}`)}</span>
+            <h4>Accepted contracts</h4>
+            <span class="muted">Pick accepted work to anchor the route, then build only the next eligible legs.</span>
           </div>
         </div>
         <div class="panel-body">
-          ${renderPlannerSummary(summary)}
+          ${renderPlannerAcceptedContractList(state, selectedAcceptedContract)}
         </div>
       </section>
       <div class="planner-workbench">
         <section class="panel planner-candidate-panel">
           <div class="panel-head">
             <div>
-              <h4>Planner candidates</h4>
-              <span class="muted">${escapeHtml(renderPlannerCandidateSubtitle(state, plannerCandidates.length))}</span>
+              <h4>Next-leg candidates</h4>
+              <span class="muted">${escapeHtml(renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
             </div>
           </div>
           <div class="panel-body">
-            ${renderPlannerCandidateFilters(state)}
-            ${renderPlannerCandidateList(plannerCandidates)}
+            ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft, summary)}
+            ${renderPlannerCandidateList(state, plannerCandidates, selectedAcceptedContract, selectedAircraft)}
           </div>
         </section>
         <section class="panel planner-chain-panel">
           <div class="panel-head">
             <div>
-              <h4>Route chain</h4>
-              <span class="muted">${escapeHtml(summary.endpointAirport ? `${summary.endpointAirport.code} - ${summary.endpointAirport.name}` : state.payload.routePlan?.endpointAirportId ?? "No endpoint set yet")}</span>
+              <h4>Saved route chain</h4>
+              <span class="muted">${escapeHtml(summary.endpointAirport ? `${summary.endpointAirport.code} - ${summary.endpointAirport.name}` : "No endpoint set yet")}</span>
             </div>
             <div class="pill-row">
               <span class="pill">${escapeHtml(String(summary.itemCount))} items</span>
-              <span class="pill">${escapeHtml(String(summary.payoutTotal))} payout total</span>
+              <span class="pill">${escapeHtml(formatMoney(summary.payoutTotal))} total payout</span>
             </div>
           </div>
           <div class="panel-body">
             <section class="planner-chain-map-card">
               ${renderPlannerChainMap(summary)}
-              <div class="map-attribution">Chain context lives in Route Planning. The map follows the current chain order and highlights accepted work versus planned candidates.</div>
+              <div class="map-attribution">The saved chain map follows the current route-plan order. Accepted work anchors the chain and planned candidates extend it.</div>
             </section>
+            ${renderPlannerSummary(summary)}
             ${routePlanHtml}
           </div>
         </section>
@@ -1758,95 +1866,182 @@ function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
   `;
 }
 
-function renderPlannerCandidateSubtitle(state: ContractsUiState, candidateCount: number): string {
-  const endpointAirportId = state.payload.routePlan?.endpointAirportId;
-  if (!endpointAirportId) {
-    return `${candidateCount} planner candidate${candidateCount === 1 ? "" : "s"} | no endpoint yet, so endpoint filtering is off`;
-  }
-
-  return state.plannerFilters.plannerMatchCurrentEndpoint
-    ? `${candidateCount} candidate${candidateCount === 1 ? "" : "s"} | matching current endpoint ${endpointAirportId}`
-    : `${candidateCount} candidate${candidateCount === 1 ? "" : "s"} | endpoint filter off`;
-}
-
-function renderPlannerCandidateFilters(state: ContractsUiState): string {
-  const hasEndpoint = Boolean(state.payload.routePlan?.endpointAirportId);
-  const effectiveMatchCurrentEndpoint = hasEndpoint ? state.plannerFilters.plannerMatchCurrentEndpoint : false;
-  return `
-    <section class="contracts-filters">
-      <label>Search
-        <input name="plannerSearchText" value="${escapeHtml(state.plannerFilters.plannerSearchText)}" placeholder="Airport, city, or route code" />
-      </label>
-      <label>Destination airport
-        <input name="plannerDestinationCode" value="${escapeHtml(state.plannerFilters.plannerDestinationCode)}" placeholder="Type code or airport" />
-      </label>
-      <label>Payload Type
-        <select name="plannerVolumeType">
-          <option value="all">All</option>
-          <option value="passenger" ${state.plannerFilters.plannerVolumeType === "passenger" ? "selected" : ""}>Passenger</option>
-          <option value="cargo" ${state.plannerFilters.plannerVolumeType === "cargo" ? "selected" : ""}>Cargo</option>
-        </select>
-      </label>
-      <label>Fit
-        <select name="plannerFitBucket">
-          <option value="all">All</option>
-          <option value="flyable_now" ${state.plannerFilters.plannerFitBucket === "flyable_now" ? "selected" : ""}>Flyable now</option>
-          <option value="flyable_with_reposition" ${state.plannerFilters.plannerFitBucket === "flyable_with_reposition" ? "selected" : ""}>Needs reposition</option>
-          <option value="stretch_growth" ${state.plannerFilters.plannerFitBucket === "stretch_growth" ? "selected" : ""}>Stretch growth</option>
-          <option value="blocked_now" ${state.plannerFilters.plannerFitBucket === "blocked_now" ? "selected" : ""}>Blocked now</option>
-        </select>
-      </label>
-      <label class="planner-endpoint-toggle">
-        <span>Match current endpoint</span>
-        <input name="plannerMatchCurrentEndpoint" type="checkbox" ${effectiveMatchCurrentEndpoint ? "checked" : ""} ${hasEndpoint ? "" : "disabled"} />
-      </label>
-      ${hasEndpoint
-        ? `<div class="filter-shortcut"><span class="muted">Current endpoint: ${escapeHtml(state.payload.routePlan?.endpointAirportId ?? "-")}</span></div>`
-        : `<div class="filter-shortcut"><span class="muted">No endpoint yet. Endpoint filtering is off.</span></div>`}
-    </section>
-  `;
-}
-
-function renderPlannerCandidateList(plannerCandidates: PlannerCandidateView[]): string {
-  if (plannerCandidates.length === 0) {
-    return `<div class="empty-state compact">No planner candidates match the current filters.</div>`;
+function renderPlannerAcceptedContractList(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null,
+): string {
+  if (state.payload.acceptedContracts.length === 0) {
+    return `<div class="empty-state compact">Accepted contracts appear here once you take work from the board.</div>`;
   }
 
   return `
-    <div class="planner-list">
-      ${plannerCandidates.map((candidate) => renderPlannerCandidateRow(candidate)).join("")}
+    <div class="planner-anchor-list">
+      ${state.payload.acceptedContracts.map((contract) => renderPlannerAcceptedContractRow(state, contract, selectedAcceptedContract?.companyContractId === contract.companyContractId)).join("")}
     </div>
   `;
 }
 
-function renderPlannerCandidateRow(candidate: PlannerCandidateView): string {
-  const statusLabel = candidate.state === "actionable"
-    ? "Ready to add"
-    : candidate.state === "planned"
-    ? "Planned"
-    : candidate.state === "stale"
-    ? "Stale"
-    : "Unavailable";
-  const sourceLabel = "Planned candidate";
+function renderPlannerAcceptedContractRow(
+  state: ContractsUiState,
+  contract: ContractsViewAcceptedContract,
+  isSelected: boolean,
+): string {
+  const routePlanHasItems = (state.payload.routePlan?.items.length ?? 0) > 0;
+  const actionLabel = contract.routePlanItemId
+    ? "Route started"
+    : routePlanHasItems
+    ? "Clear & start route"
+    : "Start route";
+  const actionDisabled = contract.routePlanItemId ? "disabled" : "";
+
+  return `
+    <article class="planner-anchor-card ${isSelected ? "selected" : ""}" data-planner-select-contract="${escapeHtml(contract.companyContractId)}">
+      <div class="planner-item-head">
+        <div class="planner-item-source accepted">Accepted work</div>
+        <div class="meta-stack">
+          <strong>${escapeHtml(contract.origin.code)} -> ${escapeHtml(contract.destination.code)}</strong>
+          <span class="muted">${escapeHtml(formatPayload(contract))} | due ${escapeHtml(formatDate(contract.deadlineUtc))}</span>
+        </div>
+        <div class="pill-row">
+          ${renderBadge(resolveCompanyContractBadgeState(contract, "active"))}
+          ${renderContractWorkStateBadge(contract.workState)}
+        </div>
+      </div>
+      <div class="meta-stack">
+        <span class="muted">${escapeHtml(contract.origin.name)} -> ${escapeHtml(contract.destination.name)}</span>
+        <span class="muted">${escapeHtml(contract.primaryActionLabel)}</span>
+      </div>
+      <div class="planner-item-actions">
+        <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(contract.companyContractId)}" ${actionDisabled}>${escapeHtml(actionLabel)}</button>
+        ${contract.assignedAircraftReady ? `<button type="button" data-open-dispatch="${escapeHtml(contract.companyContractId)}">Open dispatch</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderPlannerSetupCard(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null,
+  selectedAircraft: ContractsPlannerAircraft | null,
+  summary: PlannerChainSummary,
+): string {
+  const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
+  const aircraftOptions = [`<option value="">All company aircraft</option>`]
+    .concat(state.payload.plannerAircraft.map((aircraft) => (
+      `<option value="${escapeHtml(aircraft.aircraftId)}" ${state.plannerSelection.aircraftId === aircraft.aircraftId ? "selected" : ""}>${escapeHtml(`${aircraft.registration} | ${aircraft.modelDisplayName}`)}</option>`
+    )))
+    .join("");
+
+  if (!selectedAcceptedContract) {
+    return `
+      <section class="planner-setup-card">
+        <div class="empty-state compact">Select an accepted contract above to anchor the route and reveal only the next reachable candidates.</div>
+      </section>
+    `;
+  }
+
+  const plannerStatus = selectedAcceptedContract.routePlanItemId
+    ? "This accepted contract is already in the saved route chain."
+    : (state.payload.routePlan?.items.length ?? 0) > 0
+    ? "Starting from this contract will clear the current saved chain first."
+    : "Start the route from this contract to save the chain, or just preview the next-leg candidates below.";
+
+  return `
+    <section class="planner-setup-card">
+      <div class="planner-setup-grid">
+        <article class="planner-setup-metric">
+          <span class="eyebrow">Selected contract</span>
+          <strong>${escapeHtml(`${selectedAcceptedContract.origin.code} -> ${selectedAcceptedContract.destination.code}`)}</strong>
+          <span class="muted">${escapeHtml(formatPayload(selectedAcceptedContract))} | due ${escapeHtml(formatDate(selectedAcceptedContract.deadlineUtc))}</span>
+        </article>
+        <article class="planner-setup-metric">
+          <span class="eyebrow">Current next origin</span>
+          <strong>${escapeHtml(plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code)}</strong>
+          <span class="muted">${escapeHtml(plannerEndpointAirport?.name ?? selectedAcceptedContract.destination.name)}</span>
+        </article>
+        <article class="planner-setup-metric">
+          <span class="eyebrow">Saved chain</span>
+          <strong>${escapeHtml(String(summary.itemCount))} item${summary.itemCount === 1 ? "" : "s"}</strong>
+          <span class="muted">${escapeHtml(summary.itemCount > 0 ? `${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned` : "No saved route chain yet.")}</span>
+        </article>
+      </div>
+      <div class="planner-control-row">
+        <label class="planner-aircraft-picker">
+          <span>Aircraft filter</span>
+          <select name="plannerAircraftId">
+            ${aircraftOptions}
+          </select>
+        </label>
+        <div class="planner-aircraft-brief">
+          <strong>${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName}` : "No aircraft selected")}</strong>
+          <span class="muted">${escapeHtml(selectedAircraft
+            ? `${selectedAircraft.currentAirport.code} | ${selectedAircraft.activeCabinSeats} seats | ${Math.round(selectedAircraft.activeCabinCargoCapacityLb).toLocaleString("en-US")} lb cargo | ${Math.round(selectedAircraft.rangeNm).toLocaleString("en-US")} nm range`
+            : "Select an aircraft to restrict next-leg candidates to routes that this plane can actually fly.")}</span>
+        </div>
+      </div>
+      <div class="planner-inline-callout">
+        <strong>${escapeHtml(plannerStatus)}</strong>
+        <span class="muted">${escapeHtml(selectedAircraft ? "Candidate list is currently filtered through the selected aircraft's route capability." : "Without an aircraft filter, candidates show all next-leg offers leaving from the current route endpoint.")}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderPlannerCandidateSubtitle(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null,
+  selectedAircraft: ContractsPlannerAircraft | null,
+  candidateCount: number,
+): string {
+  if (!selectedAcceptedContract) {
+    return "Select accepted work to anchor the next leg.";
+  }
+
+  const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
+  const endpointCode = plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code;
+  const aircraftLabel = selectedAircraft ? ` | filtered for ${selectedAircraft.registration}` : "";
+  return `${candidateCount} next-leg candidate${candidateCount === 1 ? "" : "s"} leaving ${endpointCode}${aircraftLabel}`;
+}
+
+function renderPlannerCandidateList(
+  state: ContractsUiState,
+  plannerCandidates: PlannerCandidateView[],
+  selectedAcceptedContract: ContractsViewAcceptedContract | null,
+  selectedAircraft: ContractsPlannerAircraft | null,
+): string {
+  if (!selectedAcceptedContract) {
+    return `<div class="empty-state compact">Select accepted work to preview the available next legs from that destination.</div>`;
+  }
+
+  if (plannerCandidates.length === 0) {
+    const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
+    return `<div class="empty-state compact">No available next-leg contracts leave ${escapeHtml(plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code)}${selectedAircraft ? ` that ${escapeHtml(selectedAircraft.registration)} can fly` : ""}.</div>`;
+  }
+
+  return `
+    <div class="planner-list">
+      ${plannerCandidates.map((candidate) => renderPlannerCandidateRow(candidate, selectedAircraft)).join("")}
+    </div>
+  `;
+}
+
+function renderPlannerCandidateRow(candidate: PlannerCandidateView, selectedAircraft: ContractsPlannerAircraft | null): string {
   const actionHtml = candidate.state === "actionable"
     ? `<button type="button" class="button-secondary" data-planner-add-candidate="${escapeHtml(candidate.offer.contractOfferId)}">Add to chain</button>`
-    : `<span class="muted">${escapeHtml(statusLabel)}</span>`;
-  const badgeValue = candidate.state === "actionable"
-    ? candidate.offer.fitBucket ?? candidate.offer.offerStatus
-    : candidate.state;
+    : `<span class="muted">${escapeHtml(candidate.blockedReason ?? "Blocked")}</span>`;
   return `
     <article class="planner-item ${candidate.state} candidate-offer">
       <div class="planner-item-head">
-        <div class="planner-item-source planned">${escapeHtml(sourceLabel)}</div>
+        <div class="planner-item-source planned">Next leg</div>
         <div class="meta-stack">
           <strong>${escapeHtml(candidate.offer.origin.code)} -> ${escapeHtml(candidate.offer.destination.code)}</strong>
           <span class="muted">${escapeHtml(formatPayload(candidate.offer))} | due ${escapeHtml(formatDate(candidate.offer.latestCompletionUtc))}</span>
         </div>
-        <div class="pill-row">${renderBadge(badgeValue)}</div>
+        <div class="pill-row">${renderBadge(candidate.offer.fitBucket ?? candidate.offer.offerStatus)}</div>
       </div>
       <div class="meta-stack">
-        <span class="muted">${escapeHtml(candidate.offer.likelyRole.replaceAll("_", " "))} | ${escapeHtml(candidate.offer.difficultyBand)}</span>
-        <span class="muted">${escapeHtml(candidate.detail)}</span>
+        <span class="muted">${escapeHtml(formatMoney(candidate.offer.payoutAmount))} payout | ${escapeHtml(formatDistance(routeDistanceNm(candidate.offer)))} | ${escapeHtml(candidate.offer.likelyRole.replaceAll("_", " "))}</span>
+        <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} fit confirmed | ${candidate.detail}` : candidate.detail)}</span>
       </div>
       <div class="planner-item-actions">
         ${actionHtml}
@@ -1930,7 +2125,7 @@ function renderBoardScopeTab(tabId: ContractsBoardScope, label: string, count: n
 
 function renderAcceptanceCallout(state: ContractsUiState): string {
   const acceptedOffer = state.payload.offers.find((offer) => offer.contractOfferId === state.acceptanceNextStepOfferId) ?? null;
-  return `<div class="panel-inline-callout contracts-next-step"><div><strong>${escapeHtml(state.message?.text ?? "Contract accepted.")}</strong><div class="muted">Use Accepted / Active to inspect the newly accepted work, or switch to Route Planning to stage the next step.${acceptedOffer ? ` ${escapeHtml(acceptedOffer.directDispatchReason)}` : ""}</div></div><div class="pill-row"><button type="button" class="button-secondary" data-next-step-dismiss>Keep browsing</button><button type="button" class="button-secondary" data-open-route-plan="${acceptedOffer ? escapeHtml(acceptedOffer.contractOfferId) : ""}">Send to route plan</button><button type="button" ${acceptedOffer?.directDispatchEligible ? "" : "disabled"} data-next-step-dispatch>Accept and dispatch</button></div></div>`;
+  return `<div class="panel-inline-callout contracts-next-step"><div><strong>${escapeHtml(state.message?.text ?? "Contract accepted.")}</strong><div class="muted">Use Accepted / Active to inspect the newly accepted work, or switch to Route Planning to stage the next step.${acceptedOffer ? ` ${escapeHtml(acceptedOffer.directDispatchReason)}` : ""}</div></div><div class="pill-row"><button type="button" class="button-secondary" data-next-step-dismiss>Keep browsing</button><button type="button" class="button-secondary" data-open-route-plan="${state.acceptanceNextStepCompanyContractId ? escapeHtml(state.acceptanceNextStepCompanyContractId) : ""}">Send to route plan</button><button type="button" ${acceptedOffer?.directDispatchEligible ? "" : "disabled"} data-next-step-dispatch>Accept and dispatch</button></div></div>`;
 }
 
 function renderSelectedRoutePanel(selectedRoute: SelectedRoute | null, state: ContractsUiState): string {
@@ -2661,12 +2856,77 @@ function selectDefaultCompanyContractId(
   return source[0]?.companyContractId ?? null;
 }
 
+function selectDefaultPlannerAcceptedContractId(payload: ContractsViewPayload): string | null {
+  const plannedAcceptedContractId = payload.routePlan?.items.find((item) => item.sourceType === "accepted_contract")?.sourceId;
+  if (plannedAcceptedContractId && payload.acceptedContracts.some((contract) => contract.companyContractId === plannedAcceptedContractId)) {
+    return plannedAcceptedContractId;
+  }
+
+  return payload.acceptedContracts[0]?.companyContractId ?? null;
+}
+
 function getActiveContracts(payload: ContractsViewPayload): ContractsViewAcceptedContract[] {
   return payload.acceptedContracts.filter((contract) => activeContractStates.has(contract.contractState));
 }
 
 function getClosedContracts(payload: ContractsViewPayload): ContractsViewCompanyContract[] {
   return payload.companyContracts.filter((contract) => closedContractStates.has(contract.contractState));
+}
+
+function ensurePlannerSelections(state: ContractsUiState): void {
+  if (!state.payload.acceptedContracts.some((contract) => contract.companyContractId === state.plannerSelection.acceptedContractId)) {
+    state.plannerSelection = {
+      ...state.plannerSelection,
+      acceptedContractId: selectDefaultPlannerAcceptedContractId(state.payload),
+    };
+  }
+
+  if (state.plannerSelection.aircraftId && !state.payload.plannerAircraft.some((aircraft) => aircraft.aircraftId === state.plannerSelection.aircraftId)) {
+    state.plannerSelection = {
+      ...state.plannerSelection,
+      aircraftId: "",
+    };
+  }
+}
+
+function resolveSelectedPlannerAcceptedContract(state: ContractsUiState): ContractsViewAcceptedContract | null {
+  return state.payload.acceptedContracts.find((contract) => contract.companyContractId === state.plannerSelection.acceptedContractId) ?? null;
+}
+
+function resolveSelectedPlannerAircraft(state: ContractsUiState): ContractsPlannerAircraft | null {
+  return state.payload.plannerAircraft.find((aircraft) => aircraft.aircraftId === state.plannerSelection.aircraftId) ?? null;
+}
+
+function isAcceptedContractInCurrentRoutePlan(state: ContractsUiState, companyContractId: string): boolean {
+  return Boolean(state.payload.routePlan?.items.some((item) => item.sourceType === "accepted_contract" && item.sourceId === companyContractId));
+}
+
+function isPlannerAnchorActive(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null = resolveSelectedPlannerAcceptedContract(state),
+): boolean {
+  if (!selectedAcceptedContract) {
+    return false;
+  }
+
+  return (state.payload.routePlan?.items.length ?? 0) === 0
+    || isAcceptedContractInCurrentRoutePlan(state, selectedAcceptedContract.companyContractId);
+}
+
+function resolvePlannerEndpointAirport(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null = resolveSelectedPlannerAcceptedContract(state),
+): ContractsViewAirport | null {
+  if (!selectedAcceptedContract) {
+    return null;
+  }
+
+  if (state.payload.routePlan?.items.length && isAcceptedContractInCurrentRoutePlan(state, selectedAcceptedContract.companyContractId)) {
+    const summary = buildPlannerChainSummary(state.payload.routePlan);
+    return summary.endpointAirport ?? selectedAcceptedContract.destination;
+  }
+
+  return selectedAcceptedContract.destination;
 }
 
 // Derived collections centralize filter rules so selection, counts, and rendering all agree on the same visible set.
@@ -2795,114 +3055,38 @@ function getFilteredCompanyContracts(state: ContractsUiState): ContractsViewComp
   });
 }
 
-function ensurePlannerFilterDefaults(state: ContractsUiState): void {
-  const hasEndpoint = Boolean(state.payload.routePlan?.endpointAirportId);
-  if (hasEndpoint && !state.plannerFilters.plannerMatchCurrentEndpointTouched) {
-    state.plannerFilters = {
-      ...state.plannerFilters,
-      plannerMatchCurrentEndpoint: true,
-    };
-  }
-
-  if (!hasEndpoint && state.plannerFilters.plannerMatchCurrentEndpoint) {
-    state.plannerFilters = {
-      ...state.plannerFilters,
-      plannerMatchCurrentEndpoint: false,
-    };
-  }
-}
-
 function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidateView[] {
-  const searchText = state.appliedPlannerTextFilters.plannerSearchText.trim().toLowerCase();
-  const destinationCode = state.appliedPlannerTextFilters.plannerDestinationCode.trim().toLowerCase();
-  const hasEndpoint = Boolean(state.payload.routePlan?.endpointAirportId);
-  const matchCurrentEndpoint = hasEndpoint ? state.plannerFilters.plannerMatchCurrentEndpoint : false;
-  const routePlanByOfferId = new Map<string, ContractsRoutePlanItem>(
+  const selectedAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
+  const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
+  const selectedAircraft = resolveSelectedPlannerAircraft(state);
+  const anchorActive = isPlannerAnchorActive(state, selectedAcceptedContract);
+  const plannedOfferIds = new Set(
     (state.payload.routePlan?.items ?? [])
       .filter((item) => item.sourceType === "candidate_offer")
-      .map((item) => [item.sourceId, item]),
+      .map((item) => item.sourceId),
   );
 
-  const availableOfferCandidates = state.payload.offers
+  if (!selectedAcceptedContract || !plannerEndpointAirport) {
+    return [];
+  }
+
+  return state.payload.offers
     .filter((offer) => offer.offerStatus === "available")
-    .map((offer) => {
-      const plannedItem = routePlanByOfferId.get(offer.contractOfferId);
-      const candidateState: PlannerCandidateState = plannedItem
-        ? plannedItem.plannerItemStatus === "candidate_available"
-          ? "planned"
-          : plannedItem.plannerItemStatus === "candidate_stale"
-          ? "stale"
-          : "unavailable"
-        : "actionable";
-
-      return {
-        offer,
-        state: candidateState,
-        detail: candidateState === "planned"
-          ? "Already in the current route plan."
-          : candidateState === "stale"
-          ? "The planned snapshot is stale."
-          : candidateState === "unavailable"
-          ? "The planned snapshot is no longer actionable."
-          : "Add this offer to the current chain.",
-      } satisfies PlannerCandidateView;
-    });
-
-  const stalePlannedCandidates = (state.payload.routePlan?.items ?? [])
-    .filter((item) => item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_stale")
-    .filter((item) => !state.payload.offers.some((offer) => offer.contractOfferId === item.sourceId))
-    .map((item) => ({
-      offer: {
-        contractOfferId: item.sourceId,
-        archetype: "stale_candidate",
-        volumeType: item.volumeType,
-        passengerCount: item.passengerCount,
-        cargoWeightLb: item.cargoWeightLb,
-        payoutAmount: item.payoutAmount,
-        earliestStartUtc: item.earliestStartUtc ?? item.deadlineUtc,
-        latestCompletionUtc: item.deadlineUtc,
-        offerStatus: "expired",
-        likelyRole: "route_plan_snapshot",
-        difficultyBand: "stale",
-        fitBucket: undefined,
-        timeRemainingHours: 0,
-        origin: item.origin,
-        destination: item.destination,
-        routePlanItemId: item.routePlanItemId,
-        routePlanItemStatus: item.plannerItemStatus,
-        matchesPlannerEndpoint: hasEndpoint && item.origin.airportId === state.payload.routePlan?.endpointAirportId,
-        directDispatchEligible: false,
-        directDispatchReason: "This planned candidate is no longer actionable.",
-        nearestRelevantAircraft: null,
-      },
-      state: "stale",
-      detail: "This planned offer is no longer present on the live board.",
+    .filter((offer) => offer.origin.airportId === plannerEndpointAirport.airportId)
+    .filter((offer) => !plannedOfferIds.has(offer.contractOfferId))
+    .filter((offer) => !selectedAircraft || offer.plannerEligibleAircraftIds.includes(selectedAircraft.aircraftId))
+    .sort((left, right) =>
+      compareText(left.destination.code, right.destination.code, "asc")
+      || compareNumber(Date.parse(left.latestCompletionUtc), Date.parse(right.latestCompletionUtc), "asc")
+      || compareNumber(right.payoutAmount, left.payoutAmount, "asc"))
+    .map((offer) => ({
+      offer,
+      blockedReason: anchorActive ? null : "Start the route from the selected accepted contract first.",
+      state: anchorActive ? "actionable" : "blocked",
+      detail: selectedAircraft
+        ? `${selectedAircraft.registration} fits payload, range, and airport requirements for this leg.`
+        : `${offer.plannerEligibleAircraftIds.length} aircraft in the fleet can plausibly cover this leg shape.`,
     } satisfies PlannerCandidateView));
-
-  return [...availableOfferCandidates, ...stalePlannedCandidates]
-    .filter((candidate) => {
-      if (searchText && !buildRouteSearchHaystack(candidate.offer).includes(searchText)) {
-        return false;
-      }
-
-      if (destinationCode && !matchesAirportFilter(candidate.offer.destination, destinationCode)) {
-        return false;
-      }
-
-      if (state.plannerFilters.plannerVolumeType !== "all" && candidate.offer.volumeType !== state.plannerFilters.plannerVolumeType) {
-        return false;
-      }
-
-      if (state.plannerFilters.plannerFitBucket !== "all" && candidate.offer.fitBucket !== state.plannerFilters.plannerFitBucket) {
-        return false;
-      }
-
-      if (matchCurrentEndpoint && candidate.state === "actionable" && !candidate.offer.matchesPlannerEndpoint) {
-        return false;
-      }
-
-      return true;
-    });
 }
 
 function matchesNumericRange(value: number, min: number, max: number): boolean {

@@ -358,17 +358,42 @@ try {
   await clickUi(page.locator(".contracts-next-step [data-open-route-plan]"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
   await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("Route Planning"));
-  await page.waitForFunction(() => document.querySelector("[name='plannerMatchCurrentEndpoint']") instanceof HTMLInputElement
-    && (document.querySelector("[name='plannerMatchCurrentEndpoint']")?.checked ?? false) === true);
+  await page.waitForFunction(() => document.querySelector(".planner-anchor-card.selected"));
   markStep("planner opened");
 
-  assert.ok((await page.locator(".planner-summary-panel").textContent())?.includes("Current endpoint"));
-  assert.ok((await page.locator(".planner-summary-panel").textContent())?.includes("Payout total"));
-  assert.ok((await page.locator(".planner-summary-panel").textContent())?.includes("Continuity"));
+  assert.ok((await page.locator(".planner-anchor-panel").textContent())?.includes("Accepted contracts"));
+  assert.ok((await page.locator(".planner-candidate-panel").textContent())?.includes("Next-leg candidates"));
+  assert.equal(await page.locator("select[name='plannerAircraftId']").count(), 1);
   assert.equal(await page.locator(".planner-candidate-panel [data-accept-offer]").count(), 0);
   const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
   const initialPlannerAddCount = await plannerAddButtons.count();
   assert.ok(initialPlannerAddCount > 0);
+  const selectedAnchorRoute = (await page.locator(".planner-anchor-card.selected strong").first().textContent()) ?? "";
+  const selectedAnchorCodes = selectedAnchorRoute.match(/\b[A-Z]{3,4}\b/g) ?? [];
+  const selectedAnchorDestinationCode = selectedAnchorCodes[1] ?? "";
+  assert.ok(selectedAnchorDestinationCode.length > 0);
+  await page.waitForFunction((expectedOriginCode) => {
+    const rows = [...document.querySelectorAll(".planner-candidate-panel .planner-item.candidate-offer strong")];
+    return rows.length > 0 && rows.every((row) => (row.textContent ?? "").startsWith(`${expectedOriginCode} ->`));
+  }, selectedAnchorDestinationCode);
+  const plannerAircraftSelect = page.locator("select[name='plannerAircraftId']");
+  const plannerAircraftOptions = await plannerAircraftSelect.locator("option").evaluateAll((options) =>
+    options.map((option) => ({
+      value: option.getAttribute("value") ?? "",
+      text: option.textContent ?? "",
+    })),
+  );
+  assert.ok(plannerAircraftOptions.length > 1);
+  const firstAircraftOption = plannerAircraftOptions.find((option) => option.value);
+  assert.ok(firstAircraftOption);
+  await plannerAircraftSelect.selectOption(firstAircraftOption.value);
+  await page.waitForFunction((registration) => {
+    return document.querySelector(".planner-candidate-panel")?.textContent?.includes(registration) ?? false;
+  }, firstAircraftOption.text.split("|")[0]?.trim() ?? "");
+  const filteredPlannerAddCount = await plannerAddButtons.count();
+  assert.ok(filteredPlannerAddCount <= initialPlannerAddCount);
+  await plannerAircraftSelect.selectOption("");
+  await page.waitForFunction(() => document.querySelectorAll(".planner-candidate-panel [data-planner-add-candidate]").length > 0);
   const plannerCandidateOfferId = await plannerAddButtons.first().getAttribute("data-planner-add-candidate");
   assert.ok(plannerCandidateOfferId);
   const initialRoutePlanItemCount = await page.locator(".planner-chain-panel .planner-item").count();
@@ -377,7 +402,7 @@ try {
   await clickUi(plannerAddButtons.first());
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
   await page.waitForFunction((offerId) => !document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
-  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel")?.textContent?.includes("Planned"));
+  await page.waitForFunction(() => document.querySelector(".planner-chain-panel")?.textContent?.includes("Planned candidate"));
   markStep("planner add candidate");
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.accepted").count()) >= 1);
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.planned").count()) >= 1);
@@ -400,9 +425,9 @@ try {
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));
   await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='planning']"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
-  await page.waitForFunction(() => document.querySelector(".planner-candidate-panel .planner-item.stale")?.textContent?.includes("Stale"));
+  await page.waitForFunction(() => document.querySelector(".planner-chain-panel .planner-item.candidate_stale, .planner-chain-panel .planner-item.candidate_offer.candidate_stale, .planner-chain-panel .planner-item.candidate_stale") || document.querySelector(".planner-chain-panel")?.textContent?.includes("candidate stale"));
   markStep("reload and stale candidate verification");
-  assert.equal(await page.locator(".planner-candidate-panel .planner-item.stale [data-planner-add-candidate]").count(), 0);
+  assert.equal(await page.locator(".planner-chain-panel [data-plan-remove-item]").count() >= 1, true);
 
   await clickUi(page.locator(".contracts-workspace-tab[data-workspace-tab='board']"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='board'][aria-selected='true']"));

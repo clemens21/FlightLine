@@ -29,6 +29,18 @@ export interface ContractsViewAircraftCue {
   dispatchAvailable: boolean;
 }
 
+export interface ContractsPlannerAircraft {
+  aircraftId: string;
+  registration: string;
+  modelDisplayName: string;
+  currentAirport: ContractsViewAirport;
+  dispatchAvailable: boolean;
+  activeCabinSeats: number;
+  activeCabinCargoCapacityLb: number;
+  maxPayloadLb: number;
+  rangeNm: number;
+}
+
 export interface ContractsViewOffer {
   contractOfferId: string;
   archetype: string;
@@ -48,6 +60,7 @@ export interface ContractsViewOffer {
   routePlanItemId: string | undefined;
   routePlanItemStatus: ContractsRoutePlanItemStatus | undefined;
   matchesPlannerEndpoint: boolean;
+  plannerEligibleAircraftIds: string[];
   directDispatchEligible: boolean;
   directDispatchReason: string;
   nearestRelevantAircraft: ContractsViewAircraftCue | null;
@@ -138,6 +151,7 @@ export interface ContractsViewPayload {
   offers: ContractsViewOffer[];
   acceptedContracts: ContractsViewAcceptedContract[];
   companyContracts: ContractsViewCompanyContract[];
+  plannerAircraft: ContractsPlannerAircraft[];
   routePlan: {
     routePlanId: string;
     endpointAirportId: string | undefined;

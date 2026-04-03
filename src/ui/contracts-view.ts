@@ -28,6 +28,7 @@ import type {
   ContractsContractPrimaryActionKind,
   ContractsContractUrgencyBand,
   ContractsContractWorkState,
+  ContractsPlannerAircraft,
   ContractsViewAircraftCue,
   ContractsRoutePlanItem,
   ContractsRoutePlanItemStatus,
@@ -535,6 +536,7 @@ function resolveAirportMap(
   board: ContractBoardView,
   companyContracts: CompanyContractsView | null,
   routePlan: RoutePlanState | null,
+  fleetState: FleetStateView | null,
 ): Map<string, AirportRecord> {
   const airportIds = new Set<string>();
 
@@ -551,6 +553,10 @@ function resolveAirportMap(
   for (const item of routePlan?.items ?? []) {
     airportIds.add(item.originAirportId);
     airportIds.add(item.destinationAirportId);
+  }
+
+  for (const aircraft of fleetState?.aircraft ?? []) {
+    airportIds.add(aircraft.currentAirportId);
   }
 
   return airportReference.findAirportsByAirportKeys([...airportIds]);
@@ -605,6 +611,12 @@ function buildOfferView(
       aircraftReference,
       airportReference,
     );
+    const plannerEligibleAircraftIds = buildPlannerEligibleAircraftIds(
+      airportMap,
+      routeRequirements,
+      fleetState,
+      aircraftReference,
+    );
 
     return {
       contractOfferId: offer.contractOfferId,
@@ -628,6 +640,7 @@ function buildOfferView(
       routePlanItemId: plannedItem?.routePlanItemId,
       routePlanItemStatus: plannedItem?.plannerItemStatus,
       matchesPlannerEndpoint: Boolean(routePlan?.endpointAirportId) && offer.originAirportId === routePlan?.endpointAirportId,
+      plannerEligibleAircraftIds,
       directDispatchEligible: Boolean(nearestRelevantAircraft),
       directDispatchReason: nearestRelevantAircraft
         ? `Nearest dispatch-ready aircraft: ${nearestRelevantAircraft.registration} at ${nearestRelevantAircraft.currentAirport.code}.`
@@ -745,6 +758,65 @@ function buildRoutePlanView(
   };
 }
 
+function buildPlannerEligibleAircraftIds(
+  airportMap: Map<string, AirportRecord>,
+  routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
+  fleetState: FleetStateView | null,
+  aircraftReference: AircraftReferenceRepository,
+): string[] {
+  const originAirport = airportMap.get(routeRequirements.originAirportId.toUpperCase()) ?? null;
+  const destinationAirport = airportMap.get(routeRequirements.destinationAirportId.toUpperCase()) ?? null;
+
+  if (!originAirport || !destinationAirport) {
+    return [];
+  }
+
+  const distanceNm = haversineDistanceNm(originAirport, destinationAirport);
+
+  return (fleetState?.aircraft ?? [])
+    .filter((aircraft) =>
+      canAircraftOperateRoute(
+        aircraft,
+        aircraftReference,
+        routeRequirements,
+        originAirport,
+        destinationAirport,
+        distanceNm,
+      ))
+    .map((aircraft) => aircraft.aircraftId);
+}
+
+function buildPlannerAircraftView(
+  fleetState: FleetStateView | null,
+  airportMap: Map<string, AirportRecord>,
+  aircraftReference: AircraftReferenceRepository,
+): ContractsPlannerAircraft[] {
+  return (fleetState?.aircraft ?? [])
+    .map((aircraft) => {
+      const model = aircraftReference.findModel(aircraft.aircraftModelId);
+      if (!model) {
+        return null;
+      }
+
+      return {
+        aircraftId: aircraft.aircraftId,
+        registration: aircraft.registration,
+        modelDisplayName: aircraft.modelDisplayName,
+        currentAirport: mapAirport(
+          airportMap.get(aircraft.currentAirportId.toUpperCase()) ?? null,
+          aircraft.currentAirportId,
+        ),
+        dispatchAvailable: aircraft.dispatchAvailable,
+        activeCabinSeats: Math.min(aircraft.activeCabinSeats ?? aircraft.maxPassengers, aircraft.maxPassengers),
+        activeCabinCargoCapacityLb: Math.min(aircraft.activeCabinCargoCapacityLb ?? aircraft.maxCargoLb, aircraft.maxCargoLb),
+        maxPayloadLb: model.maxPayloadLb,
+        rangeNm: aircraft.rangeNm,
+      } satisfies ContractsPlannerAircraft;
+    })
+    .filter((aircraft): aircraft is ContractsPlannerAircraft => Boolean(aircraft))
+    .sort((left, right) => left.registration.localeCompare(right.registration));
+}
+
 // Turns raw contract, fleet, staffing, and route-plan state into the player-facing contracts workspace payload.
 export function buildContractsViewPayload(
   saveId: string,
@@ -758,7 +830,7 @@ export function buildContractsViewPayload(
   airportReference: AirportReferenceRepository,
 ): ContractsViewPayload {
   const visibleRoutePlan = buildVisibleRoutePlanState(routePlan);
-  const airportMap = resolveAirportMap(airportReference, board, companyContracts, visibleRoutePlan);
+  const airportMap = resolveAirportMap(airportReference, board, companyContracts, visibleRoutePlan, fleetState);
   const offers = buildOfferView(
     companyContext.currentTimeUtc,
     board,
@@ -780,6 +852,7 @@ export function buildContractsViewPayload(
     companyContext.currentTimeUtc,
   );
   const acceptedContracts = companyContractsView.filter((contract) => activeCompanyContractStates.has(contract.contractState));
+  const plannerAircraft = buildPlannerAircraftView(fleetState, airportMap, aircraftReference);
 
   return {
     saveId,
@@ -796,6 +869,7 @@ export function buildContractsViewPayload(
     offers,
     acceptedContracts,
     companyContracts: companyContractsView,
+    plannerAircraft,
     routePlan: buildRoutePlanView(visibleRoutePlan, airportMap),
     plannerEndpointAirportId: visibleRoutePlan?.endpointAirportId,
   };
