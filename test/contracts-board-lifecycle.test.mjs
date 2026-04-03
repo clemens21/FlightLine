@@ -67,13 +67,16 @@ try {
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));
   assert.ok(uniqueOrigins.size > 1);
-  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v2:/);
+  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v3:/);
   assert.ok(
     firstBoard.contractBoard.offers.some((offer) => uniqueOrigins.has(offer.destinationAirportId)),
     "Expected at least one chained route opportunity in the board.",
   );
   const passengerOffers = firstBoard.contractBoard.offers.filter(
     (offer) => offer.offerStatus === "available" && offer.volumeType === "passenger",
+  );
+  const homeBaseCargoOffers = firstBoard.contractBoard.offers.filter(
+    (offer) => offer.offerStatus === "available" && offer.volumeType === "cargo" && offer.originAirportId === "KDEN",
   );
   const passengerOrigins = new Map();
   for (const offer of passengerOffers) {
@@ -84,6 +87,7 @@ try {
     ? (passengerOrigins.get("KDEN") ?? 0) / passengerOffers.length
     : 0;
   assert.ok(homeBasePassengerShare < 0.15);
+  assert.ok(homeBaseCargoOffers.length >= 4);
 
   const firstAvailableOffer = firstBoard.contractBoard.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(firstAvailableOffer);

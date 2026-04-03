@@ -69,6 +69,45 @@ try {
   const firstEightVolumeTypes = firstVisibleOffers.slice(0, 8).map((entry) => entry.route.volumeType);
   assert.ok(firstEightVolumeTypes.includes("passenger"));
   assert.ok(firstEightVolumeTypes.includes("cargo"));
+
+  const kdenBoardState = applyContractsBoardViewState(payload, {
+    filters: {
+      departureSearchText: "KDEN",
+      destinationSearchText: "",
+      nearestAircraftSearchText: "",
+      readyAircraft: false,
+      noReadyAircraft: false,
+      passengerPayloadMin: "",
+      passengerPayloadMax: "",
+      cargoPayloadMin: "",
+      cargoPayloadMax: "",
+      distanceMin: "",
+      distanceMax: "",
+      hoursRemainingMin: "",
+      hoursRemainingMax: "",
+      dueHoursMin: "",
+      dueHoursMax: "",
+      payoutMin: "",
+      payoutMax: "",
+    },
+    appliedTextFilters: {
+      departureSearchText: "KDEN",
+      destinationSearchText: "",
+      nearestAircraftSearchText: "",
+    },
+    boardTab: "available",
+    boardScope: "all",
+    sortField: null,
+    sortDirection: "asc",
+    selectedOfferId: null,
+    selectedCompanyContractId: null,
+  });
+
+  assert.ok(kdenBoardState.visibleOffers.some((entry) => entry.route.volumeType === "passenger"));
+  assert.ok(kdenBoardState.visibleOffers.some((entry) => entry.route.volumeType === "cargo"));
+  const kdenFirstTwelve = kdenBoardState.visibleOffers.slice(0, 12);
+  assert.ok(kdenFirstTwelve.some((entry) => entry.route.volumeType === "passenger"));
+  assert.ok(kdenFirstTwelve.some((entry) => entry.route.volumeType === "cargo"));
 } finally {
   await harness.cleanup();
 }

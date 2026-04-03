@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.18.2`
+- `0.18.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -83,6 +83,7 @@ The contracts board split departure-vs-destination search, split passenger-vs-ca
 The contracts board indexed filter-and-sort performance landing, broader passenger-origin mix refresh, route-search popover layout fix, and column-order update advance the release to `0.18.0`.
 The contracts board hot-path debounce and planner-work skip follow-up advance the release to `0.18.1`.
 The contracts board default available-order diversification follow-up advances the release to `0.18.2`.
+The contracts board home-base cargo-mix rebalance and generation-context refresh follow-up advance the release to `0.18.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

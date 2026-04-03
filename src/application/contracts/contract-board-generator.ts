@@ -191,7 +191,7 @@ const ARCHETYPE_PROFILES: ArchetypeProfile[] = [
   },
 ];
 
-const contractBoardGenerationProfileVersion = "contracts:v2";
+const contractBoardGenerationProfileVersion = "contracts:v3";
 
 function stableHash(input: string): number {
   let hash = 2166136261;
@@ -559,14 +559,7 @@ function buildOffer(
 ): GeneratedContractOfferInput {
   const baseSeed = makeSeed(windowSeed, archetypeProfile.archetype, originAirport.airportKey, destination.airportKey);
   const distanceNm = haversineDistanceNm(originAirport, destination);
-  const isPassenger =
-    archetypeProfile.archetype === "premium_passenger_charter" ||
-    archetypeProfile.archetype === "regional_passenger_run" ||
-    archetypeProfile.archetype === "mainline_passenger_lane" ||
-    archetypeProfile.archetype === "longhaul_passenger_service" ||
-    (archetypeProfile.archetype === "urgent_special_job" &&
-      destination.passengerScore + destination.businessScore >= destination.cargoScore + destination.remoteScore);
-  const volumeType: "passenger" | "cargo" = isPassenger ? "passenger" : "cargo";
+  const volumeType = deriveRouteCandidateVolumeType(archetypeProfile, destination);
   const passengerCount =
     volumeType === "passenger"
       ? archetypeProfile.archetype === "premium_passenger_charter"
@@ -703,6 +696,21 @@ function buildGenerationContextHash(companyContext: CompanyContext, footprintOri
   )}`;
 }
 
+function deriveRouteCandidateVolumeType(
+  archetypeProfile: ArchetypeProfile,
+  destination: AirportRecord,
+): "passenger" | "cargo" {
+  const isPassenger =
+    archetypeProfile.archetype === "premium_passenger_charter" ||
+    archetypeProfile.archetype === "regional_passenger_run" ||
+    archetypeProfile.archetype === "mainline_passenger_lane" ||
+    archetypeProfile.archetype === "longhaul_passenger_service" ||
+    (archetypeProfile.archetype === "urgent_special_job" &&
+      destination.passengerScore + destination.businessScore >= destination.cargoScore + destination.remoteScore);
+
+  return isPassenger ? "passenger" : "cargo";
+}
+
 function buildRouteCandidates(
   profile: ArchetypeProfile,
   originPool: AirportRecord[],
@@ -727,6 +735,13 @@ function buildRouteCandidates(
         continue;
       }
 
+      const volumeType = deriveRouteCandidateVolumeType(profile, destination);
+      const homeBaseOriginBonus = origin.airportKey === homeBase.airportKey
+        ? volumeType === "cargo" ? 18 : 8
+        : 0;
+      const homeBaseDestinationBonus = destination.airportKey === homeBase.airportKey
+        ? volumeType === "cargo" ? 4 : 10
+        : 0;
       const seed = makeSeed(windowSeed, profile.archetype, origin.airportKey, destination.airportKey);
       const distanceFit = 1 - Math.min(Math.abs(distanceNm - idealDistanceNm) / maxDistanceSpan, 1);
       const routeScore =
@@ -737,8 +752,8 @@ function buildRouteCandidates(
         (footprintOriginIds.has(origin.airportKey) ? 6 : 0) +
         (originPoolIds.has(destination.airportKey) ? 11 : 0) +
         (footprintOriginIds.has(destination.airportKey) ? 10 : 0) +
-        (destination.airportKey === homeBase.airportKey ? 10 : 0) +
-        (origin.airportKey === homeBase.airportKey ? 2 : 0) +
+        homeBaseDestinationBonus +
+        homeBaseOriginBonus +
         (destination.marketRegion === origin.marketRegion ? 6 : 0) +
         (destination.isoCountry === origin.isoCountry ? 4 : 0) +
         randomUnit(`${seed}|route_noise`) * 6;
@@ -783,12 +798,15 @@ export function generateContractBoard(
   const offers: GeneratedContractOfferInput[] = [];
   const routeUsage = new Map<string, number>();
   const originUsage = new Map<string, number>();
+  const originUsageByVolume = new Map<string, { passenger: number; cargo: number }>();
   const destinationUsage = new Map<string, number>();
   const targetOfferCount = ARCHETYPE_PROFILES.reduce(
     (sum, profile) => sum + scaledTargetCount(profile.targetCount, targetScale),
     0,
   );
   const originCap = Math.max(10, Math.ceil(targetOfferCount / Math.max(originPool.length, 1)) - 6);
+  const homeBaseCargoOriginCap = Math.max(4, Math.ceil(originCap * 0.35));
+  const homeBasePassengerOriginCap = Math.max(6, originCap - homeBaseCargoOriginCap);
   const destinationCap = 72;
 
   if (!homeBase || originPool.length === 0 || uniqueCandidates.length === 0) {
@@ -819,14 +837,30 @@ export function generateContractBoard(
       const pairUsage = routeUsage.get(pairKey) ?? 0;
       const originCount = originUsage.get(candidate.origin.airportKey) ?? 0;
       const destinationCount = destinationUsage.get(candidate.destination.airportKey) ?? 0;
+      const volumeType = deriveRouteCandidateVolumeType(archetypeProfile, candidate.destination);
+      const originVolumeUsage = originUsageByVolume.get(candidate.origin.airportKey) ?? { passenger: 0, cargo: 0 };
+      const originVolumeCap = candidate.origin.airportKey === homeBase.airportKey
+        ? volumeType === "cargo"
+          ? homeBaseCargoOriginCap
+          : homeBasePassengerOriginCap
+        : originCap;
 
-      if (pairUsage >= 4 || originCount >= originCap || destinationCount >= destinationCap) {
+      if (
+        pairUsage >= 4
+        || originCount >= originCap
+        || originVolumeUsage[volumeType] >= originVolumeCap
+        || destinationCount >= destinationCap
+      ) {
         continue;
       }
 
       offers.push(buildOffer(companyContext, candidate.origin, candidate.destination, archetypeProfile, windowSeed, footprintOriginIds));
       routeUsage.set(pairKey, pairUsage + 1);
       originUsage.set(candidate.origin.airportKey, originCount + 1);
+      originUsageByVolume.set(candidate.origin.airportKey, {
+        ...originVolumeUsage,
+        [volumeType]: originVolumeUsage[volumeType] + 1,
+      });
       destinationUsage.set(candidate.destination.airportKey, destinationCount + 1);
       addedForProfile += 1;
 

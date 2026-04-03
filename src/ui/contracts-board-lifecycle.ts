@@ -13,7 +13,7 @@ export interface EnsuredContractBoardResult {
   refreshed: boolean;
 }
 
-const contractBoardGenerationContextPrefix = "contracts:v2:";
+const contractBoardGenerationContextPrefix = "contracts:v3:";
 
 function readMinimumContractBoardOfferCount(): number {
   const rawValue = process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT?.trim();
