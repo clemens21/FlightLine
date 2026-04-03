@@ -358,23 +358,53 @@ try {
   await clickUi(page.locator(".contracts-next-step [data-open-route-plan]"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
   await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("Route Planning"));
-  await page.waitForFunction(() => document.querySelector(".planner-anchor-card.selected"));
+  await page.waitForFunction(() => document.querySelector(".planner-anchor-table tbody tr.selected"));
   markStep("planner opened");
 
   assert.ok((await page.locator(".planner-anchor-panel").textContent())?.includes("Accepted contracts"));
   assert.ok((await page.locator(".planner-candidate-panel").textContent())?.includes("Next-leg candidates"));
+  assert.equal(await page.locator(".planner-candidate-table.contracts-board-table").count(), 1);
+  const plannerCandidateHeaderOrder = await page.locator(".planner-candidate-table thead th").evaluateAll((cells) =>
+    cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  assert.deepEqual(plannerCandidateHeaderOrder, [
+    "Route",
+    "Payload",
+    "Payout",
+    "Distance",
+    "Hours Left",
+    "Due",
+    "Plan",
+  ]);
   assert.equal(await page.locator("select[name='plannerAircraftId']").count(), 1);
   assert.equal(await page.locator(".planner-candidate-panel [data-accept-offer]").count(), 0);
+  const plannerBodyLayout = await page.evaluate(() => {
+    const plannerBody = document.querySelector(".contracts-planner-body");
+    const anchorWrap = document.querySelector(".planner-anchor-table-wrap");
+    return plannerBody instanceof HTMLElement && anchorWrap instanceof HTMLElement
+      ? {
+          plannerOverflowY: window.getComputedStyle(plannerBody).overflowY,
+          anchorOverflowY: window.getComputedStyle(anchorWrap).overflowY,
+        }
+      : null;
+  });
+  assert.ok(plannerBodyLayout);
+  assert.equal(plannerBodyLayout.plannerOverflowY, "hidden");
+  assert.ok(["auto", "scroll"].includes(plannerBodyLayout.anchorOverflowY));
   const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
   const initialPlannerAddCount = await plannerAddButtons.count();
   assert.ok(initialPlannerAddCount > 0);
-  const selectedAnchorRoute = (await page.locator(".planner-anchor-card.selected strong").first().textContent()) ?? "";
+  const selectedAnchorRoute = (await page.locator(".planner-anchor-table tbody tr.selected td").first().textContent()) ?? "";
   const selectedAnchorCodes = selectedAnchorRoute.match(/\b[A-Z]{3,4}\b/g) ?? [];
   const selectedAnchorDestinationCode = selectedAnchorCodes[1] ?? "";
   assert.ok(selectedAnchorDestinationCode.length > 0);
   await page.waitForFunction((expectedOriginCode) => {
-    const rows = [...document.querySelectorAll(".planner-candidate-panel .planner-item.candidate-offer strong")];
-    return rows.length > 0 && rows.every((row) => (row.textContent ?? "").startsWith(`${expectedOriginCode} ->`));
+    const rows = [...document.querySelectorAll(".planner-candidate-table tbody tr")];
+    return rows.length > 0 && rows.every((row) => {
+      const routeCell = row.querySelector("td");
+      const text = (routeCell?.textContent ?? "").replace(/\s+/g, " ").trim();
+      return text.includes(`Departure: ${expectedOriginCode} -`);
+    });
   }, selectedAnchorDestinationCode);
   const plannerAircraftSelect = page.locator("select[name='plannerAircraftId']");
   const plannerAircraftOptions = await plannerAircraftSelect.locator("option").evaluateAll((options) =>
@@ -388,7 +418,7 @@ try {
   assert.ok(firstAircraftOption);
   await plannerAircraftSelect.selectOption(firstAircraftOption.value);
   await page.waitForFunction((registration) => {
-    return document.querySelector(".planner-candidate-panel")?.textContent?.includes(registration) ?? false;
+    return document.querySelector(".planner-setup-card")?.textContent?.includes(registration) ?? false;
   }, firstAircraftOption.text.split("|")[0]?.trim() ?? "");
   const filteredPlannerAddCount = await plannerAddButtons.count();
   assert.ok(filteredPlannerAddCount <= initialPlannerAddCount);

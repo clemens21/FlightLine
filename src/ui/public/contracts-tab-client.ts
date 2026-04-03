@@ -1765,6 +1765,7 @@ function renderPlannerPanel(
         </div>
       </section>
       <div class="planner-workbench">
+        ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft, summary)}
         <section class="panel planner-candidate-panel">
           <div class="panel-head">
             <div>
@@ -1773,7 +1774,6 @@ function renderPlannerPanel(
             </div>
           </div>
           <div class="panel-body">
-            ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft, summary)}
             ${renderPlannerCandidateList(state, plannerCandidates, selectedAcceptedContract, selectedAircraft)}
           </div>
         </section>
@@ -1875,8 +1875,26 @@ function renderPlannerAcceptedContractList(
   }
 
   return `
-    <div class="planner-anchor-list">
-      ${state.payload.acceptedContracts.map((contract) => renderPlannerAcceptedContractRow(state, contract, selectedAcceptedContract?.companyContractId === contract.companyContractId)).join("")}
+    <div class="planner-anchor-table-wrap" data-planner-anchor-wrap>
+      <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
+        <colgroup>
+          <col />
+          <col style="width:88px" />
+          <col style="width:154px" />
+          <col style="width:168px" />
+        </colgroup>
+        <thead>
+          <tr>
+            ${renderContractsStaticHeaderCell("Route")}
+            ${renderContractsStaticHeaderCell("Payload")}
+            ${renderContractsStaticHeaderCell("Due")}
+            ${renderContractsStaticHeaderCell("Action")}
+          </tr>
+        </thead>
+        <tbody>
+          ${state.payload.acceptedContracts.map((contract) => renderPlannerAcceptedContractRow(state, contract, selectedAcceptedContract?.companyContractId === contract.companyContractId)).join("")}
+        </tbody>
+      </table>
     </div>
   `;
 }
@@ -1893,29 +1911,28 @@ function renderPlannerAcceptedContractRow(
     ? "Clear & start route"
     : "Start route";
   const actionDisabled = contract.routePlanItemId ? "disabled" : "";
+  const statusBadges = [
+    renderBadge(resolveCompanyContractBadgeState(contract, "active")),
+    renderContractWorkStateBadge(contract.workState),
+  ].join("");
 
   return `
-    <article class="planner-anchor-card ${isSelected ? "selected" : ""}" data-planner-select-contract="${escapeHtml(contract.companyContractId)}">
-      <div class="planner-item-head">
-        <div class="planner-item-source accepted">Accepted work</div>
+    <tr class="contract-row planner-anchor-row ${isSelected ? "selected" : ""}" data-planner-select-contract="${escapeHtml(contract.companyContractId)}" data-planner-anchor-row="${escapeHtml(contract.companyContractId)}">
+      <td>
         <div class="meta-stack">
-          <strong>${escapeHtml(contract.origin.code)} -> ${escapeHtml(contract.destination.code)}</strong>
-          <span class="muted">${escapeHtml(formatPayload(contract))} | due ${escapeHtml(formatDate(contract.deadlineUtc))}</span>
+          ${renderRouteColumn(contract.origin, contract.destination)}
+          <div class="pill-row">${statusBadges}</div>
         </div>
-        <div class="pill-row">
-          ${renderBadge(resolveCompanyContractBadgeState(contract, "active"))}
-          ${renderContractWorkStateBadge(contract.workState)}
+      </td>
+      <td>${escapeHtml(formatPayload(contract))}</td>
+      <td>${renderDueCell(contract.deadlineUtc, state.payload.currentTimeUtc)}</td>
+      <td>
+        <div class="planner-table-action-cell">
+          <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(contract.companyContractId)}" ${actionDisabled}>${escapeHtml(actionLabel)}</button>
+          ${contract.assignedAircraftReady ? `<button type="button" data-open-dispatch="${escapeHtml(contract.companyContractId)}">Dispatch</button>` : ""}
         </div>
-      </div>
-      <div class="meta-stack">
-        <span class="muted">${escapeHtml(contract.origin.name)} -> ${escapeHtml(contract.destination.name)}</span>
-        <span class="muted">${escapeHtml(contract.primaryActionLabel)}</span>
-      </div>
-      <div class="planner-item-actions">
-        <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(contract.companyContractId)}" ${actionDisabled}>${escapeHtml(actionLabel)}</button>
-        ${contract.assignedAircraftReady ? `<button type="button" data-open-dispatch="${escapeHtml(contract.companyContractId)}">Open dispatch</button>` : ""}
-      </div>
-    </article>
+      </td>
+    </tr>
   `;
 }
 
@@ -1935,7 +1952,7 @@ function renderPlannerSetupCard(
   if (!selectedAcceptedContract) {
     return `
       <section class="planner-setup-card">
-        <div class="empty-state compact">Select an accepted contract above to anchor the route and reveal only the next reachable candidates.</div>
+        <div class="empty-state compact">Select an accepted contract on the left to anchor the route and reveal only the next reachable candidates.</div>
       </section>
     `;
   }
@@ -1959,29 +1976,24 @@ function renderPlannerSetupCard(
           <strong>${escapeHtml(plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code)}</strong>
           <span class="muted">${escapeHtml(plannerEndpointAirport?.name ?? selectedAcceptedContract.destination.name)}</span>
         </article>
+        <label class="planner-setup-metric planner-aircraft-picker">
+          <span class="eyebrow">Aircraft filter</span>
+          <select name="plannerAircraftId">
+            ${aircraftOptions}
+          </select>
+          <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} selected` : "All company aircraft currently eligible for the next leg.")}</span>
+        </label>
         <article class="planner-setup-metric">
           <span class="eyebrow">Saved chain</span>
           <strong>${escapeHtml(String(summary.itemCount))} item${summary.itemCount === 1 ? "" : "s"}</strong>
           <span class="muted">${escapeHtml(summary.itemCount > 0 ? `${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned` : "No saved route chain yet.")}</span>
         </article>
       </div>
-      <div class="planner-control-row">
-        <label class="planner-aircraft-picker">
-          <span>Aircraft filter</span>
-          <select name="plannerAircraftId">
-            ${aircraftOptions}
-          </select>
-        </label>
-        <div class="planner-aircraft-brief">
-          <strong>${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName}` : "No aircraft selected")}</strong>
-          <span class="muted">${escapeHtml(selectedAircraft
-            ? `${selectedAircraft.currentAirport.code} | ${selectedAircraft.activeCabinSeats} seats | ${Math.round(selectedAircraft.activeCabinCargoCapacityLb).toLocaleString("en-US")} lb cargo | ${Math.round(selectedAircraft.rangeNm).toLocaleString("en-US")} nm range`
-            : "Select an aircraft to restrict next-leg candidates to routes that this plane can actually fly.")}</span>
-        </div>
-      </div>
       <div class="planner-inline-callout">
         <strong>${escapeHtml(plannerStatus)}</strong>
-        <span class="muted">${escapeHtml(selectedAircraft ? "Candidate list is currently filtered through the selected aircraft's route capability." : "Without an aircraft filter, candidates show all next-leg offers leaving from the current route endpoint.")}</span>
+        <span class="muted">${escapeHtml(selectedAircraft
+          ? `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName} | ${selectedAircraft.currentAirport.code} | ${selectedAircraft.activeCabinSeats} seats | ${Math.round(selectedAircraft.activeCabinCargoCapacityLb).toLocaleString("en-US")} lb cargo | ${Math.round(selectedAircraft.rangeNm).toLocaleString("en-US")} nm range`
+          : "Without an aircraft filter, candidates show all next-leg offers leaving from the current route endpoint.")}</span>
       </div>
     </section>
   `;
@@ -2019,34 +2031,66 @@ function renderPlannerCandidateList(
   }
 
   return `
-    <div class="planner-list">
-      ${plannerCandidates.map((candidate) => renderPlannerCandidateRow(candidate, selectedAircraft)).join("")}
+    <div class="planner-candidate-table-wrap" data-planner-candidate-wrap>
+      <table class="contracts-board-table planner-candidate-table" data-planner-candidate-table>
+        <colgroup>
+          <col style="width:320px" />
+          <col style="width:114px" />
+          <col style="width:124px" />
+          <col style="width:112px" />
+          <col style="width:112px" />
+          <col style="width:166px" />
+          <col style="width:182px" />
+        </colgroup>
+        <thead>
+          <tr>
+            ${renderContractsStaticHeaderCell("Route")}
+            ${renderContractsStaticHeaderCell("Payload")}
+            ${renderContractsStaticHeaderCell("Payout")}
+            ${renderContractsStaticHeaderCell("Distance")}
+            ${renderContractsStaticHeaderCell("Hours Left")}
+            ${renderContractsStaticHeaderCell("Due")}
+            ${renderContractsStaticHeaderCell("Plan")}
+          </tr>
+        </thead>
+        <tbody>
+          ${plannerCandidates.map((candidate) => renderPlannerCandidateRow(candidate, selectedAircraft, state.payload.currentTimeUtc)).join("")}
+        </tbody>
+      </table>
     </div>
   `;
 }
 
-function renderPlannerCandidateRow(candidate: PlannerCandidateView, selectedAircraft: ContractsPlannerAircraft | null): string {
+function renderPlannerCandidateRow(
+  candidate: PlannerCandidateView,
+  selectedAircraft: ContractsPlannerAircraft | null,
+  currentTimeUtc: string,
+): string {
   const actionHtml = candidate.state === "actionable"
     ? `<button type="button" class="button-secondary" data-planner-add-candidate="${escapeHtml(candidate.offer.contractOfferId)}">Add to chain</button>`
     : `<span class="muted">${escapeHtml(candidate.blockedReason ?? "Blocked")}</span>`;
+  const stateBadge = renderBadge(candidate.offer.fitBucket ?? candidate.offer.offerStatus);
+
   return `
-    <article class="planner-item ${candidate.state} candidate-offer">
-      <div class="planner-item-head">
-        <div class="planner-item-source planned">Next leg</div>
+    <tr class="contract-row planner-candidate-row ${candidate.state === "blocked" ? "planner-candidate-row--blocked" : ""}" data-planner-candidate-row="${escapeHtml(candidate.offer.contractOfferId)}">
+      <td>
         <div class="meta-stack">
-          <strong>${escapeHtml(candidate.offer.origin.code)} -> ${escapeHtml(candidate.offer.destination.code)}</strong>
-          <span class="muted">${escapeHtml(formatPayload(candidate.offer))} | due ${escapeHtml(formatDate(candidate.offer.latestCompletionUtc))}</span>
+          ${renderRouteColumn(candidate.offer.origin, candidate.offer.destination)}
+          <div class="pill-row">${stateBadge}</div>
         </div>
-        <div class="pill-row">${renderBadge(candidate.offer.fitBucket ?? candidate.offer.offerStatus)}</div>
-      </div>
-      <div class="meta-stack">
-        <span class="muted">${escapeHtml(formatMoney(candidate.offer.payoutAmount))} payout | ${escapeHtml(formatDistance(routeDistanceNm(candidate.offer)))} | ${escapeHtml(candidate.offer.likelyRole.replaceAll("_", " "))}</span>
-        <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} fit confirmed | ${candidate.detail}` : candidate.detail)}</span>
-      </div>
-      <div class="planner-item-actions">
-        ${actionHtml}
-      </div>
-    </article>
+      </td>
+      <td>${escapeHtml(formatPayload(candidate.offer))}</td>
+      <td>${escapeHtml(formatMoney(candidate.offer.payoutAmount))}</td>
+      <td>${escapeHtml(formatDistance(routeDistanceNm(candidate.offer)))}</td>
+      <td>${escapeHtml(formatHoursLeft(candidate.offer.timeRemainingHours))}</td>
+      <td>${renderDueCell(candidate.offer.latestCompletionUtc, currentTimeUtc)}</td>
+      <td>
+        <div class="planner-table-action-cell">
+          ${actionHtml}
+          <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} fit confirmed` : candidate.detail)}</span>
+        </div>
+      </td>
+    </tr>
   `;
 }
 

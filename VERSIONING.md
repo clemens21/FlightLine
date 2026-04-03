@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.19.0`
+- `0.19.1`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -85,7 +85,7 @@ The contracts board hot-path debounce and planner-work skip follow-up advance th
 The contracts board default available-order diversification follow-up advances the release to `0.18.2`.
 The contracts board home-base cargo-mix rebalance and generation-context refresh follow-up advance the release to `0.18.3`.
 The shared table-geometry and search-caret stability follow-up advances the release to `0.18.4`.
-The Contracts route-planning rebuild that anchors planning on accepted work, filters next-leg candidates by the selected endpoint, and optionally narrows those candidates by selected company aircraft advances the release to `0.19.0`.
+The denser Contracts route-planning layout that removes outer-page scrolling, makes accepted-contract selection its own scrollable table, and renders next-leg candidates as a Contracts-board-style table advances the release to `0.19.1`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

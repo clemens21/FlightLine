@@ -895,25 +895,71 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       padding: 12px;
       background: linear-gradient(180deg, rgba(13,106,119,.08), transparent 45%);
     }
+     .contracts-planning-panel {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
      .contracts-planner-panel {
       min-height: 0;
       overflow: hidden;
     }
     .contracts-planner-body {
       min-height: 0;
-      overflow: auto;
+      overflow: hidden;
+      padding: 14px 16px 16px;
     }
     .planner-shell {
+      min-height: 0;
+      height: 100%;
       display: grid;
+      grid-template-columns: minmax(320px, .72fr) minmax(0, 1.28fr);
       gap: 18px;
+      overflow: hidden;
     }
-    .planner-candidate-panel .panel-body {
+    .planner-workbench {
+      min-height: 0;
+      min-width: 0;
       display: grid;
+      grid-template-rows: auto minmax(0, 1fr) minmax(260px, .82fr);
       gap: 14px;
+      overflow: hidden;
+    }
+    .planner-anchor-panel .panel-body,
+    .planner-candidate-panel .panel-body {
+      min-height: 0;
+      overflow: hidden;
+      padding: 0;
+    }
+    .planner-anchor-table-wrap,
+    .planner-candidate-table-wrap {
+      min-height: 0;
+      height: 100%;
+      overflow: auto;
+    }
+    .planner-anchor-table-wrap thead,
+    .planner-candidate-table-wrap thead {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+    .planner-anchor-table,
+    .planner-candidate-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    .planner-candidate-table {
+      min-width: 1126px;
+    }
+    .planner-setup-card {
+      display: grid;
+      gap: 10px;
     }
     .planner-chain-panel .panel-body {
       min-height: 0;
       overflow: auto;
+      display: grid;
+      gap: 12px;
+      padding: 12px 14px 14px;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -954,6 +1000,12 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+    }
+    .planner-table-action-cell {
+      display: grid;
+      gap: 6px;
+      align-items: start;
+      justify-items: start;
     }
     .planner-panel-actions {
       display: flex;
@@ -1047,6 +1099,9 @@ function renderShell(title, saveIds, currentSaveId, flash, body, options = {}) {
       .app { height: auto; min-height: 100vh; }
       .main, .content-shell, .view-grid, .panel, .contracts-app-shell, .contracts-grid, .contracts-side-column { min-height: unset; height: auto; }
       .contracts-side-column { grid-template-rows: none; }
+      .planner-shell { grid-template-columns: 1fr; height: auto; }
+      .planner-workbench { grid-template-rows: auto minmax(320px, 1fr) minmax(260px, auto); }
+      .contracts-planner-body { overflow: auto; }
       .topbar { grid-template-columns: 1fr; }
       .topbar-meta { align-items: start; }
       .contracts-toolbar { flex-direction: column; }

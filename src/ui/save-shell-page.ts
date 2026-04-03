@@ -2549,28 +2549,65 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       margin: 0;
       accent-color: var(--accent);
     }
+     .contracts-planning-panel {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
      .contracts-planner-panel {
       min-height: 0;
       overflow: hidden;
     }
     .contracts-planner-body {
       min-height: 0;
-      overflow: auto;
+      overflow: hidden;
+      padding: 14px 16px 16px;
     }
     .planner-shell {
+      min-height: 0;
+      height: 100%;
       display: grid;
+      grid-template-columns: minmax(320px, .72fr) minmax(0, 1.28fr);
       gap: 18px;
+      overflow: hidden;
+    }
+    .planner-workbench {
+      min-height: 0;
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) minmax(260px, .82fr);
+      gap: 14px;
+      overflow: hidden;
     }
     .planner-anchor-panel .panel-body,
     .planner-candidate-panel .panel-body {
-      display: grid;
-      gap: 14px;
+      min-height: 0;
+      overflow: hidden;
+      padding: 0;
     }
-    .planner-anchor-list {
-      display: grid;
-      gap: 10px;
+    .planner-anchor-table-wrap,
+    .planner-candidate-table-wrap {
+      min-height: 0;
+      height: 100%;
+      overflow: auto;
+      background: var(--panel-strong);
     }
-    .planner-anchor-card,
+    .planner-anchor-table-wrap thead,
+    .planner-candidate-table-wrap thead {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+    .planner-anchor-table,
+    .planner-candidate-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    .planner-anchor-table {
+      min-width: 0;
+    }
+    .planner-candidate-table {
+      min-width: 1126px;
+    }
     .planner-setup-card {
       border: 1px solid var(--line);
       border-radius: 16px;
@@ -2579,68 +2616,48 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 10px;
     }
-    .planner-anchor-card {
-      cursor: pointer;
-    }
-    .planner-anchor-card.selected {
-      border-color: rgba(111,201,212,.3);
-      background: color-mix(in srgb, var(--accent-soft) 26%, var(--panel-strong));
-    }
     .planner-setup-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
     }
     .planner-setup-metric {
       border: 1px solid var(--line);
       border-radius: 14px;
-      padding: 12px;
+      padding: 10px 12px;
       background: var(--panel);
       display: grid;
       gap: 6px;
     }
     .planner-setup-metric strong {
-      font-size: 15px;
-    }
-    .planner-control-row {
-      display: grid;
-      grid-template-columns: minmax(240px, .42fr) minmax(0, .58fr);
-      gap: 12px;
-      align-items: end;
+      font-size: 14px;
     }
     .planner-aircraft-picker,
     .planner-aircraft-brief {
       display: grid;
-      gap: 8px;
+      gap: 6px;
     }
     .planner-inline-callout {
       border: 1px solid var(--line);
       border-radius: 14px;
-      padding: 12px;
+      padding: 10px 12px;
       background: var(--panel);
       display: grid;
       gap: 6px;
     }
-    .planner-summary-panel {
-      min-height: 0;
-    }
-    .planner-summary-panel .panel-body {
-      display: grid;
-      gap: 14px;
-    }
     .planner-summary-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
     .planner-summary-card,
     .planner-continuity-issue {
       border: 1px solid var(--line);
       border-radius: 16px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       background: var(--panel-strong);
       display: grid;
-      gap: 6px;
+      gap: 5px;
     }
     .planner-summary-card.accent {
       border-color: rgba(13,106,119,.22);
@@ -2664,12 +2681,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-continuity-issue.ok {
       border-color: rgba(13,106,119,.22);
       background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-strong));
-    }
-    .planner-workbench {
-      display: grid;
-      grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
-      gap: 18px;
-      min-height: 0;
     }
     .planner-candidate-panel {
       min-height: 0;
@@ -2730,11 +2741,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: auto;
       display: grid;
-      gap: 14px;
+      gap: 12px;
+      padding: 12px 14px 14px;
     }
     .planner-chain-map-card {
       display: grid;
-      gap: 10px;
+      gap: 8px;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -2775,6 +2787,22 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
+    }
+    .planner-table-action-cell {
+      display: grid;
+      gap: 6px;
+      align-items: start;
+      justify-items: start;
+    }
+    .planner-table-action-cell .muted {
+      font-size: 12px;
+      line-height: 1.25;
+    }
+    .planner-anchor-row.selected td {
+      background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+    }
+    .planner-candidate-row--blocked {
+      opacity: .9;
     }
     .planner-item .meta-stack {
       min-width: 0;
@@ -2829,8 +2857,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .contracts-plan-map {
       aspect-ratio: auto;
-      height: 100%;
-      min-height: 360px;
+      height: 220px;
+      min-height: 220px;
     }
     .map-attribution {
       font-size: 11px;
@@ -2861,6 +2889,25 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .map-sequence-text { fill: #091018; font-size: 11px; font-weight: 700; }
     .map-segment-label { font-size: 12px; font-weight: 500; }
     .contracts-accepted-body { overflow: auto; }
+    @media (max-width: 1480px) {
+      .planner-shell {
+        grid-template-columns: minmax(300px, .78fr) minmax(0, 1.22fr);
+      }
+      .planner-setup-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 1240px) {
+      .planner-shell {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .planner-workbench {
+        grid-template-rows: auto minmax(320px, 1fr) minmax(260px, auto);
+      }
+      .contracts-planner-body {
+        overflow: auto;
+      }
+    }
     .aircraft-tab-grid {
       min-height: 0;
       height: 100%;
