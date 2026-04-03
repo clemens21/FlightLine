@@ -964,7 +964,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       font: inherit;
     }
     table { width: 100%; border-collapse: collapse; min-width: 100%; }
-    .table-wrap { min-height: 0; overflow: auto; }
+    .table-wrap {
+      min-height: 0;
+      overflow: auto;
+      scrollbar-gutter: stable;
+    }
     th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th {
       position: sticky;
@@ -2298,7 +2302,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       top: 0;
       z-index: 4;
     }
-    .contracts-board-table { min-width: 1260px; }
+    .contracts-board-table {
+      min-width: 1260px;
+      width: 100%;
+      table-layout: fixed;
+    }
     .contracts-board-table th,
     .contracts-board-table td {
       position: relative;

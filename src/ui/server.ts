@@ -60,6 +60,7 @@ const uiBrowserModuleAssetUrls = new Map<string, URL>([
     ["contracts-board-model", new URL("./contracts-board-model.js", import.meta.url)],
     ["contracts-view-model", new URL("./contracts-view-model.js", import.meta.url)],
     ["dispatch-tab-model", new URL("./dispatch-tab-model.js", import.meta.url)],
+    ["focus-helpers", new URL("./focus-helpers.js", import.meta.url)],
     ["save-shell-model", new URL("./save-shell-model.js", import.meta.url)],
 ]);
 const assetVersion = Date.now().toString(36);

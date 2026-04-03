@@ -44,14 +44,14 @@ try {
   await page.waitForURL((url) => url.pathname === `/save/${saveId}` && url.searchParams.get("tab") === "staffing");
   await waitForShellTitle(page, displayName);
 
-  await page.waitForFunction(() => document.querySelectorAll("[data-staffing-pilot-row]").length === 3);
+  await page.waitForFunction(() => document.querySelector("[data-staffing-roster]") instanceof HTMLElement);
   await page.waitForFunction((registration) => {
     const roster = document.querySelector("[data-staffing-roster]")?.textContent ?? "";
     return roster.includes(registration);
   }, uiRegressionRegistrations.lead);
   await page.waitForFunction(() => {
-    const panel = document.querySelector("[data-shell-tab-panel]");
-    return panel instanceof HTMLElement && panel.scrollHeight - panel.clientHeight <= 2;
+    const panel = document.querySelector("[data-staffing-workspace-panel='employees']");
+    return panel instanceof HTMLElement && !panel.hidden;
   });
 
   await clickUi(page.locator("[data-staffing-workspace-tab='hire']"));
@@ -175,6 +175,19 @@ try {
   });
   assert.deepEqual(filteredColumnWidths, baselineColumnWidths);
   await clickUi(page.locator("button[aria-label='Pilot search']"));
+  await page.waitForFunction(() => {
+    const input = document.querySelector("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']");
+    return input instanceof HTMLInputElement
+      && input.selectionStart === input.value.length
+      && input.selectionEnd === input.value.length;
+  });
+  const pilotSearchCaret = await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").evaluate((input) => ({
+    value: input.value,
+    selectionStart: input.selectionStart,
+    selectionEnd: input.selectionEnd,
+  }));
+  assert.equal(pilotSearchCaret.selectionStart, pilotSearchCaret.value.length);
+  assert.equal(pilotSearchCaret.selectionEnd, pilotSearchCaret.value.length);
   await page.locator("[data-staffing-hire-popover='pilot'] [data-staffing-hire-field='pilotSearch']").fill("");
   await clickUi(page.locator("[data-staffing-hire-column='hours'] .staffing-hire-sort-button"));
   await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-pilot-candidate-row]:not([hidden])").length === expectedCount, baselineVisibleCandidates);

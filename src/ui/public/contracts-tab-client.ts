@@ -23,6 +23,12 @@ import {
   type ContractsBoardViewState,
 } from "../contracts-board-model.js";
 import type { NotificationLevel, ShellSummaryPayload } from "../save-shell-model.js";
+import {
+  captureNamedControlFocus,
+  focusControlAtEnd,
+  restoreNamedControlFocus,
+  type NamedControlFocusState,
+} from "../focus-helpers.js";
 
 interface FilterState {
   departureSearchText: string;
@@ -123,12 +129,6 @@ interface ContractsUiState {
   acceptanceNextStepCompanyContractId: string | null;
   message: { tone: "notice" | "error"; text: string; notificationLevel?: NotificationLevel | undefined } | null;
   map: MapState;
-}
-
-interface FocusState {
-  controlName: string;
-  selectionStart: number | null;
-  selectionEnd: number | null;
 }
 
 type ContractsBoardTab = "available" | "active" | "closed";
@@ -766,13 +766,13 @@ export function mountContractsTab(
           plannerDestinationCode: state.plannerFilters.plannerDestinationCode,
         };
         ensureActiveTabSelection(state);
-        render(captureFocusState(root));
+        render(captureNamedControlFocus(root));
       }, filterDebounceMs);
       return;
     }
 
     ensureActiveTabSelection(state);
-    render(captureFocusState(root));
+    render(captureNamedControlFocus(root));
   };
 
   const handleKeydown = (event: KeyboardEvent) => {
@@ -781,7 +781,7 @@ export function mountContractsTab(
     }
     event.preventDefault();
     activeBoardPopover = null;
-    render(captureFocusState(root));
+    render(captureNamedControlFocus(root));
   };
 
   const handleDocumentClick = (event: MouseEvent) => {
@@ -1127,7 +1127,7 @@ export function mountContractsTab(
     }
   }
 
-  function render(focusState: FocusState | null = null): void {
+  function render(focusState: NamedControlFocusState | null = null): void {
     if (state.workspaceTab === "planning") {
       ensurePlannerFilterDefaults(state);
     }
@@ -1247,7 +1247,7 @@ export function mountContractsTab(
 
     syncBoardHeaderState();
     renderVisibleMap(root, state, selectedRoute);
-    restoreFocusState(root, focusState);
+    restoreNamedControlFocus(root, focusState);
     positionActiveBoardPopover();
     focusActiveBoardPopoverField(focusState);
   }
@@ -1358,7 +1358,7 @@ export function mountContractsTab(
     popover.style.setProperty("--contracts-board-popover-top", `${Math.round(clampedTop - stageRect.top)}px`);
   }
 
-  function focusActiveBoardPopoverField(focusState: FocusState | null): void {
+  function focusActiveBoardPopoverField(focusState: NamedControlFocusState | null): void {
     if (activeBoardPopover === null || focusState !== null) {
       return;
     }
@@ -1374,10 +1374,7 @@ export function mountContractsTab(
       if (!(firstField instanceof HTMLInputElement || firstField instanceof HTMLSelectElement || firstField instanceof HTMLTextAreaElement)) {
         return;
       }
-      firstField.focus();
-      if (firstField instanceof HTMLInputElement && firstField.type === "search") {
-        firstField.selectionStart = firstField.selectionEnd = firstField.value.length;
-      }
+      focusControlAtEnd(firstField);
     });
   }
 }
@@ -1390,51 +1387,6 @@ function buildDispatchUrl(acceptedCompanyContractId: string | null | undefined):
     dispatchUrl.searchParams.set("dispatchSourceId", acceptedCompanyContractId);
   }
   return dispatchUrl;
-}
-
-// Focus bookkeeping preserves text inputs across full rerenders of the tab body.
-function captureFocusState(root: HTMLElement): FocusState | null {
-  const activeElement = document.activeElement;
-
-  if (
-    !(activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement || activeElement instanceof HTMLSelectElement)
-    || !root.contains(activeElement)
-    || !activeElement.name
-  ) {
-    return null;
-  }
-
-  return {
-    controlName: activeElement.name,
-    selectionStart: activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement
-      ? activeElement.selectionStart
-      : null,
-    selectionEnd: activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement
-      ? activeElement.selectionEnd
-      : null,
-  };
-}
-
-function restoreFocusState(root: HTMLElement, focusState: FocusState | null): void {
-  if (!focusState) {
-    return;
-  }
-
-  const nextControl = Array.from(root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("[name]")).find((control) => control.name === focusState.controlName);
-
-  if (!nextControl) {
-    return;
-  }
-
-  nextControl.focus();
-
-  if (
-    (nextControl instanceof HTMLInputElement || nextControl instanceof HTMLTextAreaElement)
-    && focusState.selectionStart !== null
-    && focusState.selectionEnd !== null
-  ) {
-    nextControl.setSelectionRange(focusState.selectionStart, focusState.selectionEnd);
-  }
 }
 
 // Rendering helpers below turn the current UI state into tables, planner cards, and selected-route callouts.
@@ -1456,8 +1408,11 @@ function renderOffersTable(
     return `<div class="empty-state">No available contracts match the current filters.</div>`;
   }
 
+  const columnGroup = `<colgroup><col style="width:370px" /><col style="width:140px" /><col style="width:140px" /><col style="width:120px" /><col style="width:120px" /><col style="width:170px" /><col style="width:210px" /></colgroup>`;
+
   return `
     <table class="contracts-board-table">
+      ${columnGroup}
       <thead>
         <tr>
           ${renderContractsBoardHeaderCell("Route", state, activePopover, {
@@ -1540,8 +1495,11 @@ function renderCompanyContractsTable(
     return `<div class="empty-state">No ${emptyLabel} contracts match the current filters.</div>`;
   }
 
+  const columnGroup = `<colgroup><col style="width:330px" /><col style="width:130px" /><col style="width:130px" /><col style="width:140px" /><col style="width:120px" /><col style="width:120px" /><col style="width:160px" /><col style="width:210px" /><col style="width:120px" /></colgroup>`;
+
   return `
     <table class="contracts-board-table">
+      ${columnGroup}
       <thead>
         <tr>
           ${renderContractsBoardHeaderCell("Route", state, activePopover, {

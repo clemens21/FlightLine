@@ -3,6 +3,8 @@
  * It owns the Hire versus Employees view toggle plus row-level detail selection.
  */
 
+import { focusControlAtEnd } from "../focus-helpers.js";
+
 export interface StaffingTabController {
   destroy(): void;
 }
@@ -285,10 +287,7 @@ export function mountStaffingTab(host: HTMLElement): StaffingTabController {
         if (!firstField) {
           return;
         }
-        firstField.focus();
-        if (firstField instanceof HTMLInputElement && firstField.type === "search") {
-          firstField.select();
-        }
+        focusControlAtEnd(firstField);
       });
     }
   }

@@ -247,8 +247,20 @@ try {
   await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-market-popover='listing']");
-    return popover instanceof HTMLElement && !popover.hidden;
+    const input = popover?.querySelector("input[data-market-field='listingSearchText']");
+    return popover instanceof HTMLElement
+      && !popover.hidden
+      && input instanceof HTMLInputElement
+      && input.selectionStart === input.value.length
+      && input.selectionEnd === input.value.length;
   });
+  const listingSearchCaret = await page.locator("[data-market-popover='listing'] input[data-market-field='listingSearchText']").evaluate((input) => ({
+    value: input.value,
+    selectionStart: input.selectionStart,
+    selectionEnd: input.selectionEnd,
+  }));
+  assert.equal(listingSearchCaret.selectionStart, listingSearchCaret.value.length);
+  assert.equal(listingSearchCaret.selectionEnd, listingSearchCaret.value.length);
   await page.locator("[data-market-popover='listing'] input[data-market-field='listingSearchText']").fill("");
   await page.waitForFunction((expectedCount) => document.querySelectorAll("[data-market-select]").length === expectedCount, initialMarketRows);
   await clickUi(page.locator("button[aria-label='Listing search']").first().locator("svg"));

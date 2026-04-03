@@ -154,6 +154,12 @@ try {
   markStep("header sorts");
 
   const baselineContractRows = await page.locator(".contracts-board-table tbody tr").count();
+  const baselineColumnWidths = await page.evaluate(() => {
+    return [...document.querySelectorAll(".contracts-board-table thead th")].map((column) => ({
+      text: (column.textContent ?? "").trim(),
+      width: Math.round(column.getBoundingClientRect().width),
+    }));
+  });
   const routeCodes = firstRouteCellText.match(/\b[A-Z]{3,4}\b/g) ?? [];
   const departureCode = routeCodes[0] ?? "";
   const destinationCode = routeCodes[1] ?? "";
@@ -189,13 +195,37 @@ try {
   assert.ok(routeSearchPopoverBounds.left >= 0);
   assert.ok(routeSearchPopoverBounds.right <= routeSearchPopoverBounds.viewportWidth);
   assert.ok(routeSearchPopoverBounds.bottom <= routeSearchPopoverBounds.viewportHeight);
-  await page.locator("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']").fill(departureCode);
+  const departureSearchInput = page.locator("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']");
+  const departureSearchTerm = departureCode.slice(0, Math.max(1, Math.min(3, departureCode.length)));
+  await departureSearchInput.fill("");
+  await departureSearchInput.type(departureSearchTerm);
+  await page.waitForFunction(() => {
+    const input = document.querySelector("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']");
+    return input instanceof HTMLInputElement
+      && input.selectionStart === input.value.length
+      && input.selectionEnd === input.value.length;
+  });
+  const departureSearchCaret = await departureSearchInput.evaluate((input) => ({
+    value: input.value,
+    selectionStart: input.selectionStart,
+    selectionEnd: input.selectionEnd,
+  }));
+  assert.equal(departureSearchCaret.selectionStart, departureSearchCaret.value.length);
+  assert.equal(departureSearchCaret.selectionEnd, departureSearchCaret.value.length);
+  await departureSearchInput.fill(departureCode);
   await page.waitForFunction(([expectedCode, expectedCount]) => {
     const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];
     return rows.length > 0
       && rows.length <= expectedCount
       && rows.every((row) => (row.textContent ?? "").includes(expectedCode));
   }, [departureCode, baselineContractRows]);
+  const filteredColumnWidths = await page.evaluate(() => {
+    return [...document.querySelectorAll(".contracts-board-table thead th")].map((column) => ({
+      text: (column.textContent ?? "").trim(),
+      width: Math.round(column.getBoundingClientRect().width),
+    }));
+  });
+  assert.deepEqual(filteredColumnWidths, baselineColumnWidths);
   await page.locator("[data-contracts-board-popover='routeSearch'] input[name='destinationSearchText']").fill(destinationCode);
   await page.waitForFunction(([expectedDeparture, expectedDestination, expectedCount]) => {
     const rows = [...document.querySelectorAll(".contracts-board-table tbody tr")];

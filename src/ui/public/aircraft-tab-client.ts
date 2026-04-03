@@ -32,6 +32,7 @@ import {
   type AircraftTableSortDirection,
   type AircraftTableSortKey,
 } from "../aircraft-tab-model.js";
+import { focusControlAtEnd } from "../focus-helpers.js";
 
 export interface AircraftTabController {
   destroy(): void;
@@ -174,10 +175,7 @@ export function mountAircraftTab(host: HTMLElement, payload: AircraftTabPayload)
       if (!field) {
         return;
       }
-      field.focus();
-      if (field instanceof HTMLInputElement && (field.type === "search" || field.type === "text")) {
-        field.selectionStart = field.selectionEnd = field.value.length;
-      }
+      focusControlAtEnd(field);
     });
   }
 
