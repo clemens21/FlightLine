@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.22.0`
+- `0.22.1`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -92,6 +92,7 @@ The shared browser render primitive extraction plus shared market-query offer-wi
 The shared save-shell table-system style extraction for Contracts, Aircraft, and shared header chrome advances the release to `0.20.2`.
 The longer contract deadline windows, urgency premium payout tuning, and Contracts Hours Left urgency styling advance the release to `0.21.0`.
 The rolling Contracts board refresh that preserves still-live offers and the dynamic urgency payout that now updates as deadlines approach advance the release to `0.22.0`.
+The Contracts Hours Left urgency-color threshold follow-up advances the release to `0.22.1`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

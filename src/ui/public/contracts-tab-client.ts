@@ -2814,7 +2814,7 @@ function formatHoursLeft(hoursRemaining: number): string {
 function renderHoursLeftCell(hoursRemaining: number, urgencyBand: ContractsContractUrgencyBand): string {
   const toneClass = urgencyBand === "overdue"
     ? " contracts-hours-left--overdue"
-    : urgencyBand === "at_risk"
+    : urgencyBand === "at_risk" && hoursRemaining < 16
     ? " contracts-hours-left--at-risk"
     : "";
   return `<span class="contracts-hours-left${toneClass}">${escapeHtml(formatHoursLeft(hoursRemaining))}</span>`;
