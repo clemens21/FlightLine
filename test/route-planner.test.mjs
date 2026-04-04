@@ -611,7 +611,7 @@ try {
       issuedAtUtc: startedAtUtc,
       actorType: "player",
       payload: {
-        targetTimeUtc: addHours(board.expiresAtUtc, 2),
+        targetTimeUtc: addHours(selectedOffer.latestCompletionUtc, 2),
         stopConditions: ["target_time"],
       },
     });

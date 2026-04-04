@@ -67,7 +67,7 @@ try {
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));
   assert.ok(uniqueOrigins.size > 1);
-  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v4:/);
+  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v5:/);
   assert.ok(
     firstBoard.contractBoard.offers.some((offer) => uniqueOrigins.has(offer.destinationAirportId)),
     "Expected at least one chained route opportunity in the board.",
@@ -101,6 +101,13 @@ try {
 
   const firstAvailableOffer = firstBoard.contractBoard.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(firstAvailableOffer);
+  const longLivedOffer = firstBoard.contractBoard.offers.find((offer) =>
+    offer.offerStatus === "available"
+    && offer.contractOfferId !== firstAvailableOffer.contractOfferId
+    && Number(offer.explanationMetadata?.deadline_hours_from_now ?? 0) >= 60,
+  );
+  assert.ok(longLivedOffer);
+  const firstBoardOfferIds = new Set(firstBoard.contractBoard.offers.map((offer) => offer.contractOfferId));
 
   const acceptOfferResult = await backend.dispatch({
     commandId: `cmd_${saveId}_accept`,
@@ -148,8 +155,16 @@ try {
   const refreshedBoard = await ensureActiveContractBoard(backend, saveId, "scheduled");
   assert.ok(refreshedBoard.contractBoard);
   assert.equal(refreshedBoard.refreshed, true);
-  assert.notEqual(refreshedBoard.contractBoard.offerWindowId, firstWindowId);
+  assert.equal(refreshedBoard.contractBoard.offerWindowId, firstWindowId);
   assert.ok(refreshedBoard.contractBoard.offers.every((offer) => offer.offerStatus !== "expired"));
+  assert.equal(
+    refreshedBoard.contractBoard.offers.find((offer) => offer.contractOfferId === longLivedOffer.contractOfferId)?.offerStatus,
+    "available",
+  );
+  assert.ok(
+    refreshedBoard.contractBoard.offers.some((offer) => !firstBoardOfferIds.has(offer.contractOfferId)),
+    "Expected rolling refresh to add new offers without discarding still-live offers.",
+  );
 } finally {
   await backend.closeSaveSession(saveId);
   await backend.close();

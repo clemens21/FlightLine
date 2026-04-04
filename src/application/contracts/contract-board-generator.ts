@@ -8,10 +8,12 @@
 import type { JsonObject } from "../../domain/common/primitives.js";
 import {
   buildContractUrgencyBand,
+  resolveDynamicContractOfferPayoutAmount,
   resolveContractUrgencyPremiumMultiplier,
 } from "../../domain/contracts/urgency.js";
 import type { AirportRecord } from "../../infrastructure/reference/airport-reference.js";
 import type { CompanyContext } from "../queries/company-state.js";
+import { contractBoardGenerationProfileVersion } from "./contract-board-generation-profile.js";
 
 export interface GeneratedContractOfferInput {
   originAirportId: string;
@@ -194,8 +196,6 @@ const ARCHETYPE_PROFILES: ArchetypeProfile[] = [
       ((destination.longestHardRunwayFt ?? 0) >= 8000 ? 14 : 0),
   },
 ];
-
-const contractBoardGenerationProfileVersion = "contracts:v4";
 
 function stableHash(input: string): number {
   let hash = 2166136261;
@@ -484,7 +484,6 @@ function buildPayout(
   distanceNm: number,
   destination: AirportRecord,
   seed: string,
-  urgencyPremiumMultiplier: number,
 ): number {
   const airportDifficultyMultiplier = 1 + ((destination.airportSize ?? 3) - 3) * 0.06;
   const localVariation = 0.93 + randomUnit(`${seed}|variation`) * 0.14;
@@ -521,10 +520,10 @@ function buildPayout(
         (archetype === "longhaul_passenger_service"
           ? 62
           : archetype === "mainline_passenger_lane"
-          ? 48
-          : 28);
+        ? 48
+        : 28);
     const rawPayout = baseRate * distanceNm * volumeFactor * airportDifficultyMultiplier;
-    return Math.round(Math.max(rawPayout * localVariation, estimatedCost * 1.25) * urgencyPremiumMultiplier);
+    return Math.round(Math.max(rawPayout * localVariation, estimatedCost * 1.25));
   }
 
   const baseRate =
@@ -558,10 +557,10 @@ function buildPayout(
       (archetype === "heavy_freighter_longhaul"
         ? 0.24
         : archetype === "medium_freighter_linehaul"
-        ? 0.22
-        : 0.18);
+      ? 0.22
+      : 0.18);
   const rawPayout = baseRate * distanceNm * volumeFactor * airportDifficultyMultiplier;
-  return Math.round(Math.max(rawPayout * localVariation, estimatedCost * 1.22) * urgencyPremiumMultiplier);
+  return Math.round(Math.max(rawPayout * localVariation, estimatedCost * 1.22));
 }
 
 function buildOfferExplanation(
@@ -679,16 +678,38 @@ function buildOffer(
   const fit = deriveFitBucket(companyContext, archetypeProfile.likelyRole, originAirport, footprintOriginIds);
   const difficultyBand = deriveDifficultyBand(archetypeProfile.archetype, distanceNm, originAirport, destination);
   const volumeValue = volumeType === "passenger" ? passengerCount ?? 0 : cargoWeightLb ?? 0;
-  const payoutAmount = buildPayout(
+  const basePayoutAmount = buildPayout(
     archetypeProfile.archetype,
     volumeType,
     volumeValue,
     distanceNm,
     destination,
     baseSeed,
-    deadlineWindow.urgencyPremiumMultiplier,
+  );
+  const payoutAmount = resolveDynamicContractOfferPayoutAmount(
+    basePayoutAmount,
+    deadlineWindow.deadlineHoursFromNow,
   );
   const penaltyModel = buildPenaltyModel(payoutAmount, archetypeProfile.archetype);
+  const explanationMetadata = buildOfferExplanation(
+    companyContext,
+    originAirport,
+    destination,
+    archetypeProfile.archetype,
+    fit.fitBucket,
+    archetypeProfile.likelyRole,
+    difficultyBand,
+    distanceNm,
+    earliestStartUtc,
+    latestCompletionUtc,
+    deadlineWindow.deadlineHoursFromNow,
+    deadlineWindow.deadlineWindowHours,
+    deadlineWindow.urgencyBand,
+    deadlineWindow.urgencyPremiumMultiplier,
+    fit.reasonCode,
+    footprintOriginIds,
+  );
+  explanationMetadata.base_payout_amount = basePayoutAmount;
 
   return {
     originAirportId: originAirport.airportKey,
@@ -703,24 +724,7 @@ function buildOffer(
     penaltyModel,
     likelyRole: archetypeProfile.likelyRole,
     difficultyBand,
-    explanationMetadata: buildOfferExplanation(
-      companyContext,
-      originAirport,
-      destination,
-      archetypeProfile.archetype,
-      fit.fitBucket,
-      archetypeProfile.likelyRole,
-      difficultyBand,
-      distanceNm,
-      earliestStartUtc,
-      latestCompletionUtc,
-      deadlineWindow.deadlineHoursFromNow,
-      deadlineWindow.deadlineWindowHours,
-      deadlineWindow.urgencyBand,
-      deadlineWindow.urgencyPremiumMultiplier,
-      fit.reasonCode,
-      footprintOriginIds,
-    ),
+    explanationMetadata,
     generatedSeed: baseSeed,
   };
 }

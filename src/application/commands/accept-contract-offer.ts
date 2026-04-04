@@ -5,6 +5,12 @@
 
 import type { CommandResult, AcceptContractOfferCommand } from "./types.js";
 import { createPrefixedId } from "./utils.js";
+import type { JsonObject } from "../../domain/common/primitives.js";
+import {
+  resolveContractOfferBasePayoutAmount,
+  resolveContractRemainingHours,
+  resolveDynamicContractOfferPayoutAmount,
+} from "../../domain/contracts/urgency.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 
@@ -26,9 +32,9 @@ interface ContractOfferRow extends Record<string, unknown> {
   latestCompletionUtc: string;
   payoutAmount: number;
   penaltyModelJson: string;
+  explanationMetadataJson: string;
   offerStatus: string;
   windowStatus: string;
-  expiresAtUtc: string;
 }
 
 interface ExistingAcceptedContractRow extends Record<string, unknown> {
@@ -46,6 +52,40 @@ function describeAcceptedContract(
     ? `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(cargoWeightLb ?? 0)} lb cargo`
     : `${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(passengerCount ?? 0)} pax`;
   return `${originAirportId} -> ${destinationAirportId} ${volumeType} contract (${payload})`;
+}
+
+function parseJsonObjectSafely(json: string): JsonObject {
+  try {
+    const parsed = JSON.parse(json) as JsonObject;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveAcceptedPenaltyModelJson(
+  penaltyModelJson: string,
+  listedPayoutAmount: number,
+  acceptedPayoutAmount: number,
+): string {
+  const parsed = parseJsonObjectSafely(penaltyModelJson);
+  const safeListedPayoutAmount = Math.max(1, Math.round(listedPayoutAmount));
+  const cancellationPenaltyRatio = typeof parsed.cancellationPenaltyAmount === "number" && Number.isFinite(parsed.cancellationPenaltyAmount)
+    ? parsed.cancellationPenaltyAmount / safeListedPayoutAmount
+    : 0.14;
+  const failurePenaltyRatio = typeof parsed.failurePenaltyAmount === "number" && Number.isFinite(parsed.failurePenaltyAmount)
+    ? parsed.failurePenaltyAmount / safeListedPayoutAmount
+    : 0.22;
+  const lateCompletionPenaltyPercent = typeof parsed.lateCompletionPenaltyPercent === "number" && Number.isFinite(parsed.lateCompletionPenaltyPercent)
+    ? parsed.lateCompletionPenaltyPercent
+    : 25;
+
+  return JSON.stringify({
+    ...parsed,
+    cancellationPenaltyAmount: Math.max(0, Math.round(acceptedPayoutAmount * cancellationPenaltyRatio)),
+    failurePenaltyAmount: Math.max(0, Math.round(acceptedPayoutAmount * failurePenaltyRatio)),
+    lateCompletionPenaltyPercent,
+  });
 }
 
 // Accepts one live contract offer and turns it into a persisted company contract without regenerating the rest of the board.
@@ -76,9 +116,9 @@ export async function handleAcceptContractOffer(
           co.latest_completion_utc AS latestCompletionUtc,
           co.payout_amount AS payoutAmount,
           co.penalty_model_json AS penaltyModelJson,
+          co.explanation_metadata_json AS explanationMetadataJson,
           co.offer_status AS offerStatus,
-          ow.status AS windowStatus,
-          ow.expires_at_utc AS expiresAtUtc
+          ow.status AS windowStatus
         FROM contract_offer AS co
         JOIN offer_window AS ow ON ow.offer_window_id = co.offer_window_id
         WHERE co.contract_offer_id = $contract_offer_id
@@ -103,7 +143,7 @@ export async function handleAcceptContractOffer(
     hardBlockers.push(`Contract offer ${command.payload.contractOfferId} is no longer available to accept.`);
   }
 
-  if (offerRow && companyContext && offerRow.expiresAtUtc < companyContext.currentTimeUtc) {
+  if (offerRow && companyContext && new Date(offerRow.latestCompletionUtc).getTime() <= new Date(companyContext.currentTimeUtc).getTime()) {
     hardBlockers.push(`Contract offer ${command.payload.contractOfferId} has expired.`);
   }
 
@@ -137,6 +177,16 @@ export async function handleAcceptContractOffer(
   const companyContractId = createPrefixedId("contract");
   const deadlineEventId = createPrefixedId("eventq");
   const eventLogEntryId = createPrefixedId("event");
+  const explanationMetadata = parseJsonObjectSafely(offerRow!.explanationMetadataJson);
+  const acceptedPayoutAmount = resolveDynamicContractOfferPayoutAmount(
+    resolveContractOfferBasePayoutAmount(offerRow!.payoutAmount, explanationMetadata),
+    resolveContractRemainingHours(offerRow!.latestCompletionUtc, companyContext!.currentTimeUtc),
+  );
+  const acceptedPenaltyModelJson = resolveAcceptedPenaltyModelJson(
+    offerRow!.penaltyModelJson,
+    offerRow!.payoutAmount,
+    acceptedPayoutAmount,
+  );
   const acceptedContractSummary = describeAcceptedContract(
     offerRow!.originAirportId,
     offerRow!.destinationAirportId,
@@ -192,8 +242,8 @@ export async function handleAcceptContractOffer(
         $volume_type: offerRow!.volumeType,
         $passenger_count: offerRow!.passengerCount,
         $cargo_weight_lb: offerRow!.cargoWeightLb,
-        $accepted_payout_amount: offerRow!.payoutAmount,
-        $penalty_model_json: offerRow!.penaltyModelJson,
+        $accepted_payout_amount: acceptedPayoutAmount,
+        $penalty_model_json: acceptedPenaltyModelJson,
         $accepted_at_utc: companyContext!.currentTimeUtc,
         $earliest_start_utc: offerRow!.earliestStartUtc,
         $deadline_utc: offerRow!.latestCompletionUtc,
@@ -230,7 +280,7 @@ export async function handleAcceptContractOffer(
         $volume_type: offerRow!.volumeType,
         $passenger_count: offerRow!.passengerCount,
         $cargo_weight_lb: offerRow!.cargoWeightLb,
-        $payout_amount: offerRow!.payoutAmount,
+        $payout_amount: acceptedPayoutAmount,
         $earliest_start_utc: offerRow!.earliestStartUtc,
         $deadline_utc: offerRow!.latestCompletionUtc,
         $updated_at_utc: companyContext!.currentTimeUtc,

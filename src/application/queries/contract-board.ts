@@ -4,6 +4,7 @@
  */
 
 import type { JsonObject } from "../../domain/common/primitives.js";
+import { resolveDynamicContractOfferPayout } from "../../domain/contracts/urgency.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
 import { loadActiveCompanyOfferWindow } from "./offer-window-query.js";
@@ -71,6 +72,7 @@ export function loadActiveContractBoard(
     return null;
   }
   const { windowRow } = offerWindow;
+  const currentTimeUtc = offerWindow.companyContext.currentTimeUtc;
 
   const offerRows = saveDatabase.all<ContractOfferRow>(
     `SELECT
@@ -94,8 +96,16 @@ export function loadActiveContractBoard(
       offer_status AS offerStatus
     FROM contract_offer
     WHERE offer_window_id = $offer_window_id
+      AND offer_status <> 'expired'
+      AND NOT (
+        offer_status IN ('available', 'shortlisted')
+        AND latest_completion_utc <= $current_time_utc
+      )
     ORDER BY payout_amount DESC, contract_offer_id ASC`,
-    { $offer_window_id: windowRow.offerWindowId },
+    {
+      $offer_window_id: windowRow.offerWindowId,
+      $current_time_utc: currentTimeUtc,
+    },
   );
 
   return {
@@ -107,23 +117,35 @@ export function loadActiveContractBoard(
     generationContextHash: windowRow.generationContextHash,
     refreshReason: windowRow.refreshReason,
     status: windowRow.status,
-    offers: offerRows.map((offer) => ({
-      contractOfferId: offer.contractOfferId,
-      archetype: offer.archetype,
-      originAirportId: offer.originAirportId,
-      destinationAirportId: offer.destinationAirportId,
-      volumeType: offer.volumeType,
-      passengerCount: nullToUndefined(offer.passengerCount),
-      cargoWeightLb: nullToUndefined(offer.cargoWeightLb),
-      earliestStartUtc: offer.earliestStartUtc,
-      latestCompletionUtc: offer.latestCompletionUtc,
-      payoutAmount: offer.payoutAmount,
-      penaltyModel: parseJsonObject(offer.penaltyModelJson),
-      likelyRole: offer.likelyRole,
-      difficultyBand: offer.difficultyBand,
-      explanationMetadata: parseJsonObject(offer.explanationMetadataJson),
-      generatedSeed: offer.generatedSeed,
-      offerStatus: offer.offerStatus,
-    })),
+    offers: offerRows.map((offer) => {
+      const explanationMetadata = parseJsonObject(offer.explanationMetadataJson);
+      const payoutAmount = ["available", "shortlisted"].includes(offer.offerStatus)
+        ? resolveDynamicContractOfferPayout(
+            offer.payoutAmount,
+            explanationMetadata,
+            offer.latestCompletionUtc,
+            currentTimeUtc,
+          )
+        : offer.payoutAmount;
+
+      return {
+        contractOfferId: offer.contractOfferId,
+        archetype: offer.archetype,
+        originAirportId: offer.originAirportId,
+        destinationAirportId: offer.destinationAirportId,
+        volumeType: offer.volumeType,
+        passengerCount: nullToUndefined(offer.passengerCount),
+        cargoWeightLb: nullToUndefined(offer.cargoWeightLb),
+        earliestStartUtc: offer.earliestStartUtc,
+        latestCompletionUtc: offer.latestCompletionUtc,
+        payoutAmount,
+        penaltyModel: parseJsonObject(offer.penaltyModelJson),
+        likelyRole: offer.likelyRole,
+        difficultyBand: offer.difficultyBand,
+        explanationMetadata,
+        generatedSeed: offer.generatedSeed,
+        offerStatus: offer.offerStatus,
+      };
+    }),
   };
 }

@@ -4,6 +4,7 @@
  */
 
 import type { FlightLineBackend } from "../application/backend-service.js";
+import { isCurrentContractBoardGenerationContextHash } from "../application/contracts/contract-board-generation-profile.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
 import type { ContractBoardView } from "../application/queries/contract-board.js";
 
@@ -12,8 +13,6 @@ export interface EnsuredContractBoardResult {
   contractBoard: ContractBoardView | null;
   refreshed: boolean;
 }
-
-const contractBoardGenerationContextPrefix = "contracts:v3:";
 
 function readMinimumContractBoardOfferCount(): number {
   const rawValue = process.env.FLIGHTLINE_MIN_CONTRACT_BOARD_OFFER_COUNT?.trim();
@@ -51,11 +50,12 @@ export async function ensureActiveContractBoard(
 
   const activeBoard = contractBoard;
   const boardExpired = !activeBoard || new Date(activeBoard.expiresAtUtc).getTime() <= new Date(companyContext.currentTimeUtc).getTime();
-  const boardUndersized = activeBoard != null && activeBoard.offers.length < minimumContractBoardOfferCount;
-  const boardGenerationOutdated = activeBoard != null && !activeBoard.generationContextHash.startsWith(contractBoardGenerationContextPrefix);
+  const activeOfferCount = activeBoard?.offers.filter((offer) => ["available", "shortlisted"].includes(offer.offerStatus)).length ?? 0;
+  const boardUndersized = activeBoard != null && activeOfferCount < minimumContractBoardOfferCount;
+  const boardGenerationOutdated = activeBoard != null && !isCurrentContractBoardGenerationContextHash(activeBoard.generationContextHash);
 
   if (activeBoard && !boardExpired && !boardUndersized && !boardGenerationOutdated) {
-    console.log(`[ui:timing] contracts-board ${saveId} refresh=${refreshReason} reused ${Date.now() - startedAtMs}ms offers=${activeBoard.offers.length}`);
+    console.log(`[ui:timing] contracts-board ${saveId} refresh=${refreshReason} reused ${Date.now() - startedAtMs}ms offers=${activeOfferCount}`);
     return {
       companyContext,
       contractBoard: activeBoard,

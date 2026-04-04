@@ -14,6 +14,10 @@ import {
 import { addCandidateOfferToRoutePlan } from "../dist/ui/route-plan-state.js";
 import { loadContractsViewPayload } from "../dist/ui/contracts-view.js";
 
+function addHours(utcIsoString, hours) {
+  return new Date(new Date(utcIsoString).getTime() + hours * 60 * 60 * 1000).toISOString();
+}
+
 const harness = await createTestHarness("flightline-contracts-view");
 const { backend, airportReference } = harness;
 
@@ -24,7 +28,10 @@ try {
 
   const initialPayload = await loadContractsViewPayload(backend, airportReference, saveId, "scheduled");
   assert.ok(initialPayload);
-  assert.equal(initialPayload.offers.length, initialPayload.board.offerCount);
+  assert.equal(
+    initialPayload.offers.filter((offer) => offer.offerStatus === "available").length,
+    initialPayload.board.offerCount,
+  );
   const selectedOffer = initialPayload.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(selectedOffer);
   assert.equal(typeof selectedOffer.directDispatchEligible, "boolean");
@@ -32,9 +39,37 @@ try {
   assert.ok("nearestRelevantAircraft" in selectedOffer);
   assert.equal(selectedOffer.urgencyBand === "stable" || selectedOffer.urgencyBand === "at_risk" || selectedOffer.urgencyBand === "overdue", true);
   assert.ok(initialPayload.offers.some((offer) => offer.urgencyBand === "at_risk"));
+  const dynamicOffer = initialPayload.offers.find((offer) =>
+    offer.offerStatus === "available"
+    && offer.contractOfferId !== selectedOffer.contractOfferId
+    && offer.timeRemainingHours > 48
+    && offer.timeRemainingHours <= 72,
+  );
+  assert.ok(dynamicOffer);
+  const initialDynamicPayoutAmount = dynamicOffer.payoutAmount;
+  const advanceHoursToAtRisk = Math.max(1, Math.ceil(dynamicOffer.timeRemainingHours - 47));
+
+  const advanceResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_advance_dynamic_offer`,
+    saveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: addHours(initialPayload.currentTimeUtc, advanceHoursToAtRisk),
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(advanceResult.success, true);
+
+  const advancedPayload = await loadContractsViewPayload(backend, airportReference, saveId, "scheduled");
+  assert.ok(advancedPayload);
+  const advancedDynamicOffer = advancedPayload.offers.find((offer) => offer.contractOfferId === dynamicOffer.contractOfferId);
+  assert.ok(advancedDynamicOffer);
+  assert.ok(advancedDynamicOffer.payoutAmount > initialDynamicPayoutAmount);
 
   const addResult = await backend.withExistingSaveDatabase(saveId, async (context) => {
-    const mutation = addCandidateOfferToRoutePlan(context.saveDatabase, saveId, selectedOffer.contractOfferId);
+    const mutation = addCandidateOfferToRoutePlan(context.saveDatabase, saveId, dynamicOffer.contractOfferId);
     await context.saveDatabase.persist();
     return mutation;
   });
@@ -45,10 +80,10 @@ try {
     commandId: `cmd_${saveId}_accept`,
     saveId,
     commandName: "AcceptContractOffer",
-    issuedAtUtc: startedAtUtc,
+    issuedAtUtc: advancedPayload.currentTimeUtc,
     actorType: "player",
     payload: {
-      contractOfferId: selectedOffer.contractOfferId,
+      contractOfferId: advancedDynamicOffer.contractOfferId,
     },
   });
   assert.equal(acceptResult.success, true);
@@ -64,6 +99,8 @@ try {
   assert.equal(acceptedContract.routePlanItemId, addResult.routePlanItemId);
   assert.equal(acceptedContract.routePlanItemStatus, "accepted_ready");
   assert.equal(acceptedPayload.companyContracts.some((contract) => contract.companyContractId === acceptedContract.companyContractId), true);
+  assert.equal(acceptedContract.originContractOfferId, advancedDynamicOffer.contractOfferId);
+  assert.equal(acceptedContract.payoutAmount, advancedDynamicOffer.payoutAmount);
   assert.equal(typeof acceptedContract.hoursRemaining, "number");
   assert.equal(acceptedContract.urgencyBand === "stable" || acceptedContract.urgencyBand === "at_risk" || acceptedContract.urgencyBand === "overdue", true);
   assert.equal(acceptedContract.workState === "in_route_plan" || acceptedContract.workState === "ready_for_dispatch" || acceptedContract.workState === "assigned_elsewhere", true);

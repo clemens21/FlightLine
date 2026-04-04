@@ -7,7 +7,7 @@
 
 import type { JsonObject } from "../domain/common/primitives.js";
 import { aggregateContractPayload, defaultPassengerWeightLb } from "../domain/contracts/payload.js";
-import { buildContractUrgencyBand } from "../domain/contracts/urgency.js";
+import { buildContractUrgencyBand, resolveContractRemainingHours } from "../domain/contracts/urgency.js";
 import type { FlightLineBackend } from "../application/backend-service.js";
 import { loadCompanyContracts, type CompanyContractsView } from "../application/queries/company-contracts.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
@@ -606,10 +606,7 @@ function buildOfferView(
       fleetState,
       aircraftReference,
     );
-    const timeRemainingHours = Math.max(
-      0,
-      (new Date(offer.latestCompletionUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000,
-    );
+    const timeRemainingHours = Math.max(0, resolveContractRemainingHours(offer.latestCompletionUtc, currentTimeUtc));
 
     return {
       contractOfferId: offer.contractOfferId,
@@ -667,7 +664,7 @@ function buildCompanyContractsView(
         earliestStartUtc: contract.earliestStartUtc,
         deadlineUtc: contract.deadlineUtc,
       } satisfies RouteCapacityRequirements & RouteScheduleRequirements;
-      const hoursRemaining = Math.max(0, (new Date(contract.deadlineUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000);
+      const hoursRemaining = Math.max(0, resolveContractRemainingHours(contract.deadlineUtc, currentTimeUtc));
       const nearestRelevantAircraft = buildBestAircraftCue(
         airportMap,
         routeRequirements,
@@ -844,6 +841,7 @@ export function buildContractsViewPayload(
   );
   const acceptedContracts = companyContractsView.filter((contract) => activeCompanyContractStates.has(contract.contractState));
   const plannerAircraft = buildPlannerAircraftView(fleetState, airportMap, aircraftReference);
+  const availableOfferCount = offers.filter((offer) => offer.offerStatus === "available").length;
 
   return {
     saveId,
@@ -855,7 +853,7 @@ export function buildContractsViewPayload(
       generatedAtUtc: board.generatedAtUtc,
       expiresAtUtc: board.expiresAtUtc,
       refreshReason: board.refreshReason,
-      offerCount: offers.length,
+      offerCount: availableOfferCount,
     },
     offers,
     acceptedContracts,

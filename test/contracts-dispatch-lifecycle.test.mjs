@@ -267,9 +267,13 @@ try {
     const aircraftModel = backend.getAircraftReference().findModel(aircraft.aircraftModelId);
     assert.ok(aircraftModel);
 
-    const cargoRepositionOffer = board.offers.find((offer) =>
-      offer.volumeType === "cargo"
-      && offer.originAirportId !== aircraft.currentAirportId
+    const initialContractsView = await loadContractsViewPayload(backend, backend.getAirportReference(), saveId, "scheduled");
+    assert.ok(initialContractsView);
+    const cargoRepositionOffer = initialContractsView.offers.find((offer) =>
+      offer.offerStatus === "available"
+      && offer.volumeType === "cargo"
+      && offer.origin.airportId !== aircraft.currentAirportId
+      && offer.fitBucket === "flyable_with_reposition"
       && (offer.cargoWeightLb ?? 0) <= effectiveCargoCapacityLb(aircraft));
     assert.ok(cargoRepositionOffer, "Expected a cargo offer that requires repositioning.");
 
@@ -278,7 +282,7 @@ try {
       estimateFlightMinutes(
         backend.getAirportReference(),
         aircraft.currentAirportId,
-        cargoRepositionOffer.originAirportId,
+        cargoRepositionOffer.origin.airportId,
         aircraftModel.cruiseSpeedKtas,
       ),
     );
@@ -289,8 +293,8 @@ try {
       contractDepartureUtc,
       estimateFlightMinutes(
         backend.getAirportReference(),
-        cargoRepositionOffer.originAirportId,
-        cargoRepositionOffer.destinationAirportId,
+        cargoRepositionOffer.origin.airportId,
+        cargoRepositionOffer.destination.airportId,
         aircraftModel.cruiseSpeedKtas,
       ),
     );

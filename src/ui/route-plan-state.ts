@@ -54,7 +54,6 @@ interface CandidateOfferRow extends Record<string, unknown> {
   earliestStartUtc: string;
   latestCompletionUtc: string;
   offerStatus: string;
-  expiresAtUtc: string;
   windowStatus: string;
 }
 
@@ -184,7 +183,6 @@ export function addCandidateOfferToRoutePlan(
       co.earliest_start_utc AS earliestStartUtc,
       co.latest_completion_utc AS latestCompletionUtc,
       co.offer_status AS offerStatus,
-      ow.expires_at_utc AS expiresAtUtc,
       ow.status AS windowStatus
     FROM contract_offer AS co
     JOIN offer_window AS ow ON ow.offer_window_id = co.offer_window_id
@@ -696,7 +694,7 @@ function reconcileRoutePlanState(
 ): RoutePlanState {
   const companyContracts = loadCompanyContracts(saveDatabase, saveId);
   const activeBoard = loadActiveContractBoard(saveDatabase, saveId);
-  const boardIsUsable = activeBoard !== null && new Date(activeBoard.expiresAtUtc).getTime() > new Date(currentTimeUtc).getTime();
+  const boardIsUsable = activeBoard !== null;
   const activeOffers = boardIsUsable && activeBoard
     ? activeBoard.offers.filter((offer) => visibleOfferStatuses.has(offer.offerStatus))
     : [];
@@ -926,7 +924,7 @@ function loadCommittedContractExecutionLinks(
 function offerIsPlanCandidateAvailable(offer: CandidateOfferRow, currentTimeUtc: string): boolean {
   return offer.windowStatus === "active"
     && visibleOfferStatuses.has(offer.offerStatus)
-    && new Date(offer.expiresAtUtc).getTime() > new Date(currentTimeUtc).getTime();
+    && new Date(offer.latestCompletionUtc).getTime() > new Date(currentTimeUtc).getTime();
 }
 
 // Persistence helpers below handle sequence maintenance, touch timestamps, and row-to-state mapping.
