@@ -4274,6 +4274,123 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border-color: rgba(176,58,46,.24);
       background: color-mix(in srgb, var(--danger-soft) 60%, var(--panel));
     }
+    .dispatch-workspace--dense {
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .dispatch-dense-shell {
+      height: 100%;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(420px, .96fr) minmax(0, 1.34fr);
+      gap: 18px;
+      overflow: hidden;
+    }
+    .dispatch-source-panel,
+    .dispatch-dense-main,
+    .dispatch-dense-grid,
+    .dispatch-review-stack,
+    .dispatch-source-panel-body,
+    .dispatch-aircraft-selection-body,
+    .dispatch-review-panel-body {
+      min-height: 0;
+    }
+    .dispatch-source-panel > .panel-body,
+    .dispatch-aircraft-selection-body,
+    .dispatch-review-panel > .panel-body {
+      display: grid;
+      gap: 14px;
+      overflow: hidden;
+    }
+    .dispatch-source-panel-body {
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+    .dispatch-dense-main {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: 16px;
+      overflow: hidden;
+    }
+    .dispatch-dense-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(380px, .92fr);
+      gap: 16px;
+      overflow: hidden;
+    }
+    .dispatch-review-stack {
+      display: grid;
+      grid-template-rows: minmax(0, .8fr) minmax(0, 1.2fr);
+      gap: 16px;
+      overflow: hidden;
+    }
+    .dispatch-aircraft-selection-body {
+      grid-template-rows: minmax(0, 1fr) auto;
+      overflow: hidden;
+    }
+    .dispatch-table-frame {
+      min-height: 0;
+      overflow: auto;
+      scrollbar-gutter: stable both-edges;
+    }
+    .dispatch-source-table,
+    .dispatch-aircraft-table,
+    .dispatch-pilot-table,
+    .dispatch-leg-table {
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+    }
+    .dispatch-source-row,
+    .dispatch-aircraft-row,
+    .dispatch-leg-row,
+    .dispatch-pilot-row {
+      cursor: pointer;
+    }
+    .dispatch-pilot-row {
+      cursor: default;
+    }
+    .dispatch-pilot-row--disabled td {
+      opacity: .76;
+    }
+    .dispatch-source-table-wrap,
+    .dispatch-aircraft-table-wrap,
+    .dispatch-pilot-table-wrap,
+    .dispatch-leg-table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel);
+    }
+    .dispatch-table-note {
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .dispatch-check-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .dispatch-message-list--tight {
+      gap: 8px;
+    }
+    .dispatch-draft-pilot-panel {
+      display: grid;
+      gap: 12px;
+    }
+    .dispatch-selected-leg-inline {
+      display: grid;
+      gap: 10px;
+    }
+    .dispatch-source-panel .contracts-board-tabs {
+      justify-content: flex-start;
+    }
+    .dispatch-compact-table td .pill-row,
+    .dispatch-compact-table td .meta-stack {
+      min-width: 0;
+    }
+    .dispatch-compact-table td {
+      vertical-align: top;
+    }
     @media (max-width: 1240px) {
       body { overflow: auto; }
       .shell-root { height: auto; min-height: 100vh; padding: 18px; }
@@ -4304,6 +4421,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .dispatch-ops-grid,
       .dispatch-board,
       .dispatch-workbench,
+      .dispatch-dense-shell,
+      .dispatch-dense-main,
+      .dispatch-dense-grid,
+      .dispatch-review-stack,
       .dispatch-assignment-grid,
       .dispatch-queue-grid,
       .dispatch-selected-aircraft-grid,
@@ -4372,7 +4493,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
       .dispatch-source-list,
       .dispatch-readiness-list,
-      .dispatch-queue-scroll {
+      .dispatch-queue-scroll,
+      .dispatch-table-frame {
         max-height: none;
       }
       .dispatch-time-utility .dispatch-advance-form {

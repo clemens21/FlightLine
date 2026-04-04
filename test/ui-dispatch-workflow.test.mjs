@@ -55,32 +55,52 @@ try {
   await page.waitForURL((url) => url.pathname === `/save/${saveId}` && url.searchParams.get("tab") === "dispatch");
   await waitForShellTitle(page, displayName);
 
-  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-card]").length === 3);
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-aircraft-row]").length === 3);
   await page.waitForFunction((registration) => {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
   }, uiRegressionRegistrations.draft);
-  assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Economics"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Crew Requirement"), true);
   assert.equal((await page.locator("[data-dispatch-selected-aircraft]").textContent())?.includes("Route Load"), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Dispatch Inputs"), true);
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Contracts"), true);
-  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Selected Contract"), true);
-  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Next Step"), true);
+  assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Planned Routes"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").first().textContent())?.includes("Selected Contract"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").first().textContent())?.includes("Next Step"), true);
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("Build selected contract draft"), true);
   assert.equal(await page.locator("[data-dispatch-commit-button]").isEnabled(), false);
+  assert.equal((await page.locator("[data-dispatch-source-table]").textContent())?.includes("Assignment"), true);
 
-  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: uiRegressionRegistrations.lead }).first());
+  await clickUi(page.locator("[data-dispatch-source-mode='planned_routes']").first());
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-selected-work]").length === 1);
+  await page.waitForFunction(() => {
+    const selected = document.querySelector("[data-dispatch-selected-work]")?.textContent ?? "";
+    return selected.includes("Selected Route Plan");
+  });
+  assert.equal((await page.locator("[data-dispatch-selected-work]").first().textContent())?.includes("Selected row"), true);
+  assert.equal(await page.locator("[data-dispatch-bind-route-plan]").isVisible(), true);
+  assert.equal((await page.locator("[data-dispatch-source-table]").textContent())?.includes("Sequence"), true);
+
+  await clickUi(page.locator("[data-dispatch-source-mode='accepted_contracts']").first());
+  await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-selected-work]").length === 1);
+  await page.waitForFunction(() => {
+    const selected = document.querySelector("[data-dispatch-selected-work]")?.textContent ?? "";
+    return selected.includes("Selected Contract");
+  });
+
+  await clickUi(page.locator("[data-dispatch-aircraft-row]").filter({ hasText: uiRegressionRegistrations.lead }).first());
   await page.waitForFunction((registration) => {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
   }, uiRegressionRegistrations.lead);
   await page.waitForFunction(() => document.querySelectorAll("[data-dispatch-assigned-pilot]").length === 1);
-  assert.equal((await page.locator("[data-dispatch-assigned-pilots]").textContent())?.includes("Reserved until"), true);
+  assert.equal((await page.locator("[data-dispatch-assigned-pilots]").textContent())?.includes("Certifications"), true);
   assert.equal((await page.locator("[data-dispatch-pilot-assignment-summary]").textContent())?.includes("named pilots"), true);
   assert.equal(await page.locator("[data-dispatch-calendar-reflection]").isVisible(), true);
   assert.equal((await page.locator("[data-dispatch-calendar-reflection]").textContent())?.includes("Clock & Calendar already shows N208UI as occupied"), true);
   assert.equal(await page.locator("[data-dispatch-discard-draft]").count(), 0);
 
-  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: uiRegressionRegistrations.draft }).first());
+  await clickUi(page.locator("[data-dispatch-aircraft-row]").filter({ hasText: uiRegressionRegistrations.draft }).first());
   await page.waitForFunction((registration) => {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
@@ -89,30 +109,23 @@ try {
   assert.equal(await page.locator("[data-dispatch-discard-draft]").isVisible(), true);
   await clickUi(page.locator("[data-dispatch-leg-select]").nth(1));
   await page.waitForFunction(() => document.querySelector("[data-dispatch-selected-leg-detail]")?.textContent?.includes("KCOS -> KDEN"));
-  assert.equal((await page.locator("[data-dispatch-selected-leg-detail]").textContent())?.includes("Attached Work"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-leg-detail]").textContent())?.includes("attached contract"), true);
 
   assert.equal((await page.locator("[data-dispatch-input-lane]").textContent())?.includes("Accepted Contracts"), true);
-  assert.equal(await page.locator("[data-dispatch-selected-work]").isVisible(), true);
+  assert.equal(await page.locator("[data-dispatch-selected-work]").first().isVisible(), true);
 
-  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: uiRegressionRegistrations.constrained }).first());
+  await clickUi(page.locator("[data-dispatch-aircraft-row]").filter({ hasText: uiRegressionRegistrations.constrained }).first());
   await page.waitForFunction((registration) => {
     const selected = document.querySelector("[data-dispatch-selected-aircraft]")?.textContent ?? "";
     return selected.includes(registration);
   }, uiRegressionRegistrations.constrained);
   assert.equal((await page.locator("[data-dispatch-commit-button]").textContent())?.includes("No dispatch draft"), true);
-  await page.waitForFunction(() => document.querySelector("[data-dispatch-validation-rail]")?.textContent?.includes("Dispatch Check"));
+  await page.waitForFunction(() => document.querySelector("[data-dispatch-validation-rail]")?.textContent?.includes("Dispatch Review"));
   const readinessRailText = (await page.locator("[data-dispatch-validation-rail]").textContent()) ?? "";
-  assert.equal(readinessRailText.includes("Pass"), true);
-  assert.equal(readinessRailText.includes("Watch"), true);
-  assert.equal(readinessRailText.includes("Blocked"), true);
+  assert.equal(readinessRailText.includes("Overall readiness"), true);
   assert.equal(readinessRailText.includes("Likely recovery"), true);
-  assert.equal(readinessRailText.includes("Stage selected work on this aircraft first."), true);
-  assert.equal(readinessRailText.includes("Why It Matters"), true);
-  assert.equal(readinessRailText.includes("Next Step"), true);
-  assert.equal(
-    await page.locator("[data-dispatch-readiness-item='work-selected']").evaluate((node) => node.hasAttribute("open")),
-    true,
-  );
+  assert.equal(readinessRailText.includes("Validation snapshot"), true);
+  assert.equal(readinessRailText.includes("Route / operational fit"), true);
   const commitBarText = (await page.locator("[data-dispatch-commit-bar]").textContent()) ?? "";
   assert.equal(commitBarText.includes("Dispatch action"), true);
   assert.equal(commitBarText.includes("Aircraft impact"), true);
@@ -121,10 +134,9 @@ try {
 
   await clickUi(page.locator("[data-dispatch-source-item]").nth(0));
   assert.equal((await page.locator("[data-dispatch-accepted-route-context]").textContent())?.includes("Route"), true);
-  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Status"), true);
-  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Window"), true);
-  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Payload"), true);
-  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Payout"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("Departure:"), true);
+  assert.equal((await page.locator("[data-dispatch-source-item]").nth(0).textContent())?.includes("pax"), true);
+  assert.equal((await page.locator("[data-dispatch-source-table]").textContent())?.includes("Payout"), true);
   await forceButtonSubmit(page, "[data-dispatch-auto-plan-contract]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
@@ -136,7 +148,7 @@ try {
   });
 
   await clickUi(page.locator("[data-dispatch-source-item]").first());
-  assert.equal((await page.locator("[data-dispatch-selected-work]").textContent())?.includes("Aircraft Assignment"), true);
+  assert.equal((await page.locator("[data-dispatch-selected-work]").first().textContent())?.includes("Aircraft Assignment"), true);
   await forceButtonSubmit(page, "[data-dispatch-auto-plan-contract]");
   await page.waitForFunction(() => {
     const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
@@ -149,7 +161,7 @@ try {
       && legButtons.length === 0;
   }, { timeout: 45_000 });
 
-  await clickUi(page.locator("[data-dispatch-aircraft-card]").filter({ hasText: uiRegressionRegistrations.draft }).first());
+  await clickUi(page.locator("[data-dispatch-aircraft-row]").filter({ hasText: uiRegressionRegistrations.draft }).first());
   await page.waitForFunction(() => document.querySelector("[data-dispatch-draft-pilot-assignment]"));
   assert.equal(await page.locator("[data-dispatch-draft-pilot-assignment]").isVisible(), true);
   assert.equal((await page.locator("[data-dispatch-pilot-recommendation]").textContent())?.includes("Recommended"), true);

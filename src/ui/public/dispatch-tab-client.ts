@@ -5,6 +5,7 @@
 
 import {
   applyDispatchWorkspaceViewState,
+  type DispatchAirportView,
   type DispatchAircraftView,
   type DispatchAssignedPilotView,
   type DispatchDraftPilotAssignmentView,
@@ -109,16 +110,17 @@ export function mountDispatchTab(host: HTMLElement, payload: DispatchTabPayload)
       ...(selectedAircraftId ? { selectedAircraftId } : {}),
       ...(selectedLegId ? { selectedLegId } : {}),
     });
-    const resolvedSourceId = resolveAcceptedContractSourceId(
-      payload.workInputs.acceptedContracts,
-      viewState.selectedAircraft,
+    const resolvedSourceSelection = resolveSourceSelection(
+      payload,
+      selectedSourceMode,
       selectedSourceId,
+      viewState.selectedAircraft,
     );
 
     selectedAircraftId = viewState.selectedAircraftId;
     selectedLegId = viewState.selectedLegId;
-    selectedSourceMode = "accepted_contracts";
-    selectedSourceId = resolvedSourceId;
+    selectedSourceMode = resolvedSourceSelection.sourceMode;
+    selectedSourceId = resolvedSourceSelection.sourceId;
     storeSelection(payload.saveId, selectedAircraftId, selectedLegId, selectedSourceMode, selectedSourceId);
     host.innerHTML = renderDispatchWorkspace(
       payload,
@@ -229,165 +231,409 @@ function renderDispatchWorkspace(
   selectedSourceId: string | undefined,
   selectedPilotOverrideIds: readonly string[] | undefined,
 ): string {
-  const schedule = selectedAircraft?.schedule;
-  const prioritizedContracts = prioritizeAcceptedContracts(payload.workInputs.acceptedContracts, selectedAircraft);
-  const selectedContract = findSelectedAcceptedContract(prioritizedContracts, selectedSourceId);
+  const resolvedSourceSelection = resolveSourceSelection(payload, selectedSourceMode, selectedSourceId, selectedAircraft);
+  const sourceMode = resolvedSourceSelection.sourceMode;
+  const sourceId = resolvedSourceSelection.sourceId;
   return `
-    <div class="dispatch-workspace">
-      <div class="dispatch-board">
-        <section class="panel dispatch-contract-list-panel" data-dispatch-input-lane>
-          <div class="panel-head">
-            <h3>Accepted Contracts</h3>
-            <div class="pill-row">
-              <span class="pill">${escapeHtml(String(payload.workInputs.acceptedContracts.length))} accepted</span>
-              <span class="pill">${escapeHtml(String(payload.workInputs.scheduledCount))} scheduled</span>
-            </div>
-          </div>
-          <div class="panel-body dispatch-contract-list-body">
-            <div class="summary-item compact">
-              <div class="eyebrow">Dispatch flow</div>
-              <strong>Select contract -> Assign aircraft -> Review pilot -> Dispatch</strong>
-              <span class="muted">Dispatch is now contract-first. Route-plan staging stays out of this surface for now.</span>
-            </div>
-            ${renderAcceptedContractsList(payload, selectedAircraft, selectedSourceId)}
-            ${renderAdvanceTimeUtility(payload)}
-          </div>
-        </section>
-        <div class="dispatch-workbench">
+    <div class="dispatch-workspace dispatch-workspace--dense">
+      <div class="dispatch-dense-shell">
+        ${renderDispatchSourceLane(payload, selectedAircraft, sourceMode, sourceId)}
+        <div class="dispatch-dense-main">
           <section class="panel dispatch-contract-focus-panel" data-dispatch-selected-work>
             <div class="panel-head">
-              <h3>Selected Contract</h3>
-              ${selectedContract ? `
-                <div class="pill-row">
-                  ${renderBadge(selectedContract.contractState)}
-                  ${selectedContract.assignedAircraftId ? renderBadge("scheduled") : ""}
-                </div>
-              ` : ""}
+              <h3>${sourceMode === "planned_routes" ? "Selected Route Plan" : "Selected Contract"}</h3>
+              <div class="pill-row">
+                <span class="pill">${escapeHtml(sourceMode === "planned_routes" ? "route plan" : "accepted contract")}</span>
+                ${sourceMode === "accepted_contracts" && sourceId
+                  ? (() => {
+                    const selectedContract = findSelectedAcceptedContract(
+                      prioritizeAcceptedContracts(payload.workInputs.acceptedContracts, selectedAircraft),
+                      sourceId,
+                    );
+                    return selectedContract?.assignedAircraftId ? renderBadge("scheduled") : "";
+                  })()
+                  : ""}
+              </div>
             </div>
             <div class="panel-body">
-              ${renderSelectedAcceptedContractSummary(payload, selectedAircraft, selectedSourceId)}
+              ${renderSelectedWorkSummary(payload, selectedAircraft, sourceMode, sourceId)}
             </div>
           </section>
-          <div class="dispatch-assignment-grid">
-            <section class="panel dispatch-selected-aircraft-panel" data-dispatch-selected-aircraft>
-              <div class="panel-head">
-                <h3>Assign Aircraft & Pilot</h3>
-                ${selectedAircraft ? `
-                  <div class="pill-row">
-                    ${renderBadge(selectedAircraft.dispatchAvailable ? "available" : selectedAircraft.operationalState)}
-                    ${renderBadge(selectedAircraft.maintenanceState)}
-                    ${schedule ? renderBadge(schedule.isDraft ? (schedule.validation?.isCommittable === false ? "blocked_draft" : "draft_ready") : "committed") : ""}
-                  </div>
-                ` : ""}
-              </div>
-              <div class="panel-body dispatch-selected-aircraft-body">
-                ${renderAircraftStrip(payload.aircraft, selectedAircraft?.aircraftId)}
-                ${renderSelectedAircraftSummary(payload, selectedAircraft, selectedPilotOverrideIds)}
-              </div>
-            </section>
-            <section class="panel dispatch-readiness-panel" data-dispatch-validation-rail>
-              <div class="panel-head">
-                <h3>Dispatch Check</h3>
-                ${selectedAircraft?.schedule?.validation ? `<span class="pill">${escapeHtml(selectedAircraft.schedule.validation.projectedRiskBand)} risk</span>` : ""}
-              </div>
-              <div class="panel-body dispatch-readiness-panel-body">
-                ${renderValidationRail(selectedAircraft)}
-                <div class="dispatch-commit-panel-inline dispatch-commit-bar" data-dispatch-commit-bar>
-                  ${renderCommitBar(payload, selectedAircraft, selectedSourceId, selectedPilotOverrideIds)}
-                </div>
-              </div>
-            </section>
+          <div class="dispatch-dense-grid">
+            ${renderAircraftSelectionPanel(payload, selectedAircraft, selectedPilotOverrideIds)}
+            <div class="dispatch-review-stack">
+              ${renderPilotAssignmentPanel(selectedAircraft, selectedPilotOverrideIds)}
+              ${renderDispatchReviewPanel(payload, selectedAircraft, selectedLeg, sourceMode, sourceId, selectedPilotOverrideIds)}
+            </div>
           </div>
-          <section class="panel dispatch-plan-panel">
-            <div class="panel-head">
-              <h3>Dispatch Preview</h3>
-              <div class="pill-row">
-                ${schedule ? `<span class="pill">${escapeHtml(String(schedule.legs.length))} legs</span>` : ""}
-                ${schedule?.validation ? `<span class="pill">${escapeHtml(String(schedule.validation.contractIdsAttached.length))} attached</span>` : ""}
-              </div>
-            </div>
-            <div class="panel-body dispatch-plan-body">
-              ${renderPlanSnapshot(selectedAircraft)}
-              <div class="dispatch-queue-grid">
-                <section class="dispatch-queue-region">
-                  <div class="dispatch-subsection-head">
-                    <div class="meta-stack">
-                      <div class="eyebrow">Leg queue</div>
-                      <strong>Draft sequence</strong>
-                    </div>
-                    ${schedule ? `<span class="pill">${escapeHtml(String(schedule.legs.length))} legs</span>` : ""}
-                  </div>
-                  <div class="dispatch-queue-scroll" data-dispatch-leg-queue>
-                    ${renderLegQueue(schedule?.legs, selectedLeg?.flightLegId)}
-                  </div>
-                </section>
-                <section class="dispatch-leg-detail-region" data-dispatch-selected-leg-detail>
-                  <div class="dispatch-subsection-head">
-                    <div class="meta-stack">
-                      <div class="eyebrow">Selected leg</div>
-                      <strong>${escapeHtml(selectedLeg ? `${selectedLeg.originAirport.code} -> ${selectedLeg.destinationAirport.code}` : "Inspect route detail")}</strong>
-                    </div>
-                    ${selectedLeg ? `<span class="pill">Leg ${escapeHtml(String(selectedLeg.sequenceNumber))}</span>` : ""}
-                  </div>
-                  ${renderSelectedLeg(selectedLeg)}
-                </section>
-              </div>
-            </div>
-          </section>
         </div>
       </div>
     </div>
   `;
 }
 
-function renderAircraftStrip(aircraft: DispatchAircraftView[], selectedAircraftId: string | undefined): string {
-  if (aircraft.length === 0) {
-    return `<section class="dispatch-aircraft-strip"><div class="empty-state">Acquire an aircraft before using Dispatch as a planning board.</div></section>`;
-  }
+function renderDispatchSourceLane(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedSourceMode: DispatchSourceMode,
+  selectedSourceId: string | undefined,
+): string {
+  const sourceCount = selectedSourceMode === "planned_routes"
+    ? payload.workInputs.routePlanItems.length
+    : payload.workInputs.acceptedContracts.length;
 
   return `
-    <section class="dispatch-aircraft-strip">
-      ${aircraft.map((entry) => renderAircraftCard(entry, entry.aircraftId === selectedAircraftId)).join("")}
+    <section class="panel dispatch-source-panel" data-dispatch-input-lane>
+      <div class="panel-head">
+        <div>
+          <h3>Dispatch Inputs</h3>
+          <span class="muted">Choose accepted work or a saved route plan, then assign the aircraft that will fly it.</span>
+        </div>
+        <div class="pill-row">
+          <span class="pill">${escapeHtml(String(payload.workInputs.acceptedContracts.length))} accepted</span>
+          <span class="pill">${escapeHtml(String(payload.workInputs.routePlanItems.length))} route items</span>
+        </div>
+      </div>
+      <div class="panel-body dispatch-source-panel-body">
+        ${renderDispatchSourceSelector(payload, selectedSourceMode)}
+        <div class="dispatch-table-frame dispatch-source-table-wrap" data-dispatch-source-table>
+          ${renderSourceModeBody(payload, selectedAircraft, selectedSourceMode, selectedSourceId)}
+        </div>
+        <div class="muted dispatch-table-note">${escapeHtml(
+          selectedSourceMode === "planned_routes"
+            ? `${sourceCount} route-plan item${sourceCount === 1 ? "" : "s"} are available for dispatch context. Selecting a row keeps that stop as context, but dispatch binds the full ready chain.`
+            : `${sourceCount} accepted contract${sourceCount === 1 ? "" : "s"} are ready for aircraft assignment and draft staging.`,
+        )}</div>
+      </div>
     </section>
   `;
 }
 
-function renderAircraftCard(aircraft: DispatchAircraftView, selected: boolean): string {
-  const planLabel = aircraft.schedule
-    ? aircraft.schedule.isDraft
-      ? aircraft.schedule.validation?.isCommittable === false
-        ? "blocked_draft"
-        : "draft_ready"
-      : aircraft.schedule.scheduleState
-    : aircraft.dispatchAvailable
-      ? "available"
-      : aircraft.operationalState;
+function renderAircraftSelectionPanel(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
+  return `
+    <section class="panel dispatch-selected-aircraft-panel" data-dispatch-selected-aircraft>
+      <div class="panel-head">
+        <div>
+          <h3>Aircraft Assignment</h3>
+          <span class="muted">Select the aircraft first. The draft and pilot recommendation update immediately off that choice.</span>
+        </div>
+        ${selectedAircraft ? `
+          <div class="pill-row">
+            ${renderBadge(selectedAircraft.dispatchAvailable ? "available" : selectedAircraft.operationalState)}
+            ${renderBadge(selectedAircraft.maintenanceState)}
+            ${selectedAircraft.schedule ? renderBadge(selectedAircraft.schedule.isDraft ? (selectedAircraft.schedule.validation?.isCommittable === false ? "blocked_draft" : "draft_ready") : "committed") : ""}
+          </div>
+        ` : ""}
+      </div>
+      <div class="panel-body dispatch-aircraft-selection-body">
+        <div class="dispatch-table-frame dispatch-aircraft-table-wrap" data-dispatch-aircraft-table>
+          ${renderAircraftSelectionTable(payload.aircraft, selectedAircraft?.aircraftId)}
+        </div>
+        ${renderSelectedAircraftSummary(payload, selectedAircraft, selectedPilotOverrideIds)}
+      </div>
+    </section>
+  `;
+}
+
+function renderAircraftSelectionTable(
+  aircraft: DispatchAircraftView[],
+  selectedAircraftId: string | undefined,
+): string {
+  if (aircraft.length === 0) {
+    return `<div class="empty-state compact">Acquire an aircraft before using Dispatch.</div>`;
+  }
 
   return `
-    <button
-      type="button"
-      class="dispatch-aircraft-card ${selected ? "selected" : ""}"
+    <table class="contracts-board-table dispatch-compact-table dispatch-aircraft-table">
+      <colgroup>
+        <col style="width:260px" />
+        <col style="width:210px" />
+        <col style="width:200px" />
+        <col style="width:170px" />
+        <col style="width:190px" />
+      </colgroup>
+      <thead>
+        <tr>
+          ${renderDispatchStaticHeaderCell("Aircraft")}
+          ${renderDispatchStaticHeaderCell("Current")}
+          ${renderDispatchStaticHeaderCell("Schedule")}
+          ${renderDispatchStaticHeaderCell("Pilot Coverage")}
+          ${renderDispatchStaticHeaderCell("Status")}
+        </tr>
+      </thead>
+      <tbody>
+        ${aircraft.map((entry) => renderAircraftSelectionRow(entry, entry.aircraftId === selectedAircraftId)).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderAircraftSelectionRow(
+  aircraft: DispatchAircraftView,
+  selected: boolean,
+): string {
+  const scheduleLabel = aircraft.schedule
+    ? aircraft.schedule.isDraft
+      ? aircraft.schedule.validation?.isCommittable === false
+        ? "Blocked draft"
+        : "Draft staged"
+      : "Committed"
+    : "No schedule";
+  const coverageLabel = `${aircraft.pilotReadiness.readyNowCount} ready | ${aircraft.pilotReadiness.assignedPilotCount} assigned`;
+
+  return `
+    <tr
+      class="contract-row dispatch-aircraft-row ${selected ? "selected" : ""}"
       data-dispatch-aircraft-select="${escapeHtml(aircraft.aircraftId)}"
-      data-dispatch-aircraft-card="1"
+      data-dispatch-aircraft-row="${escapeHtml(aircraft.aircraftId)}"
       aria-pressed="${selected ? "true" : "false"}"
     >
-      <div class="dispatch-aircraft-card-head">
+      <td>
         <div class="meta-stack">
           <strong>${escapeHtml(aircraft.registration)}</strong>
           <span class="muted">${escapeHtml(aircraft.modelDisplayName)}</span>
+          <span class="muted">${escapeHtml(humanize(aircraft.ownershipType))}</span>
         </div>
-        ${renderBadge(planLabel)}
+      </td>
+      <td>
+        <div class="meta-stack">
+          <strong>${escapeHtml(aircraft.currentAirport.code)}</strong>
+          <span class="muted">${escapeHtml(aircraft.currentAirport.primaryLabel)}</span>
+        </div>
+      </td>
+      <td>
+        <div class="meta-stack">
+          <strong>${escapeHtml(scheduleLabel)}</strong>
+          <span class="muted">${aircraft.schedule ? `${escapeHtml(formatDate(aircraft.schedule.plannedStartUtc))} -> ${escapeHtml(formatDate(aircraft.schedule.plannedEndUtc))}` : "Ready for new work"}</span>
+        </div>
+      </td>
+      <td>
+        <div class="meta-stack">
+          <strong>${escapeHtml(coverageLabel)}</strong>
+          <span class="muted">${escapeHtml(aircraft.requiredPilotCertificationCode ?? humanize(aircraft.pilotQualificationGroup))}</span>
+        </div>
+      </td>
+      <td>
+        <div class="pill-row">
+          ${renderBadge(aircraft.dispatchAvailable ? "available" : aircraft.operationalState)}
+          ${renderBadge(aircraft.maintenanceState)}
+          ${renderBadge(aircraft.conditionBand)}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderPilotAssignmentPanel(
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
+  const schedule = selectedAircraft?.schedule;
+  return `
+    <section class="panel dispatch-pilot-panel" data-dispatch-assigned-pilots>
+      <div class="panel-head">
+        <div>
+          <h3>Pilot Assignment</h3>
+          <span class="muted">Recommended coverage appears after a draft is staged. Override only when you want to force a different named pilot.</span>
+        </div>
+        ${selectedAircraft ? `<div class="pill-row"><span class="pill">${escapeHtml(selectedAircraft.registration)}</span></div>` : ""}
       </div>
-      <div class="dispatch-aircraft-card-meta">
-        <span>${escapeHtml(aircraft.currentAirport.code)}</span>
-        <span>${escapeHtml(aircraft.currentAirport.primaryLabel)}</span>
+      <div class="panel-body">
+        ${!selectedAircraft
+          ? `<div class="empty-state compact">Select an aircraft first to review the pilot assignment for this dispatch.</div>`
+          : !schedule
+            ? `<div class="empty-state compact">Build a draft on ${escapeHtml(selectedAircraft.registration)} to review the pilot assignment.</div>`
+            : schedule.isDraft
+              ? renderDraftPilotAssignmentTable(selectedAircraft, selectedPilotOverrideIds)
+              : renderCommittedPilotAssignmentTable(selectedAircraft)}
       </div>
-      <div class="dispatch-aircraft-card-facts">
-        <span>${escapeHtml(humanize(aircraft.conditionBand))}</span>
-        <span>${escapeHtml(humanize(aircraft.maintenanceState))}</span>
-        <span>${escapeHtml(String(aircraft.pilotCoverageUnits))} pilot units</span>
+    </section>
+  `;
+}
+
+function renderDispatchReviewPanel(
+  payload: DispatchTabPayload,
+  selectedAircraft: DispatchAircraftView | undefined,
+  selectedLeg: DispatchLegView | undefined,
+  selectedSourceMode: DispatchSourceMode,
+  selectedSourceId: string | undefined,
+  selectedPilotOverrideIds: readonly string[] | undefined,
+): string {
+  const schedule = selectedAircraft?.schedule;
+  return `
+    <section class="panel dispatch-review-panel" data-dispatch-validation-rail>
+      <div class="panel-head">
+        <div>
+          <h3>Dispatch Review</h3>
+          <span class="muted">Review the active draft, current blockers, and commit impact before dispatching.</span>
+        </div>
+        <div class="pill-row">
+          ${schedule ? `<span class="pill">${escapeHtml(String(schedule.legs.length))} legs</span>` : ""}
+          ${schedule?.validation ? `<span class="pill">${escapeHtml(schedule.validation.projectedRiskBand)} risk</span>` : ""}
+        </div>
       </div>
-    </button>
+      <div class="panel-body dispatch-review-panel-body">
+        ${renderDraftControlSummary(payload, selectedAircraft ?? undefined)}
+        ${renderDispatchCheckSummary(selectedAircraft)}
+        ${renderPlanSnapshot(selectedAircraft)}
+        <div class="dispatch-table-frame dispatch-leg-table-wrap" data-dispatch-leg-queue>
+          ${renderDispatchLegTable(schedule?.legs, selectedLeg?.flightLegId, payload.timeUtility.currentTimeUtc)}
+        </div>
+        <div class="dispatch-selected-leg-inline" data-dispatch-selected-leg-detail>
+          ${selectedLeg ? renderSelectedLegInline(selectedLeg) : `<div class="muted">Select a staged leg if you want to inspect its exact window and attached work.</div>`}
+        </div>
+        <div class="dispatch-commit-panel-inline dispatch-commit-bar" data-dispatch-commit-bar>
+          ${renderCommitBar(payload, selectedAircraft, selectedSourceMode, selectedSourceId, selectedPilotOverrideIds)}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderDispatchCheckSummary(selectedAircraft: DispatchAircraftView | undefined): string {
+  if (!selectedAircraft) {
+    return `<div class="empty-state compact">Select an aircraft to inspect dispatch readiness.</div>`;
+  }
+
+  const readiness = deriveDispatchReadinessSummary(selectedAircraft);
+  const validation = selectedAircraft.schedule?.validation;
+  const topMessages = validation?.validationMessages.slice(0, 3) ?? [];
+
+  return `
+    <div class="dispatch-check-grid">
+      <article class="summary-item compact">
+        <div class="eyebrow">Overall readiness</div>
+        <strong>${escapeHtml(formatReadinessStateLabel(readiness.overallState))}</strong>
+        <span class="muted">${escapeHtml(describeReadinessStateCount(readiness.checklist, readiness.overallState))}</span>
+      </article>
+      <article class="summary-item compact">
+        <div class="eyebrow">Likely recovery</div>
+        <strong>${escapeHtml(readiness.recoveryAction)}</strong>
+        <span class="muted">${escapeHtml(describeReadinessContext(selectedAircraft))}</span>
+      </article>
+      <article class="summary-item compact">
+        <div class="eyebrow">Validation snapshot</div>
+        <strong>${validation ? `${escapeHtml(String(validation.hardBlockerCount))} blockers | ${escapeHtml(String(validation.warningCount))} warnings` : "No draft validation"}</strong>
+        <span class="muted">${validation ? `${escapeHtml(humanize(validation.projectedRiskBand))} risk | ${escapeHtml(formatMoney(validation.projectedScheduleProfit))} projected profit` : "Stage work to populate this snapshot."}</span>
+      </article>
+    </div>
+    <div class="dispatch-message-list dispatch-message-list--tight">
+      ${readiness.checklist.slice(0, 3).map((item) => `
+        <article class="dispatch-message-item ${escapeHtml(item.state)}" data-dispatch-readiness-item="${escapeHtml(item.id)}">
+          <div class="dispatch-message-head">
+            ${renderBadge(item.state)}
+            <strong>${escapeHtml(item.label)}</strong>
+          </div>
+          <span class="muted">${escapeHtml(item.detail)}</span>
+          <span class="muted">${escapeHtml(item.recoveryAction)}</span>
+        </article>
+      `).join("")}
+      ${topMessages.map((message) => `
+        <article class="dispatch-message-item ${escapeHtml(message.severity)}">
+          <div class="dispatch-message-head">
+            ${renderBadge(message.severity)}
+            <strong>${escapeHtml(message.summary)}</strong>
+          </div>
+          ${message.suggestedRecoveryAction ? `<span class="muted">${escapeHtml(message.suggestedRecoveryAction)}</span>` : ""}
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderDispatchLegTable(
+  legs: DispatchLegView[] | undefined,
+  selectedLegId: string | undefined,
+  currentTimeUtc: string,
+): string {
+  if (!legs || legs.length === 0) {
+    return `<div class="empty-state compact">No dispatch draft is currently staged on the selected aircraft.</div>`;
+  }
+
+  return `
+    <table class="contracts-board-table dispatch-compact-table dispatch-leg-table">
+      <colgroup>
+        <col style="width:270px" />
+        <col style="width:120px" />
+        <col style="width:180px" />
+        <col style="width:150px" />
+        <col style="width:170px" />
+      </colgroup>
+      <thead>
+        <tr>
+          ${renderDispatchStaticHeaderCell("Route")}
+          ${renderDispatchStaticHeaderCell("Payload")}
+          ${renderDispatchStaticHeaderCell("Window")}
+          ${renderDispatchStaticHeaderCell("Due")}
+          ${renderDispatchStaticHeaderCell("Attached Work")}
+        </tr>
+      </thead>
+      <tbody>
+        ${legs.map((leg) => renderDispatchLegRow(leg, leg.flightLegId === selectedLegId, currentTimeUtc)).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderDispatchLegRow(
+  leg: DispatchLegView,
+  selected: boolean,
+  currentTimeUtc: string,
+): string {
+  const attachedContractCount = leg.linkedCompanyContractIds?.length ?? (leg.linkedCompanyContractId ? 1 : 0);
+  return `
+    <tr
+      class="contract-row dispatch-leg-row ${selected ? "selected" : ""}"
+      data-dispatch-leg-select="${escapeHtml(leg.flightLegId)}"
+      aria-pressed="${selected ? "true" : "false"}"
+    >
+      <td>${renderDispatchRouteCell(leg.originAirport, leg.destinationAirport, `Leg ${leg.sequenceNumber} | ${humanize(leg.legType)}`)}</td>
+      <td>${escapeHtml(leg.payloadLabel)}</td>
+      <td>
+        <div class="meta-stack">
+          <strong>${escapeHtml(formatDate(leg.plannedDepartureUtc))}</strong>
+          <span class="muted">Arrive ${escapeHtml(formatDate(leg.plannedArrivalUtc))}</span>
+        </div>
+      </td>
+      <td>${leg.contractDeadlineUtc ? renderDispatchDueTableCell(leg.contractDeadlineUtc, currentTimeUtc) : `<span class="muted">Support leg</span>`}</td>
+      <td>
+        <div class="meta-stack">
+          <strong>${escapeHtml(String(attachedContractCount))} contract${attachedContractCount === 1 ? "" : "s"}</strong>
+          <span class="muted">${leg.validationMessages[0] ? escapeHtml(leg.validationMessages[0].summary) : "No leg-specific blockers"}</span>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function renderDispatchStaticHeaderCell(label: string): string {
+  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+}
+
+function renderDispatchRouteCell(
+  originAirport: DispatchAirportView,
+  destinationAirport: DispatchAirportView,
+  note: string | undefined,
+): string {
+  return `
+    <div class="contract-route-content">
+      <span class="muted contract-route-detail"><strong>Departure:</strong> ${escapeHtml(originAirport.code)} - ${escapeHtml(originAirport.primaryLabel)}</span>
+      <span class="muted contract-route-detail"><strong>Destination:</strong> ${escapeHtml(destinationAirport.code)} - ${escapeHtml(destinationAirport.primaryLabel)}</span>
+      ${note ? `<span class="muted contract-route-detail">${escapeHtml(note)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderDispatchDueTableCell(deadlineUtc: string, currentTimeUtc: string): string {
+  return `
+    <div class="contracts-due-cell">
+      <strong>${escapeHtml(formatDate(deadlineUtc))}</strong>
+      <span class="muted">${escapeHtml(formatDeadlineCountdown(deadlineUtc, currentTimeUtc))}</span>
+    </div>
   `;
 }
 
@@ -396,6 +642,8 @@ function renderSelectedAircraftSummary(
   selectedAircraft: DispatchAircraftView | undefined,
   selectedPilotOverrideIds: readonly string[] | undefined,
 ): string {
+  void payload;
+  void selectedPilotOverrideIds;
   if (!selectedAircraft) {
     return `<div class="empty-state">No aircraft is selected yet.</div>`;
   }
@@ -412,7 +660,7 @@ function renderSelectedAircraftSummary(
   return `
     <section class="dispatch-aircraft-summary-head">
       <div class="meta-stack">
-        <div class="eyebrow">Dispatch target</div>
+        <div class="eyebrow">Selected aircraft</div>
         <strong>${escapeHtml(`${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName}`)}</strong>
         <span class="muted">${escapeHtml(`${selectedAircraft.currentAirport.code} | ${selectedAircraft.currentAirport.primaryLabel} | ${humanize(selectedAircraft.ownershipType)}`)}</span>
       </div>
@@ -422,21 +670,11 @@ function renderSelectedAircraftSummary(
         ${renderBadge(selectedAircraft.conditionBand)}
       </div>
     </section>
-    <div class="dispatch-selected-aircraft-grid dispatch-selected-aircraft-grid--dense">
-      <article class="summary-item compact">
-        <div class="eyebrow">Location</div>
-        <strong>${escapeHtml(selectedAircraft.currentAirport.code)}</strong>
-        <span class="muted">${escapeHtml(selectedAircraft.currentAirport.primaryLabel)}</span>
-      </article>
+    <div class="dispatch-selected-aircraft-grid">
       <article class="summary-item compact">
         <div class="eyebrow">Plan Stage</div>
         <strong>${escapeHtml(scheduleLabel)}</strong>
-        <span class="muted">${schedule ? `${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}` : "Use selected work to stage a draft."}</span>
-      </article>
-      <article class="summary-item compact">
-        <div class="eyebrow">Schedule Window</div>
-        <strong>${schedule ? `${escapeHtml(formatDate(schedule.plannedStartUtc))}` : "No staged window"}</strong>
-        <span class="muted">${schedule ? `Ends ${escapeHtml(formatDate(schedule.plannedEndUtc))}` : "Stage work to preview timing."}</span>
+        <span class="muted">${schedule ? `${formatDate(schedule.plannedStartUtc)} to ${formatDate(schedule.plannedEndUtc)}` : "Stage selected work to create a draft."}</span>
       </article>
       <article class="summary-item compact">
         <div class="eyebrow">Route Load</div>
@@ -444,19 +682,14 @@ function renderSelectedAircraftSummary(
         <span class="muted">${validation ? `${escapeHtml(formatNumber(validation.totalDistanceNm))} nm | ${escapeHtml(formatHours(validation.totalBlockHours))} block` : "Distance and block time appear after staging."}</span>
       </article>
       <article class="summary-item compact">
-        <div class="eyebrow">Economics</div>
-        <strong>${validation ? escapeHtml(formatMoney(validation.projectedScheduleProfit)) : "No projection yet"}</strong>
-        <span class="muted">${validation ? `Rev ${escapeHtml(formatMoney(validation.projectedScheduleRevenue))} | Cost ${escapeHtml(formatMoney(validation.projectedScheduleCost))}` : "Draft to preview revenue, cost, and margin."}</span>
+        <div class="eyebrow">Crew Requirement</div>
+        <strong>${escapeHtml(selectedAircraft.requiredPilotCertificationCode ?? humanize(selectedAircraft.pilotQualificationGroup))}</strong>
+        <span class="muted">${escapeHtml(String(selectedAircraft.pilotCoverageUnits))} active | ${escapeHtml(String(selectedAircraft.pendingPilotCoverageUnits))} pending units</span>
       </article>
       <article class="summary-item compact">
         <div class="eyebrow">Maintenance</div>
         <strong>${escapeHtml(humanize(selectedAircraft.maintenanceState))}</strong>
         <span class="muted">${formatHours(selectedAircraft.hoursToService)} to service | ${formatPercent(selectedAircraft.conditionValue)} condition</span>
-      </article>
-      <article class="summary-item compact">
-        <div class="eyebrow">Crew Requirement</div>
-        <strong>${escapeHtml(selectedAircraft.requiredPilotCertificationCode ?? humanize(selectedAircraft.pilotQualificationGroup))}</strong>
-        <span class="muted">${escapeHtml(String(selectedAircraft.pilotCoverageUnits))} active | ${escapeHtml(String(selectedAircraft.pendingPilotCoverageUnits))} pending units</span>
       </article>
       <article class="summary-item compact" data-dispatch-pilot-assignment-summary>
         <div class="eyebrow">Pilot Assignment</div>
@@ -469,14 +702,13 @@ function renderSelectedAircraftSummary(
         <span class="muted">${escapeHtml(describePilotReadinessNote(selectedAircraft))}</span>
       </article>
     </div>
-    <div class="dispatch-aircraft-support-grid">
-      ${renderAssignedPilotsSection(selectedAircraft, selectedPilotOverrideIds)}
-      ${renderDraftControlSummary(payload, selectedAircraft)}
-    </div>
   `;
 }
 
-function renderDraftControlSummary(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView): string {
+function renderDraftControlSummary(payload: DispatchTabPayload, selectedAircraft: DispatchAircraftView | undefined): string {
+  if (!selectedAircraft) {
+    return `<div class="empty-state compact">Select an aircraft to inspect its draft or committed schedule state.</div>`;
+  }
   const schedule = selectedAircraft.schedule;
   if (!schedule) {
     return `
@@ -516,53 +748,51 @@ function renderDraftControlSummary(payload: DispatchTabPayload, selectedAircraft
   `;
 }
 
-function renderAssignedPilotsSection(
-  selectedAircraft: DispatchAircraftView,
-  selectedPilotOverrideIds: readonly string[] | undefined,
-): string {
-  if (!selectedAircraft.schedule) {
-    return `
-      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
-        <article class="dispatch-message-item info">
-          <div class="dispatch-message-head">${renderBadge("info")}<strong>No named-pilot assignment yet</strong></div>
-          <span class="muted">Stage or commit a schedule before Dispatch can show who is covering this aircraft.</span>
-        </article>
-      </section>
-    `;
-  }
-
-  if (selectedAircraft.schedule.isDraft) {
-    return renderDraftPilotAssignmentSection(selectedAircraft, selectedPilotOverrideIds);
-  }
-
+function renderCommittedPilotAssignmentTable(selectedAircraft: DispatchAircraftView): string {
   if (selectedAircraft.assignedPilots.length === 0) {
     return `
-      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+      <div class="dispatch-message-list">
         <article class="dispatch-message-item warning">
           <div class="dispatch-message-head">${renderBadge("warning")}<strong>No reserved named pilots are attached</strong></div>
           <span class="muted">This committed schedule does not currently expose a named-pilot reservation. That should be treated as a truth gap.</span>
         </article>
-      </section>
+      </div>
     `;
   }
 
   return `
-    <section class="dispatch-message-list" data-dispatch-assigned-pilots>
-      ${selectedAircraft.assignedPilots.map((pilot) => renderAssignedPilotCard(pilot)).join("")}
-    </section>
+    <div class="dispatch-table-frame dispatch-pilot-table-wrap">
+      <table class="contracts-board-table dispatch-compact-table dispatch-pilot-table">
+        <colgroup>
+          <col style="width:190px" />
+          <col style="width:140px" />
+          <col style="width:120px" />
+          <col style="width:220px" />
+        </colgroup>
+        <thead>
+          <tr>
+            ${renderDispatchStaticHeaderCell("Pilot")}
+            ${renderDispatchStaticHeaderCell("Certifications")}
+            ${renderDispatchStaticHeaderCell("Status")}
+            ${renderDispatchStaticHeaderCell("Context")}
+          </tr>
+        </thead>
+        <tbody>
+          ${selectedAircraft.assignedPilots.map((pilot) => `
+            <tr class="dispatch-pilot-row" data-dispatch-assigned-pilot="${escapeHtml(pilot.namedPilotId)}">
+              <td><div class="meta-stack"><strong>${escapeHtml(pilot.displayName)}</strong></div></td>
+              <td>${escapeHtml(formatPilotCertifications(pilot.certifications))}</td>
+              <td>${renderBadge(pilot.availabilityState)}</td>
+              <td><span class="muted">${escapeHtml(describeAssignedPilotContext(pilot))}</span></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
   `;
 }
 
-function renderAssignedPilotCard(pilot: DispatchAssignedPilotView): string {
-  return `
-    <article class="dispatch-message-item info" data-dispatch-assigned-pilot="${escapeHtml(pilot.namedPilotId)}">
-      <div class="dispatch-message-head">${renderBadge(pilot.availabilityState)}<strong>${escapeHtml(pilot.displayName)}</strong></div>
-      <span class="muted">${escapeHtml(`${formatPilotCertifications(pilot.certifications)} | ${describeAssignedPilotContext(pilot)}`)}</span>
-    </article>
-  `;
-}
-
-function renderDraftPilotAssignmentSection(
+function renderDraftPilotAssignmentTable(
   selectedAircraft: DispatchAircraftView,
   selectedPilotOverrideIds: readonly string[] | undefined,
 ): string {
@@ -570,7 +800,7 @@ function renderDraftPilotAssignmentSection(
   const assignment = schedule?.draftPilotAssignment;
   if (!schedule || !schedule.isDraft || !assignment) {
     return `
-      <section class="dispatch-message-list" data-dispatch-assigned-pilots>
+      <section class="dispatch-message-list">
         <article class="dispatch-message-item info">
           <div class="dispatch-message-head">${renderBadge("info")}<strong>Draft pilot recommendation unavailable</strong></div>
           <span class="muted">Dispatch could not derive a draft-time named-pilot recommendation for this aircraft yet.</span>
@@ -584,7 +814,7 @@ function renderDraftPilotAssignmentSection(
   const recommendedNames = recommendedOptions.map((option) => option.displayName).join(" | ");
 
   return `
-    <section class="dispatch-message-list" data-dispatch-assigned-pilots data-dispatch-draft-pilot-assignment="${escapeHtml(schedule.scheduleId)}">
+    <section class="dispatch-draft-pilot-panel" data-dispatch-draft-pilot-assignment="${escapeHtml(schedule.scheduleId)}">
       <article class="dispatch-message-item info" data-dispatch-pilot-recommendation>
         <div class="dispatch-message-head">
           ${renderBadge(recommendedOptions.length >= assignment.pilotsRequired ? "ready" : "warning")}
@@ -607,13 +837,35 @@ function renderDraftPilotAssignmentSection(
           ? "Leave every override control blank to commit with the recommendation. Pick a different pilot only if you want to override it explicitly."
           : "No selectable pilot override is available from the current named-pilot pool.")}</span>
       </article>
-      ${assignment.candidateOptions.map((option) =>
-        renderDraftPilotOptionCard(schedule.scheduleId, assignment.pilotsRequired, option, selectedPilotOverrideIds)).join("")}
+      <div class="dispatch-table-frame dispatch-pilot-table-wrap">
+        <table class="contracts-board-table dispatch-compact-table dispatch-pilot-table">
+          <colgroup>
+            <col style="width:170px" />
+            <col style="width:130px" />
+            <col style="width:110px" />
+            <col style="width:230px" />
+            <col style="width:190px" />
+          </colgroup>
+          <thead>
+            <tr>
+              ${renderDispatchStaticHeaderCell("Pilot")}
+              ${renderDispatchStaticHeaderCell("Certifications")}
+              ${renderDispatchStaticHeaderCell("Status")}
+              ${renderDispatchStaticHeaderCell("Context")}
+              ${renderDispatchStaticHeaderCell("Override")}
+            </tr>
+          </thead>
+          <tbody>
+            ${assignment.candidateOptions.map((option) =>
+              renderDraftPilotOptionRow(schedule.scheduleId, assignment.pilotsRequired, option, selectedPilotOverrideIds)).join("")}
+          </tbody>
+        </table>
+      </div>
     </section>
   `;
 }
 
-function renderDraftPilotOptionCard(
+function renderDraftPilotOptionRow(
   scheduleId: string,
   pilotsRequired: number,
   option: DispatchDraftPilotAssignmentView["candidateOptions"][number],
@@ -639,20 +891,26 @@ function renderDraftPilotOptionCard(
     : `<span class="muted" data-dispatch-pilot-option-reason="${escapeHtml(option.namedPilotId)}">${escapeHtml(option.reason ?? "Unavailable for this draft.")}</span>`;
 
   return `
-    <article class="dispatch-message-item ${option.selectable ? "info" : "warning"}" data-dispatch-pilot-option="${escapeHtml(option.namedPilotId)}">
-      <div class="dispatch-message-head">
+    <tr
+      class="dispatch-pilot-row ${option.selectable ? "" : "dispatch-pilot-row--disabled"}"
+      data-dispatch-pilot-option="${escapeHtml(option.namedPilotId)}"
+    >
+      <td>
         <div class="meta-stack">
           <strong>${escapeHtml(option.displayName)}</strong>
-          <span class="muted">${escapeHtml(formatPilotCertifications(option.certifications))}</span>
+          ${option.recommended ? `<span class="muted">Recommended</span>` : ""}
         </div>
+      </td>
+      <td>${escapeHtml(formatPilotCertifications(option.certifications))}</td>
+      <td>
         <div class="pill-row">
           ${option.recommended ? renderBadge("recommended") : ""}
           ${renderBadge(option.availabilityState)}
         </div>
-      </div>
-      <span class="muted">${escapeHtml(describeDraftPilotOptionContext(option))}</span>
-      ${overrideControl}
-    </article>
+      </td>
+      <td><span class="muted">${escapeHtml(describeDraftPilotOptionContext(option))}</span></td>
+      <td>${overrideControl}</td>
+    </tr>
   `;
 }
 
@@ -803,6 +1061,18 @@ function renderSelectedLeg(selectedLeg: DispatchLegView | undefined): string {
   `;
 }
 
+function renderSelectedLegInline(selectedLeg: DispatchLegView): string {
+  const attachedContractCount = selectedLeg.linkedCompanyContractIds?.length ?? (selectedLeg.linkedCompanyContractId ? 1 : 0);
+  return `
+    <div class="summary-item compact" data-dispatch-selected-leg="1">
+      <div class="eyebrow">Selected leg</div>
+      <strong>${escapeHtml(selectedLeg.originAirport.code)} -> ${escapeHtml(selectedLeg.destinationAirport.code)}</strong>
+      <span class="muted">${escapeHtml(formatDate(selectedLeg.plannedDepartureUtc))} -> ${escapeHtml(formatDate(selectedLeg.plannedArrivalUtc))} | ${escapeHtml(selectedLeg.payloadLabel)}</span>
+      <span class="muted">${escapeHtml(String(attachedContractCount))} attached contract${attachedContractCount === 1 ? "" : "s"} | ${selectedLeg.validationMessages[0] ? escapeHtml(selectedLeg.validationMessages[0].summary) : "No leg-specific blockers"}</span>
+    </div>
+  `;
+}
+
 function renderLegValidationMessages(messages: DispatchValidationMessageView[]): string {
   if (messages.length === 0) {
     return `<div class="dispatch-message-list"><article class="dispatch-message-item info"><strong>No leg-specific warnings.</strong><span class="muted">This leg is not carrying its own blocker or warning messages in the current validation snapshot.</span></article></div>`;
@@ -942,17 +1212,7 @@ function renderSelectedRoutePlanSummary(
 ): string {
   const items = payload.workInputs.routePlanItems;
   if (items.length === 0) {
-    return `
-      <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
-        <div class="panel-head">
-          <h3>Selected work</h3>
-          <span class="pill">Planned Routes</span>
-        </div>
-        <div class="panel-body">
-          <div class="empty-state compact">No planned routes are waiting in Dispatch yet.</div>
-        </div>
-      </section>
-    `;
+    return `<div class="empty-state compact">No planned routes are waiting in Dispatch yet.</div>`;
   }
 
   const selectedItem = findSelectedRoutePlanItem(items, selectedRoutePlanItemId);
@@ -966,66 +1226,55 @@ function renderSelectedRoutePlanSummary(
   const stageButtonLabel = selectedAircraft?.schedule?.isDraft ? "Replace draft with route plan" : "Draft route plan";
 
   return `
-    <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
-      <div class="panel-head">
-        <h3>Selected work</h3>
-        <div class="pill-row">
-          <span class="pill">Planned Routes</span>
-          <span class="pill">${escapeHtml(String(payload.workInputs.acceptedReadyCount))} ready</span>
+    <div class="summary-list dispatch-selected-work-summary">
+      <article class="summary-item compact" data-dispatch-route-context="planned_routes" data-dispatch-route-plan-package>
+        <div class="eyebrow">Route context</div>
+        <strong>${escapeHtml(packageStartItem.originAirport.code)} -> ${escapeHtml(packageEndpoint.code)}</strong>
+        <div class="pill-row" data-dispatch-route-ribbon>
+          ${renderRouteRibbon(routePathCodes)}
         </div>
-      </div>
-      <div class="panel-body">
-        <div class="summary-list dispatch-selected-work-summary">
-          <article class="summary-item compact" data-dispatch-route-context="planned_routes" data-dispatch-route-plan-package>
-            <div class="eyebrow">Route context</div>
-            <strong>${escapeHtml(packageStartItem.originAirport.code)} -> ${escapeHtml(packageEndpoint.code)}</strong>
-            <div class="pill-row" data-dispatch-route-ribbon>
-              ${renderRouteRibbon(routePathCodes)}
-            </div>
-            <span class="muted">${escapeHtml(describeRouteRibbon(routePathCodes, items.length))}</span>
-            <span class="muted">${escapeHtml(describeRoutePlanPackageSummary(payload, packageStartItem, packageEndItem))}</span>
-          </article>
-          <article class="summary-item compact">
-            <div class="eyebrow">Timing</div>
-            <strong>${escapeHtml(formatDate(packageStartItem.earliestStartUtc ?? packageStartItem.deadlineUtc))} to ${escapeHtml(formatDate(packageEndItem.deadlineUtc))}</strong>
-            <span class="muted">${escapeHtml(String(items.length))} planned item${items.length === 1 ? "" : "s"}</span>
-          </article>
-          <article class="summary-item compact">
-            <div class="eyebrow">Payload</div>
-            <strong>${escapeHtml(formatMoney(totalPayoutAmount))}</strong>
-            <span class="muted">${escapeHtml(formatPayload(summaryItem.volumeType, summaryItem.passengerCount, summaryItem.cargoWeightLb))} selected as row context</span>
-          </article>
-          <article class="summary-item compact" data-dispatch-route-selected-row data-dispatch-route-plan-selected-row>
-            <div class="eyebrow">Selected row</div>
-            <strong>${escapeHtml(summaryItem.originAirport.code)} -> ${escapeHtml(summaryItem.destinationAirport.code)}</strong>
-            <span class="muted">${escapeHtml(summaryItem.originAirport.primaryLabel)} to ${escapeHtml(summaryItem.destinationAirport.primaryLabel)}</span>
-            <span class="muted">Stop ${escapeHtml(String(summaryItem.sequenceNumber))} of ${escapeHtml(String(items.length))}</span>
-            <span class="muted">Window ${escapeHtml(formatWindow(summaryItem.earliestStartUtc, summaryItem.deadlineUtc))}</span>
-          </article>
-          <article class="summary-item compact" data-dispatch-draft-impact>
-            <div class="eyebrow">Draft impact</div>
-            <strong>${escapeHtml(selectedAircraft ? selectedAircraft.registration : "No aircraft selected")}</strong>
-            <span class="muted">${escapeHtml(describeDraftReplacementImpact(selectedAircraft))}</span>
-          </article>
-          <article class="summary-item compact">
-            <div class="eyebrow">Chain</div>
-            <strong>${escapeHtml(String(items.length))} planned items</strong>
-            <span class="muted">${escapeHtml(describeRoutePlanChain(items, packageStartItem, packageEndItem, summaryItem))}</span>
-          </article>
-        </div>
-        <div class="dispatch-selected-work-actions">
-          ${selectedAircraft ? `
-            <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/bind-route-plan" class="dispatch-inline-action" data-api-form>
-              <input type="hidden" name="tab" value="dispatch" />
-              <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
-              <input type="hidden" name="aircraftId" value="${escapeHtml(selectedAircraft.aircraftId)}" />
-              <button type="submit" ${stageButtonDisabled ? "disabled" : ""} data-dispatch-bind-route-plan="1" data-dispatch-stage-draft="1" data-pending-label="Drafting route plan...">${escapeHtml(stageButtonLabel)}</button>
-            </form>
-          ` : `<div class="muted">Select an aircraft to stage this route plan.</div>`}
-        </div>
-        <div class="muted dispatch-section-note">${escapeHtml(describeRoutePlanSummaryNote(items, packageStartItem, packageEndItem, summaryItem))}</div>
-      </div>
-    </section>
+        <span class="muted">${escapeHtml(describeRouteRibbon(routePathCodes, items.length))}</span>
+        <span class="muted">${escapeHtml(describeRoutePlanPackageSummary(payload, packageStartItem, packageEndItem))}</span>
+      </article>
+      <article class="summary-item compact">
+        <div class="eyebrow">Timing</div>
+        <strong>${escapeHtml(formatDate(packageStartItem.earliestStartUtc ?? packageStartItem.deadlineUtc))} to ${escapeHtml(formatDate(packageEndItem.deadlineUtc))}</strong>
+        <span class="muted">${escapeHtml(String(items.length))} planned item${items.length === 1 ? "" : "s"}</span>
+      </article>
+      <article class="summary-item compact">
+        <div class="eyebrow">Payload</div>
+        <strong>${escapeHtml(formatMoney(totalPayoutAmount))}</strong>
+        <span class="muted">${escapeHtml(formatPayload(summaryItem.volumeType, summaryItem.passengerCount, summaryItem.cargoWeightLb))} selected as row context</span>
+      </article>
+      <article class="summary-item compact" data-dispatch-route-selected-row data-dispatch-route-plan-selected-row>
+        <div class="eyebrow">Selected row</div>
+        <strong>${escapeHtml(summaryItem.originAirport.code)} -> ${escapeHtml(summaryItem.destinationAirport.code)}</strong>
+        <span class="muted">${escapeHtml(summaryItem.originAirport.primaryLabel)} to ${escapeHtml(summaryItem.destinationAirport.primaryLabel)}</span>
+        <span class="muted">Stop ${escapeHtml(String(summaryItem.sequenceNumber))} of ${escapeHtml(String(items.length))}</span>
+        <span class="muted">Window ${escapeHtml(formatWindow(summaryItem.earliestStartUtc, summaryItem.deadlineUtc))}</span>
+      </article>
+      <article class="summary-item compact" data-dispatch-draft-impact>
+        <div class="eyebrow">Draft impact</div>
+        <strong>${escapeHtml(selectedAircraft ? selectedAircraft.registration : "No aircraft selected")}</strong>
+        <span class="muted">${escapeHtml(describeDraftReplacementImpact(selectedAircraft))}</span>
+      </article>
+      <article class="summary-item compact">
+        <div class="eyebrow">Chain</div>
+        <strong>${escapeHtml(String(items.length))} planned items</strong>
+        <span class="muted">${escapeHtml(describeRoutePlanChain(items, packageStartItem, packageEndItem, summaryItem))}</span>
+      </article>
+    </div>
+    <div class="dispatch-selected-work-actions">
+      ${selectedAircraft ? `
+        <form method="post" action="/api/save/${encodeURIComponent(payload.saveId)}/actions/bind-route-plan" class="dispatch-inline-action" data-api-form>
+          <input type="hidden" name="tab" value="dispatch" />
+          <input type="hidden" name="saveId" value="${escapeHtml(payload.saveId)}" />
+          <input type="hidden" name="aircraftId" value="${escapeHtml(selectedAircraft.aircraftId)}" />
+          <button type="submit" ${stageButtonDisabled ? "disabled" : ""} data-dispatch-bind-route-plan="1" data-dispatch-stage-draft="1" data-pending-label="Drafting route plan...">${escapeHtml(stageButtonLabel)}</button>
+        </form>
+      ` : `<div class="muted">Select an aircraft to stage this route plan.</div>`}
+    </div>
+    <div class="muted dispatch-section-note">${escapeHtml(describeRoutePlanSummaryNote(items, packageStartItem, packageEndItem, summaryItem))}</div>
   `;
 }
 
@@ -1036,17 +1285,7 @@ function renderSelectedAcceptedContractSummary(
 ): string {
   const contracts = prioritizeAcceptedContracts(payload.workInputs.acceptedContracts, selectedAircraft);
   if (contracts.length === 0) {
-    return `
-      <section class="panel dispatch-selected-work-panel" data-dispatch-selected-work>
-        <div class="panel-head">
-          <h3>Selected work</h3>
-          <span class="pill">Accepted Contracts</span>
-        </div>
-        <div class="panel-body">
-          <div class="empty-state compact">No accepted contracts are waiting for planning yet.</div>
-        </div>
-      </section>
-    `;
+    return `<div class="empty-state compact">No accepted contracts are waiting for planning yet.</div>`;
   }
 
   const selectedContract = (findSelectedAcceptedContract(contracts, selectedCompanyContractId) ?? contracts[0])!;
@@ -1120,9 +1359,29 @@ function renderPlannedRoutesList(payload: DispatchTabPayload, selectedRoutePlanI
   }
 
   return `
-    <section class="dispatch-input-list dispatch-source-list" aria-label="Planned routes">
-      ${routePlanItems.map((item) => renderRoutePlanItem(item, item.routePlanItemId === selectedRoutePlanItemId)).join("")}
-    </section>
+    <table class="contracts-board-table dispatch-compact-table dispatch-source-table dispatch-route-plan-table" aria-label="Planned routes">
+      <colgroup>
+        <col style="width:300px" />
+        <col style="width:130px" />
+        <col style="width:120px" />
+        <col style="width:130px" />
+        <col style="width:170px" />
+        <col style="width:120px" />
+      </colgroup>
+      <thead>
+        <tr>
+          ${renderDispatchStaticHeaderCell("Route")}
+          ${renderDispatchStaticHeaderCell("Status")}
+          ${renderDispatchStaticHeaderCell("Payload")}
+          ${renderDispatchStaticHeaderCell("Payout")}
+          ${renderDispatchStaticHeaderCell("Due")}
+          ${renderDispatchStaticHeaderCell("Sequence")}
+        </tr>
+      </thead>
+      <tbody>
+        ${routePlanItems.map((item) => renderRoutePlanItem(item, item.routePlanItemId === selectedRoutePlanItemId, payload.timeUtility.currentTimeUtc)).join("")}
+      </tbody>
+    </table>
   `;
 }
 
@@ -1139,42 +1398,61 @@ function renderAcceptedContractsList(
   }
 
   return `
-    <section class="dispatch-input-list dispatch-source-list" aria-label="Accepted contracts">
-      ${contracts.map((contract) => renderAcceptedContract(contract, contract.companyContractId === selectedCompanyContractId, attachedContractIds.has(contract.companyContractId))).join("")}
-    </section>
+    <table class="contracts-board-table dispatch-compact-table dispatch-source-table dispatch-accepted-contract-table" aria-label="Accepted contracts">
+      <colgroup>
+        <col style="width:300px" />
+        <col style="width:130px" />
+        <col style="width:120px" />
+        <col style="width:130px" />
+        <col style="width:170px" />
+        <col style="width:150px" />
+      </colgroup>
+      <thead>
+        <tr>
+          ${renderDispatchStaticHeaderCell("Route")}
+          ${renderDispatchStaticHeaderCell("State")}
+          ${renderDispatchStaticHeaderCell("Payload")}
+          ${renderDispatchStaticHeaderCell("Payout")}
+          ${renderDispatchStaticHeaderCell("Due")}
+          ${renderDispatchStaticHeaderCell("Assignment")}
+        </tr>
+      </thead>
+      <tbody>
+        ${contracts.map((contract) => renderAcceptedContract(contract, contract.companyContractId === selectedCompanyContractId, attachedContractIds.has(contract.companyContractId), payload.timeUtility.currentTimeUtc)).join("")}
+      </tbody>
+    </table>
   `;
 }
 
 function renderRoutePlanItem(
   item: DispatchTabPayload["workInputs"]["routePlanItems"][number],
   selected: boolean,
+  currentTimeUtc: string,
 ): string {
   return `
-    <button
-      type="button"
-      class="dispatch-input-card dispatch-source-card ${selected ? "selected" : ""}"
+    <tr
+      class="contract-row dispatch-source-row ${selected ? "selected" : ""}"
       data-dispatch-source-item="${escapeHtml(item.routePlanItemId)}"
       data-dispatch-source-mode="planned_routes"
       aria-pressed="${selected ? "true" : "false"}"
     >
-      <div class="dispatch-input-card-head">
-        <div class="meta-stack">
-          <strong>${escapeHtml(item.originAirport.code)} -> ${escapeHtml(item.destinationAirport.code)}</strong>
-          <span class="muted">${escapeHtml(item.originAirport.primaryLabel)} to ${escapeHtml(item.destinationAirport.primaryLabel)}</span>
-        </div>
+      <td>${renderDispatchRouteCell(item.originAirport, item.destinationAirport, `${labelForUi(item.sourceType)} | ${selected ? "selected row" : "row context"}`)}</td>
+      <td>
         <div class="pill-row">
-          <span class="pill">Stop ${escapeHtml(String(item.sequenceNumber))}</span>
-          ${item.linkedAircraftId ? `<span class="pill">linked</span>` : ""}
-          ${selected ? `<span class="pill">selected row</span>` : ""}
+          ${renderBadge(item.plannerItemStatus)}
+          ${item.linkedAircraftId ? renderBadge("linked") : ""}
         </div>
-      </div>
-      <div class="pill-row dispatch-chain-facts">
-        <span class="pill">Status ${escapeHtml(labelForUi(item.plannerItemStatus))}</span>
-        <span class="pill">Window ${escapeHtml(formatWindow(item.earliestStartUtc, item.deadlineUtc))}</span>
-        <span class="pill">Payload ${escapeHtml(formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb))}</span>
-        <span class="pill">Payout ${escapeHtml(formatMoney(item.payoutAmount))}</span>
-      </div>
-    </button>
+      </td>
+      <td>${escapeHtml(formatPayload(item.volumeType, item.passengerCount, item.cargoWeightLb))}</td>
+      <td>${escapeHtml(formatMoney(item.payoutAmount))}</td>
+      <td>${renderDispatchDueTableCell(item.deadlineUtc, currentTimeUtc)}</td>
+      <td>
+        <div class="meta-stack">
+          <strong>Stop ${escapeHtml(String(item.sequenceNumber))}</strong>
+          <span class="muted">${escapeHtml(formatWindow(item.earliestStartUtc, item.deadlineUtc))}</span>
+        </div>
+      </td>
+    </tr>
   `;
 }
 
@@ -1182,33 +1460,27 @@ function renderAcceptedContract(
   contract: DispatchTabPayload["workInputs"]["acceptedContracts"][number],
   selected: boolean,
   alreadyInDraft: boolean,
+  currentTimeUtc: string,
 ): string {
   return `
-    <button
-      type="button"
-      class="dispatch-input-card dispatch-source-card ${selected ? "selected" : ""}"
+    <tr
+      class="contract-row dispatch-source-row ${selected ? "selected" : ""}"
       data-dispatch-source-item="${escapeHtml(contract.companyContractId)}"
       data-dispatch-source-mode="accepted_contracts"
       aria-pressed="${selected ? "true" : "false"}"
     >
-      <div class="dispatch-input-card-head">
+      <td>${renderDispatchRouteCell(contract.originAirport, contract.destinationAirport, `${selected ? "selected work" : "click to dispatch"} | ${formatWindow(contract.earliestStartUtc, contract.deadlineUtc)}`)}</td>
+      <td><div class="pill-row">${renderBadge(contract.contractState)}${alreadyInDraft ? renderBadge("draft_ready") : ""}</div></td>
+      <td>${escapeHtml(formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb))}</td>
+      <td>${escapeHtml(formatMoney(contract.acceptedPayoutAmount))}</td>
+      <td>${renderDispatchDueTableCell(contract.deadlineUtc, currentTimeUtc)}</td>
+      <td>
         <div class="meta-stack">
-          <strong>${escapeHtml(contract.originAirport.code)} -> ${escapeHtml(contract.destinationAirport.code)}</strong>
-          <span class="muted">${escapeHtml(contract.originAirport.primaryLabel)} to ${escapeHtml(contract.destinationAirport.primaryLabel)}</span>
+          <strong>${escapeHtml(contract.assignedAircraftId ? "Assigned" : "Unassigned")}</strong>
+          <span class="muted">${escapeHtml(contract.assignedAircraftId ?? (alreadyInDraft ? "In selected draft" : "Choose aircraft"))}</span>
         </div>
-        <div class="pill-row">
-          <span class="pill">Single leg</span>
-          ${alreadyInDraft ? `<span class="pill">in selected draft</span>` : ""}
-          ${selected ? `<span class="pill">selected work</span>` : ""}
-        </div>
-      </div>
-      <div class="pill-row dispatch-chain-facts">
-        <span class="pill">Status ${escapeHtml(labelForUi(contract.contractState))}</span>
-        <span class="pill">Window ${escapeHtml(formatWindow(contract.earliestStartUtc, contract.deadlineUtc))}</span>
-        <span class="pill">Payload ${escapeHtml(formatPayload(contract.volumeType, contract.passengerCount, contract.cargoWeightLb))}</span>
-        <span class="pill">Payout ${escapeHtml(formatMoney(contract.acceptedPayoutAmount))}</span>
-      </div>
-    </button>
+      </td>
+    </tr>
   `;
 }
 
@@ -1237,41 +1509,57 @@ function renderAdvanceTimeUtility(payload: DispatchTabPayload): string {
 function renderCommitBar(
   payload: DispatchTabPayload,
   selectedAircraft: DispatchAircraftView | undefined,
-  selectedCompanyContractId: string | undefined,
+  selectedSourceMode: DispatchSourceMode,
+  selectedSourceId: string | undefined,
   selectedPilotOverrideIds: readonly string[] | undefined,
 ): string {
   const schedule = selectedAircraft?.schedule;
   const validation = schedule?.validation;
+  const routePlanSelected = selectedSourceMode === "planned_routes";
   const selectedContractAttached = Boolean(
-    selectedCompanyContractId
-    && (validation?.contractIdsAttached.includes(selectedCompanyContractId)
+    selectedSourceId
+    && (validation?.contractIdsAttached.includes(selectedSourceId)
       || schedule?.legs.some((leg) =>
-        leg.linkedCompanyContractId === selectedCompanyContractId
-        || leg.linkedCompanyContractIds?.includes(selectedCompanyContractId),
+        leg.linkedCompanyContractId === selectedSourceId
+        || leg.linkedCompanyContractIds?.includes(selectedSourceId),
       )),
   );
-  const canCommit = Boolean(schedule?.isDraft && validation?.isCommittable && selectedContractAttached);
+  const canCommit = Boolean(
+    schedule?.isDraft
+    && validation?.isCommittable
+    && (routePlanSelected ? (schedule.legs.length > 0) : selectedContractAttached),
+  );
   const commitImpact = deriveDispatchCommitImpactSummary(selectedAircraft);
-  const commitButtonLabel = !selectedCompanyContractId
-    ? "No contract selected"
-    : !schedule
-    ? "No dispatch draft"
-    : !schedule.isDraft
-      ? selectedContractAttached
-        ? "Already dispatched"
-        : "Committed elsewhere"
-      : !selectedContractAttached
-        ? "Build selected contract draft"
-        : validation?.isCommittable
-        ? "Dispatch contract"
-        : "Resolve blockers";
+  const commitButtonLabel = routePlanSelected
+    ? !selectedSourceId
+      ? "No route plan selected"
+      : !schedule
+        ? "No route plan draft"
+        : !schedule.isDraft
+          ? "Already dispatched"
+          : validation?.isCommittable
+            ? "Dispatch route plan"
+            : "Resolve blockers"
+    : !selectedSourceId
+      ? "No contract selected"
+      : !schedule
+        ? "No dispatch draft"
+        : !schedule.isDraft
+          ? selectedContractAttached
+            ? "Already dispatched"
+            : "Committed elsewhere"
+          : !selectedContractAttached
+            ? "Build selected contract draft"
+            : validation?.isCommittable
+              ? "Dispatch contract"
+              : "Resolve blockers";
 
   return `
       <div class="dispatch-commit-copy">
         <div class="meta-stack">
           <div class="eyebrow">Dispatch action</div>
           <strong>${escapeHtml(commitImpact.headline)}</strong>
-          <span class="muted">${escapeHtml(commitImpact.note)}</span>
+          <span class="muted">${escapeHtml(routePlanSelected ? `${commitImpact.note} This action commits the staged ready route-plan chain on the selected aircraft.` : commitImpact.note)}</span>
         </div>
         <div class="dispatch-commit-metrics">
           ${commitImpact.sections.map((section) => renderCommitImpactSection(section)).join("")}
@@ -2031,6 +2319,14 @@ function formatMoney(amount: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function formatDeadlineCountdown(deadlineUtc: string, currentTimeUtc: string): string {
+  const remainingMinutes = Math.max(0, Math.ceil((Date.parse(deadlineUtc) - Date.parse(currentTimeUtc)) / 60_000));
+  const days = Math.floor(remainingMinutes / (24 * 60));
+  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
+  const minutes = remainingMinutes % 60;
+  return `${String(days).padStart(2, "0")}D:${String(hours).padStart(2, "0")}H:${String(minutes).padStart(2, "0")}M`;
 }
 
 function formatNumber(value: number): string {
