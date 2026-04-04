@@ -316,16 +316,21 @@ try {
 
   const firstAvailableRow = page.locator("[data-select-offer-row]").first();
   await clickUi(firstAvailableRow);
-  await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
-  assert.equal(await page.locator("[data-accept-selected-offer]").count(), 1);
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("[data-contracts-selected-panel][data-accept-selected-pane]");
+    return panel instanceof HTMLElement && panel.querySelector(".contracts-selected-route-title") instanceof HTMLElement;
+  });
+  assert.equal(await page.locator("[data-accept-selected-offer]").count(), 0);
   const selectedPanelLayout = await page.evaluate(() => {
     const selectedBody = document.querySelector(".contracts-selected-panel > .panel-body");
+    const routeTitle = document.querySelector(".contracts-selected-route-title")?.textContent?.trim() ?? "";
     const summaryRows = document.querySelectorAll(".contracts-selected-summary-row").length;
     const pairRows = document.querySelectorAll(".contracts-selected-pair-row").length;
     return selectedBody instanceof HTMLElement
       ? {
         scrollHeight: selectedBody.scrollHeight,
         clientHeight: selectedBody.clientHeight,
+          routeTitle,
           summaryRows,
           pairRows,
         }
@@ -333,36 +338,16 @@ try {
   });
   assert.ok(selectedPanelLayout);
   assert.ok(selectedPanelLayout.scrollHeight <= selectedPanelLayout.clientHeight + 2);
-  assert.ok(selectedPanelLayout.summaryRows >= 2);
+  assert.ok(selectedPanelLayout.routeTitle.includes("->"));
+  assert.ok(selectedPanelLayout.summaryRows >= 1);
   assert.ok(selectedPanelLayout.pairRows >= 2);
   markStep("selected contract");
 
-  const secondAvailableRow = page.locator("[data-select-offer-row]").nth(1);
-  const hasSecondRow = (await secondAvailableRow.count()) > 0;
-  const doubleClickTarget = hasSecondRow ? secondAvailableRow : firstAvailableRow;
-  await doubleClickTarget.evaluate((element) => {
-    element.scrollIntoView({ block: "center" });
-    if (element instanceof HTMLElement) {
-      element.click();
-      element.click();
-      return;
-    }
-
-    element.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }));
-    element.dispatchEvent(new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-    }));
-  });
+  await clickUi(page.locator("[data-accept-selected-pane]").first());
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
   assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").count(), 1);
   assert.equal((await page.locator(".contracts-next-step").textContent())?.includes("Send to route plan"), true);
-  markStep("double click accept");
+  markStep("pane accept");
 
   await clickUi(page.locator("[data-shell-tab='dashboard']"));
   await page.waitForFunction(() => document.querySelector("[data-overview-finance-section]"));
@@ -371,8 +356,11 @@ try {
   markStep("accepted workflow persisted after tab round-trip");
 
   await clickUi(page.locator("[data-select-offer-row]").first());
-  await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
-  await clickUi(page.locator("[data-accept-selected-offer]").first());
+  await page.waitForFunction(() => {
+    const panel = document.querySelector("[data-contracts-selected-panel][data-accept-selected-pane]");
+    return panel instanceof HTMLElement && panel.querySelector(".contracts-selected-route-title") instanceof HTMLElement;
+  });
+  await clickUi(page.locator("[data-accept-selected-pane]").first());
   await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
   await clickUi(page.locator(".contracts-next-step [data-open-route-plan]"));
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));

@@ -2187,6 +2187,22 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: hidden;
     }
+    .contracts-selected-panel--accept-offer {
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+    }
+    .contracts-selected-panel--accept-offer:hover {
+      border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
+      background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+    }
+    .contracts-selected-panel--accept-offer:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--accent) 70%, white 30%);
+      outline-offset: 2px;
+    }
+    .contracts-selected-panel--accept-offer.is-busy {
+      pointer-events: none;
+      opacity: 0.78;
+    }
     .contracts-selected-panel > .panel-head {
       padding: 12px 14px 10px;
     }
@@ -2202,6 +2218,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .contracts-selected-stack {
       display: grid;
       gap: 6px;
+    }
+    .contracts-selected-route-head {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .contracts-selected-route-title {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.15;
+    }
+    .contracts-selected-route-subtitle {
+      font-size: 11px;
+      line-height: 1.2;
     }
     .contracts-selected-summary-row {
       display: grid;

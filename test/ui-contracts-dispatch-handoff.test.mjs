@@ -119,10 +119,10 @@ try {
 
     await clickUi(page.locator(`[data-select-offer-row='${eligibleOffer.contractOfferId}']`).first());
     await page.waitForFunction((expectedOfferId) => {
-      const button = document.querySelector(`[data-accept-selected-offer="${expectedOfferId}"]`);
-      return button instanceof HTMLButtonElement && !button.disabled;
+      const pane = document.querySelector(`[data-accept-selected-pane="${expectedOfferId}"]`);
+      return pane instanceof HTMLElement && pane.getAttribute("aria-busy") !== "true";
     }, eligibleOffer.contractOfferId);
-    await clickUi(page.locator(`[data-accept-selected-offer='${eligibleOffer.contractOfferId}']`).first());
+    await clickUi(page.locator(`[data-accept-selected-pane='${eligibleOffer.contractOfferId}']`).first());
     await page.waitForFunction(() => document.querySelector(".contracts-next-step")?.textContent?.includes("Accept and dispatch"));
     assert.equal(await page.locator(".contracts-next-step [data-next-step-dispatch]").isEnabled(), true);
 

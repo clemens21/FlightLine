@@ -305,6 +305,7 @@ export function mountContractsTab(
   let activeBoardPopover: ContractsBoardPopoverKey | null = null;
   let pendingAvailableOfferSelectionTimeout: number | null = null;
   let pendingAvailableOfferId: string | null = null;
+  const acceptingContractOfferIds = new Set<string>();
   let cachedBoardViewState: ContractsBoardViewState | null = null;
   let cachedBoardViewKey = "";
   let cachedBoardPayload: ContractsViewPayload | null = null;
@@ -671,12 +672,12 @@ export function mountContractsTab(
       return;
     }
 
-    const acceptSelectedButton = target.closest<HTMLButtonElement>("[data-accept-selected-offer]");
-    if (acceptSelectedButton) {
+    const acceptSelectedPane = target.closest<HTMLElement>("[data-accept-selected-pane]");
+    if (acceptSelectedPane && !target.closest("button, a, input, select, textarea, label")) {
       event.preventDefault();
       event.stopPropagation();
-      const contractOfferId = acceptSelectedButton.dataset.acceptSelectedOffer ?? "";
-      void acceptOffer(contractOfferId, acceptSelectedButton);
+      const contractOfferId = acceptSelectedPane.dataset.acceptSelectedPane ?? "";
+      void acceptOffer(contractOfferId, acceptSelectedPane);
       return;
     }
 
@@ -699,8 +700,7 @@ export function mountContractsTab(
       }
       if (pendingAvailableOfferSelectionTimeout !== null && pendingAvailableOfferId === contractOfferId) {
         clearPendingAvailableOfferSelection();
-        const detailButton = root.querySelector<HTMLButtonElement>(`[data-accept-selected-offer="${contractOfferId}"]`);
-        void acceptOffer(contractOfferId, detailButton ?? null);
+        void acceptOffer(contractOfferId, null);
         return;
       }
       clearPendingAvailableOfferSelection();
@@ -796,6 +796,16 @@ export function mountContractsTab(
   };
 
   const handleKeydown = (event: KeyboardEvent) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const acceptSelectedPane = target?.closest<HTMLElement>("[data-accept-selected-pane]");
+    if (acceptSelectedPane && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      event.stopPropagation();
+      const contractOfferId = acceptSelectedPane.dataset.acceptSelectedPane ?? "";
+      void acceptOffer(contractOfferId, acceptSelectedPane);
+      return;
+    }
+
     if (event.key !== "Escape" || activeBoardPopover === null) {
       return;
     }
@@ -941,12 +951,22 @@ export function mountContractsTab(
       root.replaceChildren();
     },
   };
-  async function acceptOffer(contractOfferId: string, button: HTMLButtonElement | null): Promise<void> {
+  async function acceptOffer(contractOfferId: string, control: HTMLElement | null): Promise<void> {
     if (!contractOfferId || !options.acceptUrl) {
       return;
     }
 
+    if (acceptingContractOfferIds.has(contractOfferId)) {
+      return;
+    }
+    acceptingContractOfferIds.add(contractOfferId);
+
+    const button = control instanceof HTMLButtonElement ? control : null;
     const originalLabel = button?.textContent ?? "Accept";
+    if (control) {
+      control.setAttribute("aria-busy", "true");
+      control.classList.add("is-busy");
+    }
     if (button) {
       button.disabled = true;
       button.textContent = "Accepting...";
@@ -1017,6 +1037,11 @@ export function mountContractsTab(
       options.onMessage?.(state.message);
       render();
     } finally {
+      acceptingContractOfferIds.delete(contractOfferId);
+      if (control) {
+        control.removeAttribute("aria-busy");
+        control.classList.remove("is-busy");
+      }
       if (button) {
         button.disabled = false;
         button.textContent = originalLabel;
@@ -2207,19 +2232,22 @@ function renderSelectedRoutePanel(selectedRoute: SelectedRoute | null, state: Co
 
 function renderSelectedOfferPanel(offer: ContractsViewOffer, currentTimeUtc: string): string {
   return `
-    <section class="panel contracts-selected-panel" data-contracts-selected-panel>
+    <section
+      class="panel contracts-selected-panel contracts-selected-panel--accept-offer"
+      data-contracts-selected-panel
+      data-accept-selected-pane="${escapeHtml(offer.contractOfferId)}"
+      tabindex="0"
+      role="button"
+      aria-label="${escapeHtml(`Accept contract ${offer.origin.code} to ${offer.destination.code}`)}"
+    >
       <div class="panel-head">
-        <div>
-          <h3>Selected Contract</h3>
-          <span class="muted">${escapeHtml(`${offer.origin.code} -> ${offer.destination.code}`)}</span>
-        </div>
+        ${renderSelectedRouteHeading(offer.origin.code, offer.origin.name, offer.destination.code, offer.destination.name)}
         <div class="pill-row">
           ${renderBadge(offer.fitBucket ?? offer.offerStatus)}
         </div>
       </div>
       <div class="panel-body contracts-selected-body">
         <div class="contracts-selected-stack">
-          ${renderSelectedSummaryRow("Route", `${offer.origin.code} -> ${offer.destination.code}`, `${offer.origin.name} | ${offer.destination.name}`)}
           <div class="contracts-selected-pair-row">
             ${renderSelectedPairMetric("Payload", formatPayload(offer), `${offer.likelyRole.replaceAll("_", " ")} | ${offer.difficultyBand}`)}
             ${renderSelectedPairMetric("Payout", formatMoney(offer.payoutAmount), "Dynamic until acceptance")}
@@ -2229,9 +2257,6 @@ function renderSelectedOfferPanel(offer: ContractsViewOffer, currentTimeUtc: str
             ${renderSelectedPairMetric("Due", formatDate(offer.latestCompletionUtc), formatDeadlineCountdown(offer.latestCompletionUtc, currentTimeUtc))}
           </div>
           ${renderSelectedSummaryRow("Nearest Aircraft", formatSelectedAircraftPrimary(offer.nearestRelevantAircraft), formatSelectedAircraftSecondary(offer.nearestRelevantAircraft))}
-        </div>
-        <div class="contracts-selected-actions">
-          <button type="button" data-accept-selected-offer="${escapeHtml(offer.contractOfferId)}">Accept contract</button>
         </div>
       </div>
     </section>
@@ -2254,10 +2279,7 @@ function renderSelectedCompanyContractPanel(
   return `
     <section class="panel contracts-selected-panel" data-contracts-selected-panel>
       <div class="panel-head">
-        <div>
-          <h3>Selected Contract</h3>
-          <span class="muted">${escapeHtml(`${contract.origin.code} -> ${contract.destination.code}`)}</span>
-        </div>
+        ${renderSelectedRouteHeading(contract.origin.code, contract.origin.name, contract.destination.code, contract.destination.name)}
         <div class="pill-row">
           ${renderBadge(resolveCompanyContractBadgeState(contract, boardTab))}
           ${renderContractWorkStateBadge(contract.workState)}
@@ -2266,7 +2288,6 @@ function renderSelectedCompanyContractPanel(
       </div>
       <div class="panel-body contracts-selected-body">
         <div class="contracts-selected-stack">
-          ${renderSelectedSummaryRow("Route", `${contract.origin.code} -> ${contract.destination.code}`, `${contract.origin.name} | ${contract.destination.name}`)}
           <div class="contracts-selected-pair-row">
             ${renderSelectedPairMetric("Payload", formatPayload(contract), contract.primaryActionLabel)}
             ${renderSelectedPairMetric("Payout", formatMoney(contract.payoutAmount), `Penalty ${formatMoney(contract.cancellationPenaltyAmount)}`)}
@@ -2280,6 +2301,20 @@ function renderSelectedCompanyContractPanel(
         ${primaryAction || cancelAction ? `<div class="contracts-selected-actions">${primaryAction}${cancelAction}</div>` : ""}
       </div>
     </section>
+  `;
+}
+
+function renderSelectedRouteHeading(
+  originCode: string,
+  originName: string,
+  destinationCode: string,
+  destinationName: string,
+): string {
+  return `
+    <div class="contracts-selected-route-head">
+      <h3 class="contracts-selected-route-title">${escapeHtml(`${originCode} -> ${destinationCode}`)}</h3>
+      <span class="muted contracts-selected-route-subtitle">${escapeHtml(`${originName} | ${destinationName}`)}</span>
+    </div>
   `;
 }
 
