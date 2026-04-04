@@ -101,12 +101,34 @@ try {
   assert.equal(acceptedPayload.companyContracts.some((contract) => contract.companyContractId === acceptedContract.companyContractId), true);
   assert.equal(acceptedContract.originContractOfferId, advancedDynamicOffer.contractOfferId);
   assert.equal(acceptedContract.payoutAmount, advancedDynamicOffer.payoutAmount);
+  const acceptedPayoutAmount = acceptedContract.payoutAmount;
   assert.equal(typeof acceptedContract.hoursRemaining, "number");
   assert.equal(acceptedContract.urgencyBand === "stable" || acceptedContract.urgencyBand === "at_risk" || acceptedContract.urgencyBand === "overdue", true);
   assert.equal(acceptedContract.workState === "in_route_plan" || acceptedContract.workState === "ready_for_dispatch" || acceptedContract.workState === "assigned_elsewhere", true);
   assert.equal(acceptedContract.primaryActionKind === "send_to_route_plan" || acceptedContract.primaryActionKind === "open_route_plan" || acceptedContract.primaryActionKind === "open_dispatch", true);
   assert.equal(typeof acceptedContract.primaryActionLabel, "string");
   assert.equal(typeof acceptedContract.assignedAircraftReady, "boolean");
+
+  const acceptedAdvanceResult = await backend.dispatch({
+    commandId: `cmd_${saveId}_advance_after_accept`,
+    saveId,
+    commandName: "AdvanceTime",
+    issuedAtUtc: acceptedPayload.currentTimeUtc,
+    actorType: "player",
+    payload: {
+      targetTimeUtc: addHours(acceptedPayload.currentTimeUtc, 12),
+      stopConditions: ["target_time"],
+    },
+  });
+  assert.equal(acceptedAdvanceResult.success, true);
+
+  const afterAcceptedAdvancePayload = await loadContractsViewPayload(backend, airportReference, saveId, "scheduled");
+  assert.ok(afterAcceptedAdvancePayload);
+  const lockedAcceptedContract = afterAcceptedAdvancePayload.acceptedContracts.find((contract) =>
+    contract.companyContractId === acceptedContract.companyContractId,
+  );
+  assert.ok(lockedAcceptedContract);
+  assert.equal(lockedAcceptedContract.payoutAmount, acceptedPayoutAmount);
 }
 finally {
   await harness.cleanup();

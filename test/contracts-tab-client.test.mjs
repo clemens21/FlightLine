@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 
 import {
   resolveCompanyContractBadgeState,
+  resolveContractsHoursLeftToneClass,
   resolveContractsWorkspaceTabLabel,
 } from "../dist/ui/public/contracts-tab-client.js";
 
@@ -59,3 +60,7 @@ assert.equal(
 
 assert.equal(resolveContractsWorkspaceTabLabel("board"), "Contract Board");
 assert.equal(resolveContractsWorkspaceTabLabel("planning"), "Route Planning");
+assert.equal(resolveContractsHoursLeftToneClass(15.9, "at_risk"), "contracts-hours-left--at-risk");
+assert.equal(resolveContractsHoursLeftToneClass(16, "at_risk"), "");
+assert.equal(resolveContractsHoursLeftToneClass(8, "stable"), "");
+assert.equal(resolveContractsHoursLeftToneClass(-1, "overdue"), "contracts-hours-left--overdue");

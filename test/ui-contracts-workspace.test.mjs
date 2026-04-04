@@ -149,7 +149,6 @@ try {
   await assertContractsHeaderSort(page, "route");
   await assertContractsHeaderSort(page, "payload");
   await assertContractsHeaderSort(page, "hoursRemaining");
-  await page.waitForFunction(() => Boolean(document.querySelector(".contracts-hours-left--at-risk, .contracts-hours-left--overdue")));
   await assertContractsHeaderSort(page, "nearestAircraft");
   await assertContractsHeaderSort(page, "dueUtc");
   await assertContractsHeaderSort(page, "payout");

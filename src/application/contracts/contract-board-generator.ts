@@ -9,7 +9,7 @@ import type { JsonObject } from "../../domain/common/primitives.js";
 import {
   buildContractUrgencyBand,
   resolveDynamicContractOfferPayoutAmount,
-  resolveContractUrgencyPremiumMultiplier,
+  resolveContractUrgencyPayoutMultiplier,
 } from "../../domain/contracts/urgency.js";
 import type { AirportRecord } from "../../infrastructure/reference/airport-reference.js";
 import type { CompanyContext } from "../queries/company-state.js";
@@ -435,7 +435,7 @@ function resolveDeadlineWindowHoursFromNow(
   deadlineHoursFromNow: number;
   deadlineWindowHours: number;
   urgencyBand: ReturnType<typeof buildContractUrgencyBand>;
-  urgencyPremiumMultiplier: number;
+  urgencyPayoutMultiplier: number;
 } {
   const deadlineProfile =
     archetype === "urgent_special_job"
@@ -473,7 +473,7 @@ function resolveDeadlineWindowHoursFromNow(
     deadlineHoursFromNow,
     deadlineWindowHours: Math.max(1, deadlineHoursFromNow - startOffsetHours),
     urgencyBand,
-    urgencyPremiumMultiplier: resolveContractUrgencyPremiumMultiplier(deadlineHoursFromNow),
+    urgencyPayoutMultiplier: resolveContractUrgencyPayoutMultiplier(deadlineHoursFromNow),
   };
 }
 
@@ -577,7 +577,7 @@ function buildOfferExplanation(
   deadlineHoursFromNow: number,
   deadlineWindowHours: number,
   urgencyBand: ReturnType<typeof buildContractUrgencyBand>,
-  urgencyPremiumMultiplier: number,
+  urgencyPayoutMultiplier: number,
   reasonCode: string | undefined,
   footprintOriginIds: Set<string>,
 ): JsonObject {
@@ -608,8 +608,8 @@ function buildOfferExplanation(
     deadline_hours_from_now: deadlineHoursFromNow,
     deadline_window_hours: deadlineWindowHours,
     urgency_band: urgencyBand,
-    urgency_premium_multiplier: urgencyPremiumMultiplier,
-  };
+    urgency_premium_multiplier: urgencyPayoutMultiplier,
+    };
 }
 
 function buildOffer(
@@ -705,7 +705,7 @@ function buildOffer(
     deadlineWindow.deadlineHoursFromNow,
     deadlineWindow.deadlineWindowHours,
     deadlineWindow.urgencyBand,
-    deadlineWindow.urgencyPremiumMultiplier,
+    deadlineWindow.urgencyPayoutMultiplier,
     fit.reasonCode,
     footprintOriginIds,
   );

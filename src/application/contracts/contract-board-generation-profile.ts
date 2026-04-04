@@ -1,4 +1,4 @@
-export const contractBoardGenerationProfileVersion = "contracts:v5";
+export const contractBoardGenerationProfileVersion = "contracts:v6";
 
 export function buildContractBoardGenerationContextPrefix(): string {
   return `${contractBoardGenerationProfileVersion}:`;

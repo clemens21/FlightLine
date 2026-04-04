@@ -2811,12 +2811,19 @@ function formatHoursLeft(hoursRemaining: number): string {
   return `${formatNumber(Math.max(0, Math.round(hoursRemaining)))}h`;
 }
 
-function renderHoursLeftCell(hoursRemaining: number, urgencyBand: ContractsContractUrgencyBand): string {
-  const toneClass = urgencyBand === "overdue"
-    ? " contracts-hours-left--overdue"
+export function resolveContractsHoursLeftToneClass(
+  hoursRemaining: number,
+  urgencyBand: ContractsContractUrgencyBand,
+): string {
+  return urgencyBand === "overdue"
+    ? "contracts-hours-left--overdue"
     : urgencyBand === "at_risk" && hoursRemaining < 16
-    ? " contracts-hours-left--at-risk"
+    ? "contracts-hours-left--at-risk"
     : "";
+}
+
+function renderHoursLeftCell(hoursRemaining: number, urgencyBand: ContractsContractUrgencyBand): string {
+  const toneClass = resolveContractsHoursLeftToneClass(hoursRemaining, urgencyBand);
   return `<span class="contracts-hours-left${toneClass}">${escapeHtml(formatHoursLeft(hoursRemaining))}</span>`;
 }
 

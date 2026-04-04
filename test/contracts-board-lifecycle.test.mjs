@@ -67,7 +67,7 @@ try {
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));
   assert.ok(uniqueOrigins.size > 1);
-  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v5:/);
+  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v6:/);
   assert.ok(
     firstBoard.contractBoard.offers.some((offer) => uniqueOrigins.has(offer.destinationAirportId)),
     "Expected at least one chained route opportunity in the board.",
@@ -92,12 +92,13 @@ try {
     offer.offerStatus === "available"
     && Number((offer.explanationMetadata?.deadline_hours_from_now ?? 0)) >= 48,
   ).length;
-  const urgencyPremiumOfferCount = firstBoard.contractBoard.offers.filter((offer) =>
+  const discountedLongHorizonOfferCount = firstBoard.contractBoard.offers.filter((offer) =>
     offer.offerStatus === "available"
-    && Number((offer.explanationMetadata?.urgency_premium_multiplier ?? 1)) > 1,
+    && Number((offer.explanationMetadata?.base_payout_amount ?? 0)) > 0
+    && offer.payoutAmount < Number(offer.explanationMetadata?.base_payout_amount),
   ).length;
   assert.ok(extendedDeadlineOfferCount >= 200);
-  assert.ok(urgencyPremiumOfferCount >= 20);
+  assert.ok(discountedLongHorizonOfferCount >= 200);
 
   const firstAvailableOffer = firstBoard.contractBoard.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(firstAvailableOffer);
@@ -107,7 +108,9 @@ try {
     && Number(offer.explanationMetadata?.deadline_hours_from_now ?? 0) >= 60,
   );
   assert.ok(longLivedOffer);
+  assert.ok(longLivedOffer.payoutAmount < Number(longLivedOffer.explanationMetadata?.base_payout_amount ?? 0));
   const firstBoardOfferIds = new Set(firstBoard.contractBoard.offers.map((offer) => offer.contractOfferId));
+  const longLivedInitialPayoutAmount = longLivedOffer.payoutAmount;
 
   const acceptOfferResult = await backend.dispatch({
     commandId: `cmd_${saveId}_accept`,
@@ -157,10 +160,9 @@ try {
   assert.equal(refreshedBoard.refreshed, true);
   assert.equal(refreshedBoard.contractBoard.offerWindowId, firstWindowId);
   assert.ok(refreshedBoard.contractBoard.offers.every((offer) => offer.offerStatus !== "expired"));
-  assert.equal(
-    refreshedBoard.contractBoard.offers.find((offer) => offer.contractOfferId === longLivedOffer.contractOfferId)?.offerStatus,
-    "available",
-  );
+  const refreshedLongLivedOffer = refreshedBoard.contractBoard.offers.find((offer) => offer.contractOfferId === longLivedOffer.contractOfferId);
+  assert.equal(refreshedLongLivedOffer?.offerStatus, "available");
+  assert.ok((refreshedLongLivedOffer?.payoutAmount ?? 0) > longLivedInitialPayoutAmount);
   assert.ok(
     refreshedBoard.contractBoard.offers.some((offer) => !firstBoardOfferIds.has(offer.contractOfferId)),
     "Expected rolling refresh to add new offers without discarding still-live offers.",

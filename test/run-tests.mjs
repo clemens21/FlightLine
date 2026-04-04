@@ -14,6 +14,7 @@ await import("./utc-timestamp-ingress.test.mjs");
 await import("./save-slot-files.test.mjs");
 await import("./contracts-board-lifecycle.test.mjs");
 await import("./route-planner.test.mjs");
+await import("./contracts-urgency.test.mjs");
 
 await import("./aircraft-tab.test.mjs");
 await import("./aircraft-market-lifecycle.test.mjs");

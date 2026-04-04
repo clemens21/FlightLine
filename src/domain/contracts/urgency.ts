@@ -2,6 +2,10 @@ import type { JsonObject } from "../common/primitives.js";
 
 export type ContractUrgencyBand = "stable" | "at_risk" | "overdue";
 
+const contractUrgencyPayoutFloor = 0.88;
+const contractUrgencyPayoutCeiling = 1.35;
+const contractUrgencyPayoutDecayHours = 24;
+
 export function resolveContractRemainingHours(latestCompletionUtc: string, currentTimeUtc: string): number {
   return (new Date(latestCompletionUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000;
 }
@@ -18,20 +22,15 @@ export function buildContractUrgencyBand(hoursRemaining: number): ContractUrgenc
   return "stable";
 }
 
-export function resolveContractUrgencyPremiumMultiplier(hoursRemaining: number): number {
-  if (hoursRemaining <= 24) {
-    return 1.24;
-  }
+export function resolveContractUrgencyPayoutMultiplier(hoursRemaining: number): number {
+  const multiplier =
+    contractUrgencyPayoutFloor
+    + (contractUrgencyPayoutCeiling - contractUrgencyPayoutFloor) * Math.exp(-hoursRemaining / contractUrgencyPayoutDecayHours);
 
-  if (hoursRemaining <= 36) {
-    return 1.18;
-  }
-
-  if (hoursRemaining <= 48) {
-    return 1.12;
-  }
-
-  return 1;
+  return Math.min(
+    contractUrgencyPayoutCeiling,
+    Math.max(contractUrgencyPayoutFloor, multiplier),
+  );
 }
 
 export function resolveContractOfferBasePayoutAmount(
@@ -48,7 +47,7 @@ export function resolveContractOfferBasePayoutAmount(
 }
 
 export function resolveDynamicContractOfferPayoutAmount(basePayoutAmount: number, hoursRemaining: number): number {
-  return Math.max(1, Math.round(basePayoutAmount * resolveContractUrgencyPremiumMultiplier(hoursRemaining)));
+  return Math.max(1, Math.round(basePayoutAmount * resolveContractUrgencyPayoutMultiplier(hoursRemaining)));
 }
 
 export function resolveDynamicContractOfferPayout(
