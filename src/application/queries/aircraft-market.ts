@@ -6,18 +6,8 @@
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
-import { loadActiveCompanyContext } from "./company-state.js";
-
-interface OfferWindowRow extends Record<string, unknown> {
-  offerWindowId: string;
-  companyId: string;
-  generatedAtUtc: string;
-  expiresAtUtc: string;
-  windowSeed: string;
-  generationContextHash: string;
-  refreshReason: string;
-  status: string;
-}
+import { loadActiveCompanyOfferWindow } from "./offer-window-query.js";
+import { nullToUndefined, parseJsonObject } from "./query-json.js";
 
 interface AircraftOfferRow extends Record<string, unknown> {
   aircraftOfferId: string;
@@ -99,46 +89,16 @@ export interface AircraftMarketView {
   offers: AircraftOfferView[];
 }
 
-function parseJsonObject(rawValue: string): JsonObject {
-  return JSON.parse(rawValue) as JsonObject;
-}
-
-function parseTerms(rawValue: string): AircraftOfferTermsView {
-  return JSON.parse(rawValue) as AircraftOfferTermsView;
-}
-
 export function loadActiveAircraftMarket(
   saveDatabase: SqliteFileDatabase,
   saveId: string,
 ): AircraftMarketView | null {
-  const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
+  const offerWindow = loadActiveCompanyOfferWindow(saveDatabase, saveId, "aircraft_market");
 
-  if (!companyContext) {
+  if (!offerWindow) {
     return null;
   }
-
-  const windowRow = saveDatabase.getOne<OfferWindowRow>(
-    `SELECT
-      offer_window_id AS offerWindowId,
-      company_id AS companyId,
-      generated_at_utc AS generatedAtUtc,
-      expires_at_utc AS expiresAtUtc,
-      window_seed AS windowSeed,
-      generation_context_hash AS generationContextHash,
-      refresh_reason AS refreshReason,
-      status AS status
-    FROM offer_window
-    WHERE company_id = $company_id
-      AND window_type = 'aircraft_market'
-      AND status = 'active'
-    ORDER BY generated_at_utc DESC
-    LIMIT 1`,
-    { $company_id: companyContext.companyId },
-  );
-
-  if (!windowRow) {
-    return null;
-  }
+  const { windowRow } = offerWindow;
 
   const offerRows = saveDatabase.all<AircraftOfferRow>(
     `SELECT
@@ -204,15 +164,15 @@ export function loadActiveAircraftMarket(
       maintenanceStateInput: offer.maintenanceStateInput,
       aogFlag: offer.aogFlag === 1,
       askingPurchasePriceAmount: offer.askingPurchasePriceAmount,
-      financeTerms: parseTerms(offer.financeTermsJson),
-      leaseTerms: parseTerms(offer.leaseTermsJson),
+      financeTerms: parseJsonObject<AircraftOfferTermsView>(offer.financeTermsJson),
+      leaseTerms: parseJsonObject<AircraftOfferTermsView>(offer.leaseTermsJson),
       explanationMetadata: parseJsonObject(offer.explanationMetadataJson),
       generatedSeed: offer.generatedSeed,
       offerStatus: offer.offerStatus,
-      listedAtUtc: offer.listedAtUtc ?? undefined,
-      availableUntilUtc: offer.availableUntilUtc ?? undefined,
-      closedAtUtc: offer.closedAtUtc ?? undefined,
-      closeReason: offer.closeReason ?? undefined,
+      listedAtUtc: nullToUndefined(offer.listedAtUtc),
+      availableUntilUtc: nullToUndefined(offer.availableUntilUtc),
+      closedAtUtc: nullToUndefined(offer.closedAtUtc),
+      closeReason: nullToUndefined(offer.closeReason),
     })),
   };
 }

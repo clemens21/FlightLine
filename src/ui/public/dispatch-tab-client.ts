@@ -15,6 +15,17 @@ import {
   type DispatchValidationSnapshotView,
   type DispatchValidationMessageView,
 } from "../dispatch-tab-model.js";
+import {
+  escapeHtml,
+  formatDeadlineCountdown,
+  formatMoney,
+  formatNumber,
+} from "../browser-ui-primitives.js";
+import {
+  renderStaticTableHeaderCell,
+  renderTableDueCell,
+  renderTableRouteCell,
+} from "../browser-table-primitives.js";
 
 export interface DispatchTabController {
   destroy(): void;
@@ -611,7 +622,7 @@ function renderDispatchLegRow(
 }
 
 function renderDispatchStaticHeaderCell(label: string): string {
-  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+  return renderStaticTableHeaderCell(label);
 }
 
 function renderDispatchRouteCell(
@@ -619,22 +630,15 @@ function renderDispatchRouteCell(
   destinationAirport: DispatchAirportView,
   note: string | undefined,
 ): string {
-  return `
-    <div class="contract-route-content">
-      <span class="muted contract-route-detail"><strong>Departure:</strong> ${escapeHtml(originAirport.code)} - ${escapeHtml(originAirport.primaryLabel)}</span>
-      <span class="muted contract-route-detail"><strong>Destination:</strong> ${escapeHtml(destinationAirport.code)} - ${escapeHtml(destinationAirport.primaryLabel)}</span>
-      ${note ? `<span class="muted contract-route-detail">${escapeHtml(note)}</span>` : ""}
-    </div>
-  `;
+  return renderTableRouteCell(
+    { code: originAirport.code, label: originAirport.primaryLabel },
+    { code: destinationAirport.code, label: destinationAirport.primaryLabel },
+    note,
+  );
 }
 
 function renderDispatchDueTableCell(deadlineUtc: string, currentTimeUtc: string): string {
-  return `
-    <div class="contracts-due-cell">
-      <strong>${escapeHtml(formatDate(deadlineUtc))}</strong>
-      <span class="muted">${escapeHtml(formatDeadlineCountdown(deadlineUtc, currentTimeUtc))}</span>
-    </div>
-  `;
+  return renderTableDueCell(deadlineUtc, currentTimeUtc, formatDate);
 }
 
 function renderSelectedAircraftSummary(
@@ -2313,28 +2317,6 @@ function formatHours(value: number): string {
   }).format(Math.abs(value))}h`;
 }
 
-function formatMoney(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function formatDeadlineCountdown(deadlineUtc: string, currentTimeUtc: string): string {
-  const remainingMinutes = Math.max(0, Math.ceil((Date.parse(deadlineUtc) - Date.parse(currentTimeUtc)) / 60_000));
-  const days = Math.floor(remainingMinutes / (24 * 60));
-  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
-  const minutes = remainingMinutes % 60;
-  return `${String(days).padStart(2, "0")}D:${String(hours).padStart(2, "0")}H:${String(minutes).padStart(2, "0")}M`;
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 function formatPercent(value: number): string {
   return `${new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
@@ -2641,13 +2623,4 @@ function describeDraftReplacementImpact(selectedAircraft: DispatchAircraftView |
   }
 
   return `This stages a new draft on ${selectedAircraft.registration}.`;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }

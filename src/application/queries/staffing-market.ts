@@ -10,18 +10,8 @@ import { parseStaffingOfferVisibility } from "../../domain/staffing/offer-visibi
 import type { PilotVisibleProfile, StaffingPricingExplanation } from "../../domain/staffing/types.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
-import { loadActiveCompanyContext } from "./company-state.js";
-
-interface OfferWindowRow extends Record<string, unknown> {
-  offerWindowId: string;
-  companyId: string;
-  generatedAtUtc: string;
-  expiresAtUtc: string;
-  windowSeed: string;
-  generationContextHash: string;
-  refreshReason: string;
-  status: string;
-}
+import { loadActiveCompanyOfferWindow } from "./offer-window-query.js";
+import { nullToUndefined, parseJsonObject } from "./query-json.js";
 
 interface StaffingOfferRow extends Record<string, unknown> {
   staffingOfferId: string;
@@ -95,10 +85,6 @@ export interface StaffingMarketView {
   offers: StaffingOfferView[];
 }
 
-function parseJsonObject(rawValue: string): JsonObject {
-  return JSON.parse(rawValue) as JsonObject;
-}
-
 function compareUtc(leftUtc: string, rightUtc: string): number {
   return new Date(leftUtc).getTime() - new Date(rightUtc).getTime();
 }
@@ -107,34 +93,12 @@ export function loadActiveStaffingMarket(
   saveDatabase: SqliteFileDatabase,
   saveId: string,
 ): StaffingMarketView | null {
-  const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
+  const offerWindow = loadActiveCompanyOfferWindow(saveDatabase, saveId, "staffing_market");
 
-  if (!companyContext) {
+  if (!offerWindow) {
     return null;
   }
-
-  const windowRow = saveDatabase.getOne<OfferWindowRow>(
-    `SELECT
-      offer_window_id AS offerWindowId,
-      company_id AS companyId,
-      generated_at_utc AS generatedAtUtc,
-      expires_at_utc AS expiresAtUtc,
-      window_seed AS windowSeed,
-      generation_context_hash AS generationContextHash,
-      refresh_reason AS refreshReason,
-      status AS status
-    FROM offer_window
-    WHERE company_id = $company_id
-      AND window_type = 'staffing_market'
-      AND status = 'active'
-    ORDER BY generated_at_utc DESC
-    LIMIT 1`,
-    { $company_id: companyContext.companyId },
-  );
-
-  if (!windowRow) {
-    return null;
-  }
+  const { companyContext, windowRow } = offerWindow;
 
   const offerRows = saveDatabase.all<StaffingOfferRow>(
     `SELECT
@@ -189,17 +153,17 @@ export function loadActiveStaffingMarket(
         qualificationGroup: offer.qualificationGroup,
         coverageUnits: offer.coverageUnits,
         fixedCostAmount: offer.fixedCostAmount,
-        variableCostRate: offer.variableCostRate ?? undefined,
-        startsAtUtc: offer.startsAtUtc ?? undefined,
-        endsAtUtc: offer.endsAtUtc ?? undefined,
-        firstName: offer.firstName ?? undefined,
-        lastName: offer.lastName ?? undefined,
-        displayName: offer.displayName ?? undefined,
+        variableCostRate: nullToUndefined(offer.variableCostRate),
+        startsAtUtc: nullToUndefined(offer.startsAtUtc),
+        endsAtUtc: nullToUndefined(offer.endsAtUtc),
+        firstName: nullToUndefined(offer.firstName),
+        lastName: nullToUndefined(offer.lastName),
+        displayName: nullToUndefined(offer.displayName),
         certifications: parsePilotCertificationsJson(offer.certificationsJson, offer.qualificationGroup),
-        homeCity: offer.homeCity ?? undefined,
-        homeRegionCode: offer.homeRegionCode ?? undefined,
-        homeCountryCode: offer.homeCountryCode ?? undefined,
-        currentAirportId: offer.currentAirportId ?? undefined,
+        homeCity: nullToUndefined(offer.homeCity),
+        homeRegionCode: nullToUndefined(offer.homeRegionCode),
+        homeCountryCode: nullToUndefined(offer.homeCountryCode),
+        currentAirportId: nullToUndefined(offer.currentAirportId),
         candidateState:
           offer.startsAtUtc && compareUtc(offer.startsAtUtc, companyContext.currentTimeUtc) > 0
             ? "available_soon"
@@ -210,10 +174,10 @@ export function loadActiveStaffingMarket(
         pricingExplanation: visibility.pricingExplanation,
         generatedSeed: offer.generatedSeed,
         offerStatus: offer.offerStatus,
-        listedAtUtc: offer.listedAtUtc ?? undefined,
-        availableUntilUtc: offer.availableUntilUtc ?? undefined,
-        closedAtUtc: offer.closedAtUtc ?? undefined,
-        closeReason: offer.closeReason ?? undefined,
+        listedAtUtc: nullToUndefined(offer.listedAtUtc),
+        availableUntilUtc: nullToUndefined(offer.availableUntilUtc),
+        closedAtUtc: nullToUndefined(offer.closedAtUtc),
+        closeReason: nullToUndefined(offer.closeReason),
       };
     }),
   };

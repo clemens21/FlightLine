@@ -30,6 +30,17 @@ import {
   restoreNamedControlFocus,
   type NamedControlFocusState,
 } from "../focus-helpers.js";
+import {
+  escapeHtml,
+  formatDeadlineCountdown,
+  formatMoney,
+  formatNumber,
+} from "../browser-ui-primitives.js";
+import {
+  renderStaticTableHeaderCell,
+  renderTableDueCell,
+  renderTableRouteCell,
+} from "../browser-table-primitives.js";
 
 interface FilterState {
   departureSearchText: string;
@@ -2095,12 +2106,10 @@ function renderPlannerCandidateRow(
 }
 
 function renderRouteColumn(origin: ContractsViewAirport, destination: ContractsViewAirport): string {
-  return `
-    <div class="contract-route-content">
-      <span class="muted contract-route-detail"><strong>Departure:</strong> ${escapeHtml(origin.code)} - ${escapeHtml(origin.name)}</span>
-      <span class="muted contract-route-detail"><strong>Destination:</strong> ${escapeHtml(destination.code)} - ${escapeHtml(destination.name)}</span>
-    </div>
-  `;
+  return renderTableRouteCell(
+    { code: origin.code, label: origin.name },
+    { code: destination.code, label: destination.name },
+  );
 }
 
 function renderAircraftCueLine(cue: ContractsViewOffer["nearestRelevantAircraft"] | ContractsViewCompanyContract["nearestRelevantAircraft"]): string {
@@ -2226,12 +2235,7 @@ function renderSelectedOfferPanel(offer: ContractsViewOffer, currentTimeUtc: str
 }
 
 function renderDueCell(deadlineUtc: string, currentTimeUtc: string): string {
-  return `
-    <div class="contracts-due-cell">
-      <strong>${escapeHtml(formatDate(deadlineUtc))}</strong>
-      <span class="muted">${escapeHtml(formatDeadlineCountdown(deadlineUtc, currentTimeUtc))}</span>
-    </div>
-  `;
+  return renderTableDueCell(deadlineUtc, currentTimeUtc, formatDate);
 }
 
 function renderSelectedCompanyContractPanel(
@@ -2452,7 +2456,7 @@ function renderContractsBoardHeaderCell(
 }
 
 function renderContractsStaticHeaderCell(label: string): string {
-  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+  return renderStaticTableHeaderCell(label);
 }
 
 function renderContractsBoardActivePopover(
@@ -2848,14 +2852,6 @@ function formatPayload(entry: Pick<ContractsViewOffer, "volumeType" | "passenger
     : `${formatNumber(entry.passengerCount ?? 0)} pax`;
 }
 
-function formatMoney(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 function formatDate(value: string): string {
   return new Date(value).toLocaleString("en-US", {
     month: "short",
@@ -2863,29 +2859,6 @@ function formatDate(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-function formatDeadlineCountdown(deadlineUtc: string, currentTimeUtc: string): string {
-  const remainingMinutes = Math.max(0, Math.ceil((Date.parse(deadlineUtc) - Date.parse(currentTimeUtc)) / 60_000));
-  const days = Math.floor(remainingMinutes / (24 * 60));
-  const hours = Math.floor((remainingMinutes % (24 * 60)) / 60);
-  const minutes = remainingMinutes % 60;
-  return `${String(days).padStart(2, "0")}D:${String(hours).padStart(2, "0")}H:${String(minutes).padStart(2, "0")}M`;
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function selectDefaultOfferId(payload: ContractsViewPayload): string | null {

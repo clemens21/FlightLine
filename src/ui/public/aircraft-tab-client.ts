@@ -33,6 +33,12 @@ import {
   type AircraftTableSortKey,
 } from "../aircraft-tab-model.js";
 import { focusControlAtEnd } from "../focus-helpers.js";
+import {
+  escapeHtml,
+  formatMoneyOrFallback,
+  formatNumber,
+  renderStaticTableHeaderCell,
+} from "../browser-ui-primitives.js";
 
 export interface AircraftTabController {
   destroy(): void;
@@ -1158,7 +1164,7 @@ function renderFleetHeaderCell(sort: AircraftTableSort, key: AircraftTableSortKe
 }
 
 function renderFleetStaticHeaderCell(label: string): string {
-  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+  return renderStaticTableHeaderCell(label);
 }
 
 function renderMarketSortButton(key: AircraftMarketSortKey, label: string): string {
@@ -1240,7 +1246,7 @@ function renderAircraftMarketHeaderCell(
 }
 
 function renderAircraftMarketStaticHeaderCell(label: string): string {
-  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions" aria-hidden="true"></span></div></th>`;
+  return renderStaticTableHeaderCell(label);
 }
 
 function normalizeAircraftMarketPopoverKey(value: string | undefined): AircraftMarketPopoverKey | null {
@@ -2296,20 +2302,7 @@ function formatDate(value: string): string {
 }
 
 function formatMoney(amount: number): string {
-  if (!Number.isFinite(amount)) {
-    return "-";
-  }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(value);
+  return formatMoneyOrFallback(amount, "-");
 }
 
 function formatPercent(value: number): string {
@@ -2340,13 +2333,4 @@ function storeWorkspace(saveId: string, value: AircraftWorkspaceTab): void {
   } catch {
     // Ignore session storage failures in local desktop mode.
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }

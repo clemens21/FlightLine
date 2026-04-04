@@ -6,18 +6,8 @@
 import type { JsonObject } from "../../domain/common/primitives.js";
 import type { OfferStatus } from "../../domain/offers/types.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
-import { loadActiveCompanyContext } from "./company-state.js";
-
-interface OfferWindowRow extends Record<string, unknown> {
-  offerWindowId: string;
-  companyId: string;
-  generatedAtUtc: string;
-  expiresAtUtc: string;
-  windowSeed: string;
-  generationContextHash: string;
-  refreshReason: string;
-  status: string;
-}
+import { loadActiveCompanyOfferWindow } from "./offer-window-query.js";
+import { nullToUndefined, parseJsonObject } from "./query-json.js";
 
 interface ContractOfferRow extends Record<string, unknown> {
   contractOfferId: string;
@@ -71,42 +61,16 @@ export interface ContractBoardView {
   offers: ContractBoardOfferView[];
 }
 
-function parseJsonObject(rawValue: string): JsonObject {
-  return JSON.parse(rawValue) as JsonObject;
-}
-
 export function loadActiveContractBoard(
   saveDatabase: SqliteFileDatabase,
   saveId: string,
 ): ContractBoardView | null {
-  const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
+  const offerWindow = loadActiveCompanyOfferWindow(saveDatabase, saveId, "contract_board");
 
-  if (!companyContext) {
+  if (!offerWindow) {
     return null;
   }
-
-  const windowRow = saveDatabase.getOne<OfferWindowRow>(
-    `SELECT
-      offer_window_id AS offerWindowId,
-      company_id AS companyId,
-      generated_at_utc AS generatedAtUtc,
-      expires_at_utc AS expiresAtUtc,
-      window_seed AS windowSeed,
-      generation_context_hash AS generationContextHash,
-      refresh_reason AS refreshReason,
-      status AS status
-    FROM offer_window
-    WHERE company_id = $company_id
-      AND window_type = 'contract_board'
-      AND status = 'active'
-    ORDER BY generated_at_utc DESC
-    LIMIT 1`,
-    { $company_id: companyContext.companyId },
-  );
-
-  if (!windowRow) {
-    return null;
-  }
+  const { windowRow } = offerWindow;
 
   const offerRows = saveDatabase.all<ContractOfferRow>(
     `SELECT
@@ -149,8 +113,8 @@ export function loadActiveContractBoard(
       originAirportId: offer.originAirportId,
       destinationAirportId: offer.destinationAirportId,
       volumeType: offer.volumeType,
-      passengerCount: offer.passengerCount ?? undefined,
-      cargoWeightLb: offer.cargoWeightLb ?? undefined,
+      passengerCount: nullToUndefined(offer.passengerCount),
+      cargoWeightLb: nullToUndefined(offer.cargoWeightLb),
       earliestStartUtc: offer.earliestStartUtc,
       latestCompletionUtc: offer.latestCompletionUtc,
       payoutAmount: offer.payoutAmount,

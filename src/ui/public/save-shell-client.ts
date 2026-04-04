@@ -11,6 +11,7 @@ import { mountDispatchTab, type DispatchTabController } from "./dispatch-tab-cli
 import { mountStaffingTab, type StaffingTabController } from "./staffing-tab-client.js";
 import type { ClockPanelPayload, ClockRateMode } from "../clock-calendar-model.js";
 import { warmContractsBoardViewPayload } from "../contracts-board-model.js";
+import { escapeHtml, formatMoney } from "../browser-ui-primitives.js";
 import type {
   NotificationLevel,
   SaveBootstrapPayload,
@@ -1517,14 +1518,6 @@ function rateMultiplier(mode: ClockRateMode): number {
   }
 }
 
-function formatMoney(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -1537,15 +1530,6 @@ function formatDate(value: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 
