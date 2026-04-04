@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.20.1`
+- `0.20.2`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -89,6 +89,7 @@ The denser Contracts route-planning layout that removes outer-page scrolling, ma
 The focused Contracts browser-regression hardening that aligns planner-anchor selection and header-control clicks with the current route-planning workflow advances the release to `0.19.2`.
 The Dispatch table-first workflow rebuild that restores accepted-contract and route-plan source modes, adds dense source and aircraft tables, and simplifies pilot plus dispatch review advances the release to `0.20.0`.
 The shared browser render primitive extraction plus shared market-query offer-window scaffold advance the release to `0.20.1`.
+The shared save-shell table-system style extraction for Contracts, Aircraft, and shared header chrome advances the release to `0.20.2`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
