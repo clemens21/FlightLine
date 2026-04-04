@@ -6,6 +6,10 @@
  */
 
 import type { JsonObject } from "../../domain/common/primitives.js";
+import {
+  buildContractUrgencyBand,
+  resolveContractUrgencyPremiumMultiplier,
+} from "../../domain/contracts/urgency.js";
 import type { AirportRecord } from "../../infrastructure/reference/airport-reference.js";
 import type { CompanyContext } from "../queries/company-state.js";
 
@@ -191,7 +195,7 @@ const ARCHETYPE_PROFILES: ArchetypeProfile[] = [
   },
 ];
 
-const contractBoardGenerationProfileVersion = "contracts:v3";
+const contractBoardGenerationProfileVersion = "contracts:v4";
 
 function stableHash(input: string): number {
   let hash = 2166136261;
@@ -422,6 +426,57 @@ function buildPenaltyModel(payoutAmount: number, archetype: string): JsonObject 
   };
 }
 
+function resolveDeadlineWindowHoursFromNow(
+  archetype: ArchetypeProfile["archetype"],
+  baselineHours: number,
+  startOffsetHours: number,
+  seed: string,
+): {
+  deadlineHoursFromNow: number;
+  deadlineWindowHours: number;
+  urgencyBand: ReturnType<typeof buildContractUrgencyBand>;
+  urgencyPremiumMultiplier: number;
+} {
+  const deadlineProfile =
+    archetype === "urgent_special_job"
+      ? { minimumHoursFromNow: 18, maximumHoursFromNow: 30, deadlineMultiplier: 1.55, bufferHours: 2.5 }
+      : archetype === "premium_passenger_charter"
+      ? { minimumHoursFromNow: 30, maximumHoursFromNow: 48, deadlineMultiplier: 2.15, bufferHours: 5.5 }
+      : archetype === "mainline_passenger_lane"
+      ? { minimumHoursFromNow: 40, maximumHoursFromNow: 68, deadlineMultiplier: 2.85, bufferHours: 7 }
+      : archetype === "longhaul_passenger_service"
+      ? { minimumHoursFromNow: 54, maximumHoursFromNow: 96, deadlineMultiplier: 2.45, bufferHours: 10 }
+      : archetype === "medium_freighter_linehaul"
+      ? { minimumHoursFromNow: 44, maximumHoursFromNow: 78, deadlineMultiplier: 2.75, bufferHours: 8 }
+      : archetype === "heavy_freighter_longhaul"
+      ? { minimumHoursFromNow: 60, maximumHoursFromNow: 108, deadlineMultiplier: 2.4, bufferHours: 12 }
+      : archetype === "remote_utility_cargo"
+      ? { minimumHoursFromNow: 32, maximumHoursFromNow: 56, deadlineMultiplier: 3.1, bufferHours: 4.5 }
+      : archetype === "cargo_feeder_haul"
+      ? { minimumHoursFromNow: 36, maximumHoursFromNow: 60, deadlineMultiplier: 2.85, bufferHours: 6 }
+      : { minimumHoursFromNow: 32, maximumHoursFromNow: 54, deadlineMultiplier: 3.05, bufferHours: 5 };
+  const computedDeadlineWindowHours = Math.ceil(
+    (baselineHours + deadlineProfile.bufferHours) * deadlineProfile.deadlineMultiplier,
+  );
+  const sampledMinimumHoursFromNow = pickInteger(
+    `${seed}|deadline_floor`,
+    deadlineProfile.minimumHoursFromNow,
+    deadlineProfile.maximumHoursFromNow,
+  );
+  const deadlineHoursFromNow = Math.max(
+    startOffsetHours + computedDeadlineWindowHours,
+    sampledMinimumHoursFromNow,
+  );
+  const urgencyBand = buildContractUrgencyBand(deadlineHoursFromNow);
+
+  return {
+    deadlineHoursFromNow,
+    deadlineWindowHours: Math.max(1, deadlineHoursFromNow - startOffsetHours),
+    urgencyBand,
+    urgencyPremiumMultiplier: resolveContractUrgencyPremiumMultiplier(deadlineHoursFromNow),
+  };
+}
+
 function buildPayout(
   archetype: string,
   volumeType: "passenger" | "cargo",
@@ -429,6 +484,7 @@ function buildPayout(
   distanceNm: number,
   destination: AirportRecord,
   seed: string,
+  urgencyPremiumMultiplier: number,
 ): number {
   const airportDifficultyMultiplier = 1 + ((destination.airportSize ?? 3) - 3) * 0.06;
   const localVariation = 0.93 + randomUnit(`${seed}|variation`) * 0.14;
@@ -468,7 +524,7 @@ function buildPayout(
           ? 48
           : 28);
     const rawPayout = baseRate * distanceNm * volumeFactor * airportDifficultyMultiplier;
-    return Math.max(Math.round(rawPayout * localVariation), Math.round(estimatedCost * 1.25));
+    return Math.round(Math.max(rawPayout * localVariation, estimatedCost * 1.25) * urgencyPremiumMultiplier);
   }
 
   const baseRate =
@@ -505,7 +561,7 @@ function buildPayout(
         ? 0.22
         : 0.18);
   const rawPayout = baseRate * distanceNm * volumeFactor * airportDifficultyMultiplier;
-  return Math.max(Math.round(rawPayout * localVariation), Math.round(estimatedCost * 1.22));
+  return Math.round(Math.max(rawPayout * localVariation, estimatedCost * 1.22) * urgencyPremiumMultiplier);
 }
 
 function buildOfferExplanation(
@@ -519,6 +575,10 @@ function buildOfferExplanation(
   distanceNm: number,
   earliestStartUtc: string,
   latestCompletionUtc: string,
+  deadlineHoursFromNow: number,
+  deadlineWindowHours: number,
+  urgencyBand: ReturnType<typeof buildContractUrgencyBand>,
+  urgencyPremiumMultiplier: number,
   reasonCode: string | undefined,
   footprintOriginIds: Set<string>,
 ): JsonObject {
@@ -546,6 +606,10 @@ function buildOfferExplanation(
     stretch_reason_code: fitBucket === "stretch_growth" ? reasonCode : undefined,
     local_departure_window_text: `${earliestStartUtc} ${originAirport.timezone ?? "UTC"}`,
     local_deadline_text: `${latestCompletionUtc} ${destination.timezone ?? "UTC"}`,
+    deadline_hours_from_now: deadlineHoursFromNow,
+    deadline_window_hours: deadlineWindowHours,
+    urgency_band: urgencyBand,
+    urgency_premium_multiplier: urgencyPremiumMultiplier,
   };
 }
 
@@ -605,38 +669,13 @@ function buildOffer(
       ? 460
       : 220;
   const baselineHours = Math.max(1, distanceNm / cruiseSpeed);
-  const deadlineMultiplier =
-    archetypeProfile.archetype === "urgent_special_job"
-      ? 1.35
-      : archetypeProfile.archetype === "premium_passenger_charter"
-      ? 1.75
-      : archetypeProfile.archetype === "mainline_passenger_lane"
-      ? 2.2
-      : archetypeProfile.archetype === "longhaul_passenger_service"
-      ? 2.0
-      : archetypeProfile.archetype === "medium_freighter_linehaul"
-      ? 2.15
-      : archetypeProfile.archetype === "heavy_freighter_longhaul"
-      ? 1.95
-      : archetypeProfile.archetype === "remote_utility_cargo"
-      ? 2.6
-      : archetypeProfile.archetype === "cargo_feeder_haul"
-      ? 2.35
-      : 2.8;
-  const bufferHours =
-    archetypeProfile.archetype === "urgent_special_job"
-      ? 1.5
-      : archetypeProfile.archetype === "longhaul_passenger_service" ||
-          archetypeProfile.archetype === "heavy_freighter_longhaul"
-      ? 6.0
-      : archetypeProfile.archetype === "mainline_passenger_lane" ||
-          archetypeProfile.archetype === "medium_freighter_linehaul"
-      ? 4.5
-      : 3.0;
-  const latestCompletionUtc = addHours(
-    earliestStartUtc,
-    Math.ceil((baselineHours + bufferHours) * deadlineMultiplier),
+  const deadlineWindow = resolveDeadlineWindowHoursFromNow(
+    archetypeProfile.archetype,
+    baselineHours,
+    startOffsetHours,
+    baseSeed,
   );
+  const latestCompletionUtc = addHours(companyContext.currentTimeUtc, deadlineWindow.deadlineHoursFromNow);
   const fit = deriveFitBucket(companyContext, archetypeProfile.likelyRole, originAirport, footprintOriginIds);
   const difficultyBand = deriveDifficultyBand(archetypeProfile.archetype, distanceNm, originAirport, destination);
   const volumeValue = volumeType === "passenger" ? passengerCount ?? 0 : cargoWeightLb ?? 0;
@@ -647,6 +686,7 @@ function buildOffer(
     distanceNm,
     destination,
     baseSeed,
+    deadlineWindow.urgencyPremiumMultiplier,
   );
   const penaltyModel = buildPenaltyModel(payoutAmount, archetypeProfile.archetype);
 
@@ -674,6 +714,10 @@ function buildOffer(
       distanceNm,
       earliestStartUtc,
       latestCompletionUtc,
+      deadlineWindow.deadlineHoursFromNow,
+      deadlineWindow.deadlineWindowHours,
+      deadlineWindow.urgencyBand,
+      deadlineWindow.urgencyPremiumMultiplier,
       fit.reasonCode,
       footprintOriginIds,
     ),

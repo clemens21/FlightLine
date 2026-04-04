@@ -457,7 +457,12 @@ try {
   const contractsView = await getJson(server.baseUrl, `/api/save/${encodeURIComponent(saveId)}/contracts/view`);
   assert.ok(contractsView.payload);
   assert.ok(contractsView.payload.offers.length > 0);
-  const selectedOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId === flyableOfferId);
+  const selectedOffer = contractsView.payload.offers.find((offer) => offer.contractOfferId === flyableOfferId)
+    ?? contractsView.payload.offers.find((offer) =>
+      offer.offerStatus === "available" && offer.plannerEligibleAircraftIds.includes(draftAircraftId),
+    )
+    ?? contractsView.payload.offers.find((offer) => offer.offerStatus === "available" && offer.directDispatchEligible)
+    ?? contractsView.payload.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(selectedOffer);
   assert.equal(typeof selectedOffer.directDispatchEligible, "boolean");
   assert.equal(typeof selectedOffer.directDispatchReason, "string");

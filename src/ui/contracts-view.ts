@@ -7,6 +7,7 @@
 
 import type { JsonObject } from "../domain/common/primitives.js";
 import { aggregateContractPayload, defaultPassengerWeightLb } from "../domain/contracts/payload.js";
+import { buildContractUrgencyBand } from "../domain/contracts/urgency.js";
 import type { FlightLineBackend } from "../application/backend-service.js";
 import { loadCompanyContracts, type CompanyContractsView } from "../application/queries/company-contracts.js";
 import type { CompanyContext } from "../application/queries/company-state.js";
@@ -382,18 +383,6 @@ function buildBestAircraftCue(
   return cues[0] ?? null;
 }
 
-function buildUrgencyBand(hoursRemaining: number): ContractsContractUrgencyBand {
-  if (hoursRemaining <= 0) {
-    return "overdue";
-  }
-
-  if (hoursRemaining <= 24) {
-    return "at_risk";
-  }
-
-  return "stable";
-}
-
 function buildContractWorkState(
   routePlanItemId: string | undefined,
   routePlanItemStatus: ContractsRoutePlanItemStatus | undefined,
@@ -617,6 +606,10 @@ function buildOfferView(
       fleetState,
       aircraftReference,
     );
+    const timeRemainingHours = Math.max(
+      0,
+      (new Date(offer.latestCompletionUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000,
+    );
 
     return {
       contractOfferId: offer.contractOfferId,
@@ -631,10 +624,8 @@ function buildOfferView(
       likelyRole: offer.likelyRole,
       difficultyBand: offer.difficultyBand,
       fitBucket: deriveOfferFitBucket(currentTimeUtc, offer, airportMap, fleetState, staffingState, aircraftReference),
-      timeRemainingHours: Math.max(
-        0,
-        (new Date(offer.latestCompletionUtc).getTime() - new Date(currentTimeUtc).getTime()) / 3_600_000,
-      ),
+      timeRemainingHours,
+      urgencyBand: buildContractUrgencyBand(timeRemainingHours),
       origin: mapAirport(airportMap.get(offer.originAirportId.toUpperCase()) ?? null, offer.originAirportId),
       destination: mapAirport(airportMap.get(offer.destinationAirportId.toUpperCase()) ?? null, offer.destinationAirportId),
       routePlanItemId: plannedItem?.routePlanItemId,
@@ -715,7 +706,7 @@ function buildCompanyContractsView(
         routePlanItemId: plannedItem?.routePlanItemId,
         routePlanItemStatus: plannedItem?.plannerItemStatus,
         hoursRemaining,
-        urgencyBand: buildUrgencyBand(hoursRemaining),
+        urgencyBand: buildContractUrgencyBand(hoursRemaining),
         workState,
         primaryActionKind: buildContractPrimaryActionKind(plannedItem?.routePlanItemId, workState),
         primaryActionLabel: buildContractPrimaryActionLabel(plannedItem?.routePlanItemId, workState),

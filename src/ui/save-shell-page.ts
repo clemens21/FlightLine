@@ -2219,6 +2219,20 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 4px;
       min-width: 0;
     }
+    .contracts-hours-left {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      color: var(--text);
+    }
+    .contracts-hours-left--at-risk {
+      color: color-mix(in srgb, #db8f87 72%, var(--text));
+      font-weight: 600;
+    }
+    .contracts-hours-left--overdue {
+      color: color-mix(in srgb, #d56e63 82%, var(--text));
+      font-weight: 700;
+    }
     .contracts-board-header-popover {
       position: absolute;
       top: var(--contracts-board-popover-top, 0);

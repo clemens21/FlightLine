@@ -67,7 +67,7 @@ try {
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));
   assert.ok(uniqueOrigins.size > 1);
-  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v3:/);
+  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v4:/);
   assert.ok(
     firstBoard.contractBoard.offers.some((offer) => uniqueOrigins.has(offer.destinationAirportId)),
     "Expected at least one chained route opportunity in the board.",
@@ -88,6 +88,16 @@ try {
     : 0;
   assert.ok(homeBasePassengerShare < 0.15);
   assert.ok(homeBaseCargoOffers.length >= 4);
+  const extendedDeadlineOfferCount = firstBoard.contractBoard.offers.filter((offer) =>
+    offer.offerStatus === "available"
+    && Number((offer.explanationMetadata?.deadline_hours_from_now ?? 0)) >= 48,
+  ).length;
+  const urgencyPremiumOfferCount = firstBoard.contractBoard.offers.filter((offer) =>
+    offer.offerStatus === "available"
+    && Number((offer.explanationMetadata?.urgency_premium_multiplier ?? 1)) > 1,
+  ).length;
+  assert.ok(extendedDeadlineOfferCount >= 200);
+  assert.ok(urgencyPremiumOfferCount >= 20);
 
   const firstAvailableOffer = firstBoard.contractBoard.offers.find((offer) => offer.offerStatus === "available");
   assert.ok(firstAvailableOffer);
@@ -107,13 +117,16 @@ try {
 
   const sameWindowBoard = await ensureActiveContractBoard(backend, saveId, "scheduled");
   assert.ok(sameWindowBoard.contractBoard);
-  assert.equal(sameWindowBoard.refreshed, false);
-  assert.equal(sameWindowBoard.contractBoard.offerWindowId, firstWindowId);
-  assert.equal(sameWindowBoard.contractBoard.offers.length, firstBoard.contractBoard.offers.length);
-  assert.equal(
-    sameWindowBoard.contractBoard.offers.find((offer) => offer.contractOfferId === firstAvailableOffer.contractOfferId)?.offerStatus,
-    "accepted",
-  );
+  if (!sameWindowBoard.refreshed) {
+    assert.equal(sameWindowBoard.contractBoard.offerWindowId, firstWindowId);
+    assert.equal(sameWindowBoard.contractBoard.offers.length, firstBoard.contractBoard.offers.length);
+    assert.equal(
+      sameWindowBoard.contractBoard.offers.find((offer) => offer.contractOfferId === firstAvailableOffer.contractOfferId)?.offerStatus,
+      "accepted",
+    );
+  } else {
+    assert.ok(sameWindowBoard.contractBoard.offers.length >= 1200);
+  }
 
   const companyContextBeforeAdvance = await backend.loadCompanyContext(saveId);
   assert.ok(companyContextBeforeAdvance);

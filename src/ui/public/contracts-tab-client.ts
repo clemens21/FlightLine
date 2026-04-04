@@ -1712,7 +1712,7 @@ function renderCompanyContractRow(
       <td>${escapeHtml(formatPayload(contract))}</td>
       <td>${escapeHtml(formatMoney(contract.payoutAmount))}</td>
       <td>${escapeHtml(formatDistance(contractView.distanceNm))}</td>
-      <td>${escapeHtml(formatHoursLeft(contractView.hoursRemaining))}</td>
+      <td>${renderHoursLeftCell(contractView.hoursRemaining, contract.urgencyBand)}</td>
       <td>${renderDueCell(contract.deadlineUtc, currentTimeUtc)}</td>
       <td>${renderAircraftCueCell(contract.nearestRelevantAircraft)}</td>
       <td>${actionsHtml ? `<div class="contract-row-actions">${actionsHtml}</div>` : ``}</td>
@@ -1730,7 +1730,7 @@ function renderOfferRow(offerView: ContractsBoardOfferRowView, isSelected: boole
       <td>${escapeHtml(formatPayload(offer))}</td>
       <td>${escapeHtml(formatMoney(offer.payoutAmount))}</td>
       <td>${escapeHtml(formatDistance(offerView.distanceNm))}</td>
-      <td>${escapeHtml(formatHoursLeft(offerView.hoursRemaining))}</td>
+      <td>${renderHoursLeftCell(offerView.hoursRemaining, offer.urgencyBand)}</td>
       <td>${renderDueCell(offer.latestCompletionUtc, currentTimeUtc)}</td>
       <td>${renderAircraftCueCell(offer.nearestRelevantAircraft)}</td>
     </tr>
@@ -2093,7 +2093,7 @@ function renderPlannerCandidateRow(
       <td>${escapeHtml(formatPayload(candidate.offer))}</td>
       <td>${escapeHtml(formatMoney(candidate.offer.payoutAmount))}</td>
       <td>${escapeHtml(formatDistance(routeDistanceNm(candidate.offer)))}</td>
-      <td>${escapeHtml(formatHoursLeft(candidate.offer.timeRemainingHours))}</td>
+      <td>${renderHoursLeftCell(candidate.offer.timeRemainingHours, candidate.offer.urgencyBand)}</td>
       <td>${renderDueCell(candidate.offer.latestCompletionUtc, currentTimeUtc)}</td>
       <td>
         <div class="planner-table-action-cell">
@@ -2809,6 +2809,15 @@ function formatDistance(distanceNm: number): string {
 
 function formatHoursLeft(hoursRemaining: number): string {
   return `${formatNumber(Math.max(0, Math.round(hoursRemaining)))}h`;
+}
+
+function renderHoursLeftCell(hoursRemaining: number, urgencyBand: ContractsContractUrgencyBand): string {
+  const toneClass = urgencyBand === "overdue"
+    ? " contracts-hours-left--overdue"
+    : urgencyBand === "at_risk"
+    ? " contracts-hours-left--at-risk"
+    : "";
+  return `<span class="contracts-hours-left${toneClass}">${escapeHtml(formatHoursLeft(hoursRemaining))}</span>`;
 }
 
 function renderBadge(value: string): string {

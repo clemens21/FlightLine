@@ -3,6 +3,8 @@
  * Keeping these payload contracts explicit makes the contracts UI easier to evolve without hidden coupling.
  */
 
+import type { ContractUrgencyBand } from "../domain/contracts/urgency.js";
+
 export interface ContractsViewAirport {
   airportId: string;
   code: string;
@@ -16,7 +18,7 @@ export interface ContractsViewAirport {
 
 export type ContractsRoutePlanItemStatus = "candidate_available" | "candidate_stale" | "accepted_ready" | "scheduled" | "closed";
 export type ContractsRoutePlanItemSourceType = "candidate_offer" | "accepted_contract";
-export type ContractsContractUrgencyBand = "stable" | "at_risk" | "overdue";
+export type ContractsContractUrgencyBand = ContractUrgencyBand;
 export type ContractsContractWorkState = "in_route_plan" | "ready_for_dispatch" | "assigned_elsewhere";
 export type ContractsContractPrimaryActionKind = "send_to_route_plan" | "open_route_plan" | "open_dispatch";
 
@@ -55,6 +57,7 @@ export interface ContractsViewOffer {
   difficultyBand: string;
   fitBucket: "flyable_now" | "flyable_with_reposition" | "stretch_growth" | "blocked_now" | undefined;
   timeRemainingHours: number;
+  urgencyBand: ContractsContractUrgencyBand;
   origin: ContractsViewAirport;
   destination: ContractsViewAirport;
   routePlanItemId: string | undefined;

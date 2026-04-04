@@ -171,6 +171,23 @@ export async function seedUiRegressionSave(backend, {
       assert.equal(mutation.success, true);
     }
 
+    await context.saveDatabase.persist();
+  });
+
+  await backend.dispatch({
+    commandId: `cmd_${saveId}_refresh_after_acceptance_seed`,
+    saveId,
+    commandName: "RefreshContractBoard",
+    issuedAtUtc: startedAtUtc,
+    actorType: "player",
+    payload: {
+      refreshReason: "ui_regression_acceptance_alignment",
+    },
+  });
+
+  await backend.withExistingSaveDatabase(saveId, async (context) => {
+    const companyContext = await backend.loadCompanyContext(saveId);
+    assert.ok(companyContext);
     const routePlan = loadRoutePlanState(context.saveDatabase, saveId);
     assert.ok(routePlan?.endpointAirportId);
     const activeOfferWindow = context.saveDatabase.getOne(
@@ -238,7 +255,7 @@ export async function seedUiRegressionSave(backend, {
         $volume_type: "passenger",
         $passenger_count: 5,
         $earliest_start_utc: "2026-03-16T18:45:00.000Z",
-        $latest_completion_utc: "2026-03-16T22:30:00.000Z",
+        $latest_completion_utc: "2026-03-17T06:30:00.000Z",
         $payout_amount: 14_800,
         $penalty_model_json: JSON.stringify({
           lateCompletionPenaltyPercent: 18,
@@ -248,6 +265,10 @@ export async function seedUiRegressionSave(backend, {
         $difficulty_band: "moderate",
         $explanation_metadata_json: JSON.stringify({
           fit_bucket: "flyable_with_reposition",
+          deadline_hours_from_now: 17.5,
+          deadline_window_hours: 11.75,
+          urgency_band: "at_risk",
+          urgency_premium_multiplier: 1.24,
           seed_source: "ui_regression_scenario",
         }),
         $generated_seed: `ui_regression_candidate_${saveId}`,
