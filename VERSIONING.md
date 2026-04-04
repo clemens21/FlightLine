@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.22.2`
+- `0.22.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -94,6 +94,7 @@ The longer contract deadline windows, urgency premium payout tuning, and Contrac
 The rolling Contracts board refresh that preserves still-live offers and the dynamic urgency payout that now updates as deadlines approach advance the release to `0.22.0`.
 The Contracts Hours Left urgency-color threshold follow-up advances the release to `0.22.1`.
 The continuous Contracts urgency-price curve follow-up that discounts long-horizon offers, ramps payout smoothly toward expiry, and keeps accepted payout locked at acceptance advances the release to `0.22.2`.
+The denser Contracts selected-pane layout follow-up that removes the oversized metric-card treatment and avoids inner scrolling advances the release to `0.22.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

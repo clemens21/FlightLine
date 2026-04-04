@@ -2176,43 +2176,77 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       align-self: start;
     }
     .contracts-map-body {
-      padding: 14px;
+      padding: 10px 12px 12px;
       background: linear-gradient(180deg, rgba(13,106,119,.08), transparent 45%);
       display: grid;
       grid-template-rows: auto auto;
-      gap: 10px;
+      gap: 6px;
       overflow: hidden;
     }
     .contracts-selected-panel {
       min-height: 0;
       overflow: hidden;
     }
+    .contracts-selected-panel > .panel-head {
+      padding: 12px 14px 10px;
+    }
+    .contracts-selected-panel > .panel-body {
+      overflow: hidden;
+      padding: 8px 12px 12px;
+    }
     .contracts-selected-body {
       display: grid;
-      gap: 14px;
+      gap: 8px;
+      overflow: hidden;
     }
-    .contracts-selected-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .contracts-selected-card {
+    .contracts-selected-stack {
       display: grid;
       gap: 6px;
-      min-width: 0;
-      padding: 12px 14px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
     }
-    .contracts-selected-card strong {
-      font-size: 15px;
-      line-height: 1.25;
+    .contracts-selected-summary-row {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr);
+      align-items: start;
+      gap: 8px;
+      min-width: 0;
+      padding: 4px 0 6px;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+    }
+    .contracts-selected-summary-label {
+      padding-top: 1px;
+    }
+    .contracts-selected-summary-copy {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .contracts-selected-pair-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding: 2px 0 6px;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+    }
+    .contracts-selected-pair-metric {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .contracts-selected-summary-copy strong,
+    .contracts-selected-pair-metric strong {
+      font-size: 13px;
+      line-height: 1.2;
+      min-width: 0;
+    }
+    .contracts-selected-summary-copy .muted,
+    .contracts-selected-pair-metric .muted {
+      line-height: 1.2;
+      font-size: 11px;
     }
     .contracts-selected-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 6px;
     }
     .contracts-due-cell {
       display: grid;
@@ -2635,10 +2669,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .contracts-map {
       width: 100%;
+      max-width: clamp(220px, 22vh, 320px);
       height: auto;
       min-height: 0;
       aspect-ratio: 1 / 1;
       display: block;
+      justify-self: center;
       border-radius: 18px;
       touch-action: none;
       overflow: hidden;
@@ -4172,7 +4208,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .planner-workbench,
       .planner-setup-grid,
       .planner-summary-grid,
-      .contracts-selected-grid {
+      .contracts-selected-pair-row {
         grid-template-columns: 1fr;
         height: auto;
       }

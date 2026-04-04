@@ -2218,13 +2218,17 @@ function renderSelectedOfferPanel(offer: ContractsViewOffer, currentTimeUtc: str
         </div>
       </div>
       <div class="panel-body contracts-selected-body">
-        <div class="contracts-selected-grid">
-          ${renderSelectedMetric("Route", `${offer.origin.code} -> ${offer.destination.code}`, `${offer.origin.name} | ${offer.destination.name}`)}
-          ${renderSelectedMetric("Payload", formatPayload(offer), `${offer.likelyRole.replaceAll("_", " ")} | ${offer.difficultyBand}`)}
-          ${renderSelectedMetric("Nearest Aircraft", formatSelectedAircraftPrimary(offer.nearestRelevantAircraft), formatSelectedAircraftSecondary(offer.nearestRelevantAircraft))}
-          ${renderSelectedMetric("Distance", formatDistance(routeDistanceNm(offer)), `Origin to destination`)}
-          ${renderSelectedMetric("Due", formatDate(offer.latestCompletionUtc), formatDeadlineCountdown(offer.latestCompletionUtc, currentTimeUtc))}
-          ${renderSelectedMetric("Payout", formatMoney(offer.payoutAmount), offer.directDispatchReason)}
+        <div class="contracts-selected-stack">
+          ${renderSelectedSummaryRow("Route", `${offer.origin.code} -> ${offer.destination.code}`, `${offer.origin.name} | ${offer.destination.name}`)}
+          <div class="contracts-selected-pair-row">
+            ${renderSelectedPairMetric("Payload", formatPayload(offer), `${offer.likelyRole.replaceAll("_", " ")} | ${offer.difficultyBand}`)}
+            ${renderSelectedPairMetric("Payout", formatMoney(offer.payoutAmount), "Dynamic until acceptance")}
+          </div>
+          <div class="contracts-selected-pair-row">
+            ${renderSelectedPairMetric("Distance", formatDistance(routeDistanceNm(offer)), "Direct route")}
+            ${renderSelectedPairMetric("Due", formatDate(offer.latestCompletionUtc), formatDeadlineCountdown(offer.latestCompletionUtc, currentTimeUtc))}
+          </div>
+          ${renderSelectedSummaryRow("Nearest Aircraft", formatSelectedAircraftPrimary(offer.nearestRelevantAircraft), formatSelectedAircraftSecondary(offer.nearestRelevantAircraft))}
         </div>
         <div class="contracts-selected-actions">
           <button type="button" data-accept-selected-offer="${escapeHtml(offer.contractOfferId)}">Accept contract</button>
@@ -2261,13 +2265,17 @@ function renderSelectedCompanyContractPanel(
         </div>
       </div>
       <div class="panel-body contracts-selected-body">
-        <div class="contracts-selected-grid">
-          ${renderSelectedMetric("Route", `${contract.origin.code} -> ${contract.destination.code}`, `${contract.origin.name} | ${contract.destination.name}`)}
-          ${renderSelectedMetric("Payload", formatPayload(contract), contract.primaryActionLabel)}
-          ${renderSelectedMetric("Nearest Aircraft", formatSelectedAircraftPrimary(contract.nearestRelevantAircraft), formatSelectedAircraftSecondary(contract.nearestRelevantAircraft))}
-          ${renderSelectedMetric("Distance", formatDistance(routeDistanceNm(contract)), `Origin to destination`)}
-          ${renderSelectedMetric("Due", formatDate(contract.deadlineUtc), formatDeadlineCountdown(contract.deadlineUtc, currentTimeUtc))}
-          ${renderSelectedMetric("Payout", formatMoney(contract.payoutAmount), `Penalty ${formatMoney(contract.cancellationPenaltyAmount)}`)}
+        <div class="contracts-selected-stack">
+          ${renderSelectedSummaryRow("Route", `${contract.origin.code} -> ${contract.destination.code}`, `${contract.origin.name} | ${contract.destination.name}`)}
+          <div class="contracts-selected-pair-row">
+            ${renderSelectedPairMetric("Payload", formatPayload(contract), contract.primaryActionLabel)}
+            ${renderSelectedPairMetric("Payout", formatMoney(contract.payoutAmount), `Penalty ${formatMoney(contract.cancellationPenaltyAmount)}`)}
+          </div>
+          <div class="contracts-selected-pair-row">
+            ${renderSelectedPairMetric("Distance", formatDistance(routeDistanceNm(contract)), "Direct route")}
+            ${renderSelectedPairMetric("Due", formatDate(contract.deadlineUtc), formatDeadlineCountdown(contract.deadlineUtc, currentTimeUtc))}
+          </div>
+          ${renderSelectedSummaryRow("Nearest Aircraft", formatSelectedAircraftPrimary(contract.nearestRelevantAircraft), formatSelectedAircraftSecondary(contract.nearestRelevantAircraft))}
         </div>
         ${primaryAction || cancelAction ? `<div class="contracts-selected-actions">${primaryAction}${cancelAction}</div>` : ""}
       </div>
@@ -2275,9 +2283,25 @@ function renderSelectedCompanyContractPanel(
   `;
 }
 
-function renderSelectedMetric(label: string, primary: string, secondary: string): string {
+function renderSelectedSummaryRow(
+  label: string,
+  primary: string,
+  secondary: string,
+): string {
   return `
-    <article class="contracts-selected-card">
+    <article class="contracts-selected-summary-row">
+      <span class="eyebrow contracts-selected-summary-label">${escapeHtml(label)}</span>
+      <div class="contracts-selected-summary-copy">
+        <strong>${escapeHtml(primary)}</strong>
+        <span class="muted">${escapeHtml(secondary)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderSelectedPairMetric(label: string, primary: string, secondary: string): string {
+  return `
+    <article class="contracts-selected-pair-metric">
       <span class="eyebrow">${escapeHtml(label)}</span>
       <strong>${escapeHtml(primary)}</strong>
       <span class="muted">${escapeHtml(secondary)}</span>
@@ -2296,7 +2320,7 @@ function formatSelectedAircraftSecondary(
 ): string {
   return cue
     ? `${cue.modelDisplayName} | ${cue.currentAirport.code} | ${formatDistance(cue.distanceNm)}`
-    : "No ready aircraft can cover this route right now.";
+    : "None can cover this route right now.";
 }
 
 function renderPlannerReviewSection(

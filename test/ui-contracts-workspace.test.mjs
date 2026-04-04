@@ -79,7 +79,7 @@ try {
   const port = await allocatePort();
   server = await startUiServer(port);
   browser = await launchBrowser();
-  const page = await browser.newPage();
+  const page = await browser.newPage({ viewport: { width: 2200, height: 1300 } });
   markStep("server started");
 
   await page.goto(`${server.baseUrl}/save/${encodeURIComponent(saveId)}?tab=contracts`, {
@@ -137,7 +137,8 @@ try {
   const mapBounds = await page.locator(".contracts-map-panel .contracts-map").boundingBox();
   assert.ok(mapBounds);
   assert.equal(Math.abs(mapBounds.width - mapBounds.height) <= 1, true);
-  assert.ok(mapBounds.width >= 565);
+  assert.ok(mapBounds.width >= 220);
+  assert.ok(mapBounds.width <= 320);
 
   const firstRouteCellText = (await page.locator(".contracts-board-table tbody tr").first().locator("td").nth(0).textContent()) ?? "";
   assert.equal(firstRouteCellText.includes("Nearest aircraft:"), false);
@@ -317,6 +318,23 @@ try {
   await clickUi(firstAvailableRow);
   await page.waitForFunction(() => document.querySelector("[data-contracts-selected-panel]")?.textContent?.includes("Selected Contract"));
   assert.equal(await page.locator("[data-accept-selected-offer]").count(), 1);
+  const selectedPanelLayout = await page.evaluate(() => {
+    const selectedBody = document.querySelector(".contracts-selected-panel > .panel-body");
+    const summaryRows = document.querySelectorAll(".contracts-selected-summary-row").length;
+    const pairRows = document.querySelectorAll(".contracts-selected-pair-row").length;
+    return selectedBody instanceof HTMLElement
+      ? {
+        scrollHeight: selectedBody.scrollHeight,
+        clientHeight: selectedBody.clientHeight,
+          summaryRows,
+          pairRows,
+        }
+      : null;
+  });
+  assert.ok(selectedPanelLayout);
+  assert.ok(selectedPanelLayout.scrollHeight <= selectedPanelLayout.clientHeight + 2);
+  assert.ok(selectedPanelLayout.summaryRows >= 2);
+  assert.ok(selectedPanelLayout.pairRows >= 2);
   markStep("selected contract");
 
   const secondAvailableRow = page.locator("[data-select-offer-row]").nth(1);
