@@ -26,7 +26,9 @@
     "test:ui:watch:staffing": "npm run build && powershell -ExecutionPolicy Bypass -File scripts/run-ui-tests-headed.ps1 staffing",
     "test:ui:watch:aircraft": "npm run build && powershell -ExecutionPolicy Bypass -File scripts/run-ui-tests-headed.ps1 aircraft",
     "test:ui:edge": "npm run build && powershell -ExecutionPolicy Bypass -File scripts/run-ui-tests-via-edge.ps1 core",
+    "playtest:auto": "npm run build && node scripts/playtest-autoplay.mjs",
     "playtest:watch": "npm run build && powershell -ExecutionPolicy Bypass -File scripts/run-playtest-watch.ps1",
+    "playtest:swarm": "npm run build && powershell -ExecutionPolicy Bypass -File scripts/run-playtest-swarm.ps1",
     "test:all": "npm run test:unit && npm run test:ui"
   },
   "keywords": [],

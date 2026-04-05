@@ -276,6 +276,12 @@ Use the watched-run helper:
 npm run playtest:watch -- --horizon-days <days>
 ```
 
+If the operator requests several concurrent watched sessions, use:
+
+```powershell
+npm run playtest:swarm -- --horizon-days <days> --count <n>
+```
+
 Then use the artifact helpers:
 - `node scripts/playtest-watch.mjs checkpoint ...`
 - `node scripts/playtest-watch.mjs issue ...`

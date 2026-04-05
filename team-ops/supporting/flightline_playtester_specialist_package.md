@@ -96,6 +96,12 @@ Primary entrypoint:
 npm run playtest:watch -- --horizon-days 30
 ```
 
+Concurrent multi-session campaign entrypoint:
+
+```powershell
+npm run playtest:swarm -- --horizon-days 365 --count 6
+```
+
 The runner:
 - opens a headed browser session
 - chooses and records a random difficulty
@@ -107,6 +113,12 @@ The runner:
 The watched-run harness is intentionally thin.
 It starts the visible session and manages artifacts.
 It does not replace player judgment or turn the run into a scripted functional test.
+
+The swarm launcher:
+- starts multiple headed browser playtests in parallel
+- assigns one bounded artifact directory per session plus a shared campaign directory
+- writes a `dashboard.html` file in the campaign directory so a human can monitor the live screenshots from any active session
+- is intended for operator-observed long-horizon campaigns, not unattended bug filing
 
 ## Checkpoint Rules
 

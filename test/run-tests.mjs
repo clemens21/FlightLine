@@ -22,6 +22,8 @@ await import("./acquire-aircraft-invariants.test.mjs");
 
 await import("./save-shell.test.mjs");
 await import("./playtest-watch.test.mjs");
+await import("./playtest-autoplay.test.mjs");
+await import("./playtest-swarm.test.mjs");
 await import("./named-pilot-travel.test.mjs");
 await import("./recurring-obligation-settlement.test.mjs");
 await import("./staffing-market.test.mjs");
