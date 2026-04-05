@@ -22,6 +22,7 @@ Use these supporting files as references when deeper role or workflow detail is 
 - `team-ops/supporting/flightline_starter_operating_bundle.md`: recommended everyday prompt set
 - `team-ops/supporting/flightline_role_prompt_pack.md`: paste-ready prompts and coordination overlays
 - `team-ops/supporting/flightline_codex_automation_setup_sheet.md`: recurring review automation suggestions
+- `team-ops/supporting/flightline_playtester_specialist_package.md`: player-blind watched-run rules for the UI-only playtester specialist package
 - `VERSIONING.md`: app-version cut rules, SemVer policy, and release-line classification
 
 Product capabilities, requests, workstreams, and completed product artifacts now live under `product-work/`.
@@ -155,6 +156,12 @@ These are not standing roles:
 - `Coordinated Delegation`: the Technical Lead decomposes a broad or parallel task into bounded sub-tasks, collects outputs, and synthesizes the result.
 
 `Lead Agent with Sub-Agents` is therefore a coordination pattern, not a permanent seat in the team model.
+
+### Specialist packages
+
+These are also not standing roles:
+
+- `Playtester`: a source-blind, UI-only specialist package used for watched manual-first play sessions that behave like a human player rather than a builder or reviewer
 
 ## Default Routing Rules
 
