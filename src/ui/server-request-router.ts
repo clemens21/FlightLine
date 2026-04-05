@@ -16,6 +16,7 @@ let handleTabApi;
 let handleClockApi;
 let handleClockTickApi;
 let handleClockAdvanceToCalendarAnchorApi;
+let handleClockAdvanceToNextEventApi;
 let handleContractsViewApi;
 let handleAcceptContractApi;
 let handleCancelContractApi;
@@ -76,6 +77,7 @@ export function createServerRequestRouter(deps) {
         handleClockApi,
         handleClockTickApi,
         handleClockAdvanceToCalendarAnchorApi,
+        handleClockAdvanceToNextEventApi,
         handleContractsViewApi,
         handleAcceptContractApi,
         handleCancelContractApi,
@@ -317,6 +319,9 @@ async function handleRequest(request, response) {
                 return;
             case "advance-to-calendar-anchor":
                 await withUiTiming(`clock save=${saveId} action=advance-to-calendar-anchor`, () => handleClockAdvanceToCalendarAnchorApi(response, saveId, form));
+                return;
+            case "advance-to-next-event":
+                await withUiTiming(`clock save=${saveId} action=advance-to-next-event`, () => handleClockAdvanceToNextEventApi(response, saveId, form));
                 return;
             default:
                 sendJson(response, 404, { success: false, error: `Unknown clock action ${clockAction}.` });

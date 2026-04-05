@@ -64,6 +64,13 @@ export interface ClockPanelPayload {
       warningCount: number;
       warningEvents: CalendarAgendaEventView[];
     };
+    nextEvent: {
+      enabled: boolean;
+      label: string;
+      localDate: string | undefined;
+      targetTimeUtc: string | undefined;
+      event: CalendarAgendaEventView | undefined;
+    };
   };
   nextCriticalEvent: CalendarAgendaEventView | undefined;
 }

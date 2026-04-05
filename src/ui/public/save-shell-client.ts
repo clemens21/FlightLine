@@ -569,6 +569,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       : `<div class="clock-agenda-list">${clockPayload.agenda.map((event) => `<article class="clock-agenda-item ${event.severity}"><div class="clock-agenda-head"><strong>${escapeHtml(event.title)}</strong><span class="pill">${escapeHtml(event.localTimeLabel)}</span></div><div class="muted">${escapeHtml(event.subtitle)}</div><div class="eyebrow">${escapeHtml(event.category)} | ${escapeHtml(event.relatedTab)}</div></article>`).join("")}</div>`;
 
     const simTo0600 = clockPayload.quickActions.simTo0600;
+    const nextEvent = clockPayload.quickActions.nextEvent;
     const warningList = simTo0600.warningEvents.length === 0
       ? `<div class="muted">No milestones are currently scheduled before the selected morning on ${escapeHtml(clockPayload.selectedDateLabel)}.</div>`
       : `<div class="clock-warning-list">${simTo0600.warningEvents.slice(0, 4).map((event) => `<article class="clock-warning-item ${event.severity}"><div class="clock-agenda-head"><strong>${escapeHtml(event.title)}</strong><span class="pill">${escapeHtml(event.localTimeLabel)}</span></div><div class="muted">${escapeHtml(event.subtitle)}</div></article>`).join("")}${simTo0600.warningCount > 4 ? `<div class="muted">${escapeHtml(String(simTo0600.warningCount - 4))} more milestone${simTo0600.warningCount - 4 === 1 ? "" : "s"} would also be passed.</div>` : ``}</div>`;
@@ -589,6 +590,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       </section>
       <section class="clock-rate-row">
         ${clockRateModes.map((mode) => `<button type="button" class="clock-rate-button ${clockMode === mode ? "current" : ""}" data-clock-rate-mode="${mode}">${escapeHtml(clockRateLabels[mode])}</button>`).join("")}
+        <button type="button" class="clock-rate-button clock-quick-action" data-clock-next-event="1" ${nextEvent.enabled ? "" : "disabled"} title="${nextEvent.event ? escapeHtml(`${nextEvent.event.localTimeLabel} - ${nextEvent.event.title}`) : "No upcoming events"}">${escapeHtml(nextEvent.label)}</button>
       </section>
       <section class="clock-calendar-grid">
         <div class="clock-calendar-head"><div><div class="eyebrow">Calendar</div><strong>${escapeHtml(clockPayload.monthLabel)}</strong></div><div class="muted">${escapeHtml(clockPayload.selectedDateLabel)}</div></div>
@@ -712,7 +714,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
     }
   }
 
-  async function postClockAction(action: "tick" | "advance-to-calendar-anchor", body: URLSearchParams): Promise<ActionResponse> {
+  async function postClockAction(action: "tick" | "advance-to-calendar-anchor" | "advance-to-next-event", body: URLSearchParams): Promise<ActionResponse> {
     const response = await fetch(`/api/save/${encodeURIComponent(config.saveId)}/clock/${action}`, {
       method: "POST",
       headers: {
@@ -1047,6 +1049,46 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
         } finally {
           clockAnchorButton.disabled = false;
           clockAnchorButton.textContent = originalLabel;
+        }
+      })();
+      return;
+    }
+    const clockNextEventButton = target.closest<HTMLButtonElement>("[data-clock-next-event]");
+    if (clockNextEventButton) {
+      event.preventDefault();
+      const originalLabel = clockNextEventButton.textContent ?? "Skip to next event";
+      clockNextEventButton.disabled = true;
+      clockNextEventButton.textContent = "Skipping...";
+      void (async () => {
+        try {
+          const result = await postClockAction("advance-to-next-event", new URLSearchParams({
+            tab: activeTab,
+            selectedLocalDate: clockPayload?.selectedLocalDate ?? "",
+          }));
+
+          renderShellChrome(result.shell);
+          applyClockPayload(result.clock);
+          if (result.tab) {
+            replaceTabCacheWith(result.tab);
+            activeTab = result.tab.tabId;
+            renderTab(result.tab);
+          } else if (clockPayload && contractsController) {
+            await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
+          }
+
+          showFlash(result.success
+            ? result.message
+              ? { tone: "notice", text: result.message, notificationLevel: result.notificationLevel }
+              : null
+            : { tone: "error", text: result.error ?? "Could not advance to the next event." });
+        } catch (error) {
+          showFlash({
+            tone: "error",
+            text: error instanceof Error ? error.message : "Could not advance to the next event.",
+          });
+        } finally {
+          clockNextEventButton.disabled = false;
+          clockNextEventButton.textContent = originalLabel;
         }
       })();
       return;

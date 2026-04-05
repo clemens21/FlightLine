@@ -245,12 +245,22 @@ try {
   assert.ok(initialClockPanelText?.includes("Payment Due"));
   assert.ok(initialClockPanelText?.includes("Planned Departure"));
   assert.ok(initialClockPanelText?.includes("Maintenance Start"));
+  assert.equal(await page.locator("[data-clock-next-event]").count(), 1);
   const availableClockModes = await page.locator("[data-clock-rate-mode]").evaluateAll((buttons) =>
     buttons.map((button) => button.getAttribute("data-clock-rate-mode")),
   );
   assert.deepEqual(availableClockModes, ["paused", "1x", "10x", "60x", "360x"]);
   assert.equal(await page.locator("[data-clock-day]").count(), 42);
   assert.equal(await page.locator("[data-clock-day].today.selected").count(), 1);
+
+  const beforeNextEventAdvance = await page.locator("[data-clock-label]").textContent();
+  await clickUi(page.locator("[data-clock-next-event]"));
+  await page.waitForFunction((previousLabel) => {
+    const nextLabel = document.querySelector("[data-clock-label]")?.textContent ?? "";
+    return nextLabel !== "" && nextLabel !== previousLabel;
+  }, beforeNextEventAdvance, { timeout: 15_000 });
+  const afterNextEventAdvance = await page.locator("[data-clock-label]").textContent();
+  assert.notEqual(afterNextEventAdvance, beforeNextEventAdvance);
 
   await clickUi(page.locator("[data-clock-day='2026-03-16']"));
   await page.waitForFunction(() => document.querySelector("[data-clock-day-action-close]"));

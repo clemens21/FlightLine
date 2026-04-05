@@ -195,6 +195,52 @@ export function createShellApiHandlers(deps) {
             }, { includeTab });
     }
 
+    async function handleClockAdvanceToNextEventApi(response, saveId, form) {
+        const tab = normalizeShellTab(form.get("tab"));
+        const selectedLocalDate = form.get("selectedLocalDate") ?? undefined;
+        const clockPayload = await buildClockApiPayload(saveId, selectedLocalDate);
+        if (!clockPayload) {
+            await sendClockActionResponse(response, saveId, tab, selectedLocalDate, {
+                success: false,
+                error: "Clock view is not available for this save.",
+            });
+            return;
+        }
+        const nextEvent = clockPayload.quickActions.nextEvent;
+        if (!nextEvent.enabled || !nextEvent.targetTimeUtc) {
+            await sendClockActionResponse(response, saveId, tab, clockPayload.selectedLocalDate, {
+                success: false,
+                error: "There is no upcoming event to skip to right now.",
+            });
+            return;
+        }
+        const result = await backend.dispatch({
+            commandId: commandId("cmd_clock_next_event_api"),
+            saveId,
+            commandName: "AdvanceTime",
+            issuedAtUtc: new Date().toISOString(),
+            actorType: "player",
+            payload: {
+                targetTimeUtc: nextEvent.targetTimeUtc,
+                stopConditions: ["target_time", "critical_alert"],
+            },
+        });
+        const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
+        const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
+        await sendClockActionResponse(response, saveId, tab, nextEvent.localDate ?? clockPayload.selectedLocalDate, result.success
+            ? {
+                success: true,
+                message: stoppedBecause === "target_time"
+                    ? `Advanced to next event: ${nextEvent.event?.title ?? "event"}.`
+                    : `Stopped before the next event because ${stoppedBecause.replaceAll("_", " ")}.`,
+                notificationLevel: stoppedBecause === "target_time" ? "routine" : "important",
+            }
+            : {
+                success: false,
+                error: result.hardBlockers[0] ?? "Could not advance to the next event.",
+            }, { includeTab });
+    }
+
     return {
         buildBootstrapApiPayload,
         buildTabApiPayload,
@@ -206,5 +252,6 @@ export function createShellApiHandlers(deps) {
         handleClockApi,
         handleClockTickApi,
         handleClockAdvanceToCalendarAnchorApi,
+        handleClockAdvanceToNextEventApi,
     };
 }

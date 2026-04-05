@@ -58,6 +58,8 @@ export async function loadClockPanelPayload(
     const rangeStartLocalDate = gridDates[0] ?? monthAnchorDate;
     const rangeEndLocalDate = gridDates[gridDates.length - 1] ?? monthAnchorDate;
 
+    const nextEventSearchEndLocalDate = addDaysToLocalDate(currentLocalDate, 365);
+
     const events = loadCalendarEvents(
       context.saveDatabase,
       saveId,
@@ -67,6 +69,16 @@ export async function loadClockPanelPayload(
       airportReference,
       rangeStartLocalDate,
       rangeEndLocalDate,
+    );
+    const upcomingEvents = loadCalendarEvents(
+      context.saveDatabase,
+      saveId,
+      companyContext.companyId,
+      currentTimeUtc,
+      timeZone,
+      airportReference,
+      currentLocalDate,
+      nextEventSearchEndLocalDate,
     );
 
     const eventsByLocalDate = new Map<string, CalendarAgendaEventView[]>();
@@ -84,6 +96,10 @@ export async function loadClockPanelPayload(
     const agenda = [...(eventsByLocalDate.get(normalizedSelectedDate) ?? [])].sort((left, right) => Date.parse(left.startsAtUtc) - Date.parse(right.startsAtUtc));
     const nextCriticalEvent = events
       .filter((event) => event.severity === "critical" && Date.parse(event.startsAtUtc) >= Date.parse(currentTimeUtc))
+      .sort((left, right) => Date.parse(left.startsAtUtc) - Date.parse(right.startsAtUtc))[0];
+    const nextUpcomingEvent = upcomingEvents
+      .filter((event) => !["completed", "cancelled", "missed"].includes(event.status))
+      .filter((event) => Date.parse(event.startsAtUtc) > Date.parse(currentTimeUtc))
       .sort((left, right) => Date.parse(left.startsAtUtc) - Date.parse(right.startsAtUtc))[0];
 
     const days = gridDates.map((localDate) => buildCalendarDayView(
@@ -121,6 +137,13 @@ export async function loadClockPanelPayload(
           label: "Sim to selected morning",
           warningCount: simTo0600WarningEvents.length,
           warningEvents: simTo0600WarningEvents,
+        },
+        nextEvent: {
+          enabled: Boolean(nextUpcomingEvent),
+          label: "Skip to next event",
+          localDate: nextUpcomingEvent?.localDate,
+          targetTimeUtc: nextUpcomingEvent?.startsAtUtc,
+          event: nextUpcomingEvent,
         },
       },
       nextCriticalEvent,
@@ -214,6 +237,7 @@ function loadCalendarEvents(
 ): CalendarAgendaEventView[] {
   const events: CalendarEventAccumulator[] = [];
   const companyContracts = loadCompanyContracts(saveDatabase, saveId)?.contracts ?? [];
+  const companyContractsById = new Map(companyContracts.map((contract) => [contract.companyContractId, contract]));
   const schedules = loadAircraftSchedules(saveDatabase, saveId);
   const maintenanceTasks = loadMaintenanceTasks(saveDatabase, saveId);
   const recurringObligations = loadRecurringObligations(saveDatabase, companyId);
@@ -256,7 +280,7 @@ function loadCalendarEvents(
       localDate,
       localTimeLabel: formatAgendaTimeLabel(contract.deadlineUtc, timeZone),
       title: "Contract Due",
-      subtitle: `${routeLabel} � ${formatPayloadSummary(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)}`,
+      subtitle: `${routeLabel} | ${formatPayloadSummary(contract.volumeType, contract.passengerCount, contract.cargoWeightLb)}`,
       relatedTab: "contracts",
       status: deriveEventStatus(contract.deadlineUtc, currentTimeUtc, contract.contractState),
     });
@@ -267,6 +291,10 @@ function loadCalendarEvents(
       const origin = airportsByKey.get(leg.originAirportId.toUpperCase());
       const destination = airportsByKey.get(leg.destinationAirportId.toUpperCase());
       const routeLabel = `${origin?.identCode ?? leg.originAirportId} -> ${destination?.identCode ?? leg.destinationAirportId}`;
+      const linkedContracts = leg.linkedCompanyContractIds
+        .map((companyContractId) => companyContractsById.get(companyContractId))
+        .filter((contract): contract is NonNullable<typeof contract> => Boolean(contract));
+      const legSubtitle = buildLegSubtitle(routeLabel, leg.legType, linkedContracts);
       const departureLocalDate = getLocalDateString(leg.plannedDepartureUtc, timeZone);
       if (isLocalDateInRange(departureLocalDate, rangeStartLocalDate, rangeEndLocalDate)) {
         events.push({
@@ -280,7 +308,7 @@ function loadCalendarEvents(
           localDate: departureLocalDate,
           localTimeLabel: formatAgendaTimeLabel(leg.plannedDepartureUtc, timeZone),
           title: "Planned Departure",
-          subtitle: `${routeLabel} � ${leg.legType.replaceAll("_", " ")}`,
+          subtitle: legSubtitle,
           relatedTab: "dispatch",
           status: deriveLegEventStatus(leg.legState, leg.plannedDepartureUtc, currentTimeUtc),
         });
@@ -299,7 +327,7 @@ function loadCalendarEvents(
           localDate: arrivalLocalDate,
           localTimeLabel: formatAgendaTimeLabel(leg.plannedArrivalUtc, timeZone),
           title: "Planned Arrival",
-          subtitle: `${routeLabel} � ${leg.legType.replaceAll("_", " ")}`,
+          subtitle: legSubtitle,
           relatedTab: "dispatch",
           status: deriveLegEventStatus(leg.legState, leg.plannedArrivalUtc, currentTimeUtc),
         });
@@ -321,7 +349,7 @@ function loadCalendarEvents(
         localDate: startLocalDate,
         localTimeLabel: formatAgendaTimeLabel(task.plannedStartUtc, timeZone),
         title: "Maintenance Start",
-        subtitle: `${task.registration} � ${task.maintenanceType.replaceAll("_", " ")}`,
+        subtitle: `${task.registration} | ${task.maintenanceType.replaceAll("_", " ")}`,
         relatedTab: "aircraft",
         status: deriveTaskStatus(task.taskState, task.plannedStartUtc, currentTimeUtc),
       });
@@ -340,7 +368,7 @@ function loadCalendarEvents(
         localDate: endLocalDate,
         localTimeLabel: formatAgendaTimeLabel(task.plannedEndUtc, timeZone),
         title: "Maintenance Complete",
-        subtitle: `${task.registration} � ${task.maintenanceType.replaceAll("_", " ")}`,
+        subtitle: `${task.registration} | ${task.maintenanceType.replaceAll("_", " ")}`,
         relatedTab: "aircraft",
         status: deriveTaskStatus(task.taskState, task.plannedEndUtc, currentTimeUtc),
       });
@@ -364,7 +392,7 @@ function loadCalendarEvents(
       localDate,
       localTimeLabel: formatAgendaTimeLabel(obligation.nextDueAtUtc, timeZone),
       title: "Payment Due",
-      subtitle: `${obligation.obligationType.replaceAll("_", " ")} � ${formatMoney(obligation.amount)}`,
+      subtitle: `${obligation.obligationType.replaceAll("_", " ")} | ${formatMoney(obligation.amount)}`,
       relatedTab: "activity",
       status: Date.parse(obligation.nextDueAtUtc) < Date.parse(currentTimeUtc) ? "missed" : "upcoming",
     });
@@ -449,6 +477,38 @@ function formatPayloadSummary(volumeType: "passenger" | "cargo", passengerCount:
   return volumeType === "cargo"
     ? `${formatNumber(cargoWeightLb ?? 0)} lb cargo`
     : `${formatNumber(passengerCount ?? 0)} pax`;
+}
+
+function buildLegSubtitle(
+  routeLabel: string,
+  legType: string,
+  linkedContracts: ReadonlyArray<{
+    volumeType: "passenger" | "cargo";
+    passengerCount: number | undefined;
+    cargoWeightLb: number | undefined;
+  }>,
+): string {
+  if (linkedContracts.length === 0) {
+    return `${routeLabel} | ${legType.replaceAll("_", " ")}`;
+  }
+
+  const passengerCount = linkedContracts.reduce((total, contract) => total + (contract.passengerCount ?? 0), 0);
+  const cargoWeightLb = linkedContracts.reduce((total, contract) => total + (contract.cargoWeightLb ?? 0), 0);
+  const payloadParts: string[] = [];
+
+  if (passengerCount > 0) {
+    payloadParts.push(`${formatNumber(passengerCount)} pax`);
+  }
+
+  if (cargoWeightLb > 0) {
+    payloadParts.push(`${formatNumber(cargoWeightLb)} lb cargo`);
+  }
+
+  const contractSummary = linkedContracts.length === 1
+    ? "1 scheduled contract"
+    : `${formatNumber(linkedContracts.length)} scheduled contracts`;
+
+  return `${routeLabel} | ${contractSummary}${payloadParts.length > 0 ? ` | ${payloadParts.join(" + ")}` : ""}`;
 }
 
 // Date helpers below avoid a larger timezone library while still honoring the company's home-base zone.

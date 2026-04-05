@@ -476,6 +476,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       flex-wrap: wrap;
       gap: 8px;
     }
+    .clock-quick-action {
+      margin-left: auto;
+      font-weight: 700;
+    }
     .clock-rate-button,
     body[data-theme="dark"] .clock-rate-button {
       appearance: none;

@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.22.6`
+- `0.23.0`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -98,6 +98,7 @@ The denser Contracts selected-pane layout follow-up that removes the oversized m
 The Contracts selected-pane route-header and whole-pane accept affordance follow-up advances the release to `0.22.4`.
 The Contracts map-card full-bleed map and icon refocus-control follow-up advances the release to `0.22.5`.
 The clock-rate control follow-up that removes `4x`, adds `360x`, and widens the shell rate badge advances the release to `0.22.6`.
+The clock agenda scheduled-contract visibility fix and the shell-level `skip to next event` time-advance control advance the release to `0.23.0`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

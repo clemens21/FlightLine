@@ -1038,6 +1038,7 @@ const {
     handleClockApi,
     handleClockTickApi,
     handleClockAdvanceToCalendarAnchorApi,
+    handleClockAdvanceToNextEventApi,
 } = createShellApiHandlers({
     backend,
     saveShellRenderers,
@@ -1383,6 +1384,7 @@ const { handleRequest } = createServerRequestRouter({
     handleClockApi,
     handleClockTickApi,
     handleClockAdvanceToCalendarAnchorApi,
+    handleClockAdvanceToNextEventApi,
     handleContractsViewApi,
     handleAcceptContractApi,
     handleCancelContractApi,

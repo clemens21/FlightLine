@@ -10,6 +10,7 @@ import {
   activateStaffingPackage,
   createCompanySave,
   createTestHarness,
+  estimateFlightMinutes,
   pickFlyableOffer,
   refreshContractBoard,
   saveAndCommitSchedule,
@@ -58,6 +59,85 @@ try {
   assert.equal(acceptResult.success, true);
   const companyContractId = String(acceptResult.metadata?.companyContractId ?? "");
   assert.ok(companyContractId);
+  const secondCompanyContractId = `contract_${saveId}_extra`;
+  const plannedDepartureUtc = "2026-03-16T15:00:00.000Z";
+  const plannedArrivalUtc = new Date(
+    Date.parse(plannedDepartureUtc) + estimateFlightMinutes(backend.getAirportReference(), "KDEN", "KCOS") * 60_000,
+  ).toISOString();
+
+  await backend.withExistingSaveDatabase(saveId, async (context) => {
+    const companyContext = await backend.loadCompanyContext(saveId);
+    assert.ok(companyContext);
+
+    context.saveDatabase.run(
+      `UPDATE company_contract
+       SET origin_airport_id = 'KDEN',
+           destination_airport_id = 'KCOS',
+           volume_type = 'passenger',
+           passenger_count = 4,
+           cargo_weight_lb = NULL,
+           earliest_start_utc = $earliest_start_utc,
+           deadline_utc = $deadline_utc
+       WHERE company_contract_id = $company_contract_id`,
+      {
+        $earliest_start_utc: "2026-03-16T14:00:00.000Z",
+        $deadline_utc: "2026-03-16T18:30:00.000Z",
+        $company_contract_id: companyContractId,
+      },
+    );
+
+    context.saveDatabase.run(
+      `INSERT INTO company_contract (
+        company_contract_id,
+        company_id,
+        origin_contract_offer_id,
+        archetype,
+        origin_airport_id,
+        destination_airport_id,
+        volume_type,
+        passenger_count,
+        cargo_weight_lb,
+        accepted_payout_amount,
+        penalty_model_json,
+        accepted_at_utc,
+        earliest_start_utc,
+        deadline_utc,
+        contract_state,
+        assigned_aircraft_id
+      ) VALUES (
+        $company_contract_id,
+        $company_id,
+        NULL,
+        'charter',
+        'KDEN',
+        'KCOS',
+        'cargo',
+        NULL,
+        400,
+        54000,
+        $penalty_model_json,
+        $accepted_at_utc,
+        $earliest_start_utc,
+        $deadline_utc,
+        'accepted',
+        NULL
+      )`,
+      {
+        $company_contract_id: secondCompanyContractId,
+        $company_id: companyContext.companyId,
+        $penalty_model_json: JSON.stringify({
+          cancellationPenaltyAmount: 7560,
+          failurePenaltyAmount: 11880,
+          lateCompletionPenaltyPercent: 25,
+        }),
+        $accepted_at_utc: startedAtUtc,
+        $earliest_start_utc: "2026-03-16T14:00:00.000Z",
+        $deadline_utc: "2026-03-16T18:30:00.000Z",
+      },
+    );
+
+    await context.saveDatabase.persist();
+  });
 
   await saveAndCommitSchedule(
     backend,
@@ -66,11 +146,12 @@ try {
     fleetState.aircraft[0].aircraftId,
     [
       {
-        legType: "reposition",
+        legType: "contract_flight",
         originAirportId: "KDEN",
         destinationAirportId: "KCOS",
-        plannedDepartureUtc: "2026-03-16T15:00:00.000Z",
-        plannedArrivalUtc: "2026-03-16T16:10:00.000Z",
+        plannedDepartureUtc,
+        plannedArrivalUtc,
+        linkedCompanyContractIds: [companyContractId, secondCompanyContractId],
       },
     ],
   );
@@ -203,6 +284,13 @@ try {
   assert.equal(payload.agenda.some((event) => event.category === "maintenance"), true);
   assert.equal(payload.agenda.some((event) => event.category === "finance"), true);
   assert.equal(payload.nextCriticalEvent?.title, "Contract Due");
+  assert.equal(payload.quickActions.nextEvent.enabled, true);
+  assert.equal(payload.quickActions.nextEvent.event?.title, "Planned Departure");
+  assert.match(payload.quickActions.nextEvent.event?.subtitle ?? "", /2 scheduled contracts/i);
+  const plannedDepartureEvent = payload.agenda.find((event) => event.title === "Planned Departure");
+  assert.match(plannedDepartureEvent?.subtitle ?? "", /2 scheduled contracts/i);
+  assert.match(plannedDepartureEvent?.subtitle ?? "", /4 pax/i);
+  assert.match(plannedDepartureEvent?.subtitle ?? "", /400 lb cargo/i);
 
   const tomorrowLocalDate = new Date(`${payload.currentLocalDate}T00:00:00Z`);
   tomorrowLocalDate.setUTCDate(tomorrowLocalDate.getUTCDate() + 1);
