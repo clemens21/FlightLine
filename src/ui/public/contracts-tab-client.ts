@@ -1283,9 +1283,6 @@ export function mountContractsTab(
     const routePlanCount = state.payload.routePlan?.items.length ?? 0;
     const selectedPlannerAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
     const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedPlannerAcceptedContract);
-    const selectedLabel = selectedRoute
-      ? `${selectedRoute.route.origin.code} -> ${selectedRoute.route.destination.code}`
-      : "Select a row to focus the route map.";
     const toolbarHeadline = state.workspaceTab === "planning"
       ? renderPlannerHeadline(state, plannerCandidates.length)
       : state.boardTab === "active" && state.boardScope === "my_contracts"
@@ -1331,16 +1328,11 @@ export function mountContractsTab(
         </section>
         <div class="contracts-side-column">
           <section class="panel contracts-map-panel">
-            <div class="panel-head">
-              <div>
-                <h3>Route Map</h3>
-                <span class="muted">${escapeHtml(selectedLabel)}</span>
-              </div>
-              <button type="button" class="button-secondary" data-map-reset>Refocus</button>
-            </div>
-            <div class="panel-body contracts-map-body">
+            <div class="contracts-map-surface">
+              <button type="button" class="contracts-map-reset-button" data-map-reset aria-label="Refocus route map" title="Refocus route map">
+                ${renderContractsMapResetIcon()}
+              </button>
               <svg class="contracts-map" data-contracts-map viewBox="0 0 600 600" role="img" aria-label="Selected contract route map"></svg>
-              <div class="map-attribution">Base map data from OpenStreetMap contributors. Aviation chart overlays can come later.</div>
             </div>
           </section>
           ${renderSelectedRoutePanel(selectedRoute, state)}
@@ -2469,6 +2461,10 @@ function renderContractsHeaderIcon(kind: "search" | "filter"): string {
   }
 
   return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 6.56l-5.2 5.58v6.11a1.5 1.5 0 0 1-2.44 1.17l-2.4-1.95a1.5 1.5 0 0 1-.56-1.17v-4.16L4.34 6.56A1.5 1.5 0 0 1 4 5.5Z"/></svg>`;
+}
+
+function renderContractsMapResetIcon(): string {
+  return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M11 3h2v3.05a6.95 6.95 0 0 1 4.95 4.95H21v2h-3.05A6.95 6.95 0 0 1 13 17.95V21h-2v-3.05A6.95 6.95 0 0 1 6.05 13H3v-2h3.05A6.95 6.95 0 0 1 11 6.05V3Zm1 5a5 5 0 1 0 0 10a5 5 0 0 0 0-10Zm0 2.2a2.8 2.8 0 1 1 0 5.6a2.8 2.8 0 0 1 0-5.6Z"/></svg>`;
 }
 
 function renderContractsBoardIconButton(

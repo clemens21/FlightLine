@@ -2174,14 +2174,49 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       top: 0;
       z-index: 1;
       align-self: start;
-    }
-    .contracts-map-body {
-      padding: 10px 12px 12px;
-      background: linear-gradient(180deg, rgba(13,106,119,.08), transparent 45%);
-      display: grid;
-      grid-template-rows: auto auto;
-      gap: 6px;
       overflow: hidden;
+    }
+    .contracts-map-surface {
+      position: relative;
+      display: grid;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(13,106,119,.08), transparent 45%);
+      aspect-ratio: 1 / 1;
+      min-height: 0;
+    }
+    .contracts-map-reset-button {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 2;
+      width: 36px;
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+      background: color-mix(in srgb, var(--panel) 84%, rgba(9, 20, 28, 0.75));
+      color: var(--text);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+      transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
+    }
+    .contracts-map-reset-button:hover {
+      border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+      background: color-mix(in srgb, var(--panel) 70%, var(--accent) 30%);
+      color: color-mix(in srgb, white 90%, var(--accent) 10%);
+    }
+    .contracts-map-reset-button:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--accent) 72%, white 28%);
+      outline-offset: 2px;
+    }
+    .contracts-map-reset-button:active {
+      transform: translateY(1px);
+    }
+    .contracts-map-reset-button svg {
+      width: 17px;
+      height: 17px;
+      fill: currentColor;
     }
     .contracts-selected-panel {
       min-height: 0;
@@ -2699,13 +2734,11 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .contracts-map {
       width: 100%;
-      max-width: clamp(220px, 22vh, 320px);
-      height: auto;
+      max-width: none;
+      height: 100%;
       min-height: 0;
-      aspect-ratio: 1 / 1;
+      aspect-ratio: auto;
       display: block;
-      justify-self: center;
-      border-radius: 18px;
       touch-action: none;
       overflow: hidden;
     }

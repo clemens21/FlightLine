@@ -134,11 +134,43 @@ try {
   assert.equal(routeHeaderStyle.textTransform, "none");
   assert.equal(routeHeaderStyle.fontSize, "13px");
 
-  const mapBounds = await page.locator(".contracts-map-panel .contracts-map").boundingBox();
-  assert.ok(mapBounds);
-  assert.equal(Math.abs(mapBounds.width - mapBounds.height) <= 1, true);
-  assert.ok(mapBounds.width >= 220);
-  assert.ok(mapBounds.width <= 320);
+  const mapPanelLayout = await page.evaluate(() => {
+    const panel = document.querySelector(".contracts-map-panel");
+    const map = panel?.querySelector(".contracts-map");
+    const resetButton = panel?.querySelector("[data-map-reset]");
+    if (!(panel instanceof HTMLElement) || !(map instanceof SVGElement) || !(resetButton instanceof HTMLButtonElement)) {
+      return null;
+    }
+
+    const panelBounds = panel.getBoundingClientRect();
+    const mapBounds = map.getBoundingClientRect();
+    const resetBounds = resetButton.getBoundingClientRect();
+    return {
+      panelWidth: Math.round(panelBounds.width),
+      panelHeight: Math.round(panelBounds.height),
+      mapWidth: Math.round(mapBounds.width),
+      mapHeight: Math.round(mapBounds.height),
+      resetTopOffset: Math.round(resetBounds.top - panelBounds.top),
+      resetRightOffset: Math.round(panelBounds.right - resetBounds.right),
+      hasHeader: panel.querySelector("h3") instanceof HTMLElement,
+      hasAttribution: panel.querySelector(".map-attribution") instanceof HTMLElement,
+      hasResetIcon: resetButton.querySelector("svg") instanceof SVGElement,
+      resetText: (resetButton.textContent ?? "").trim(),
+    };
+  });
+  assert.ok(mapPanelLayout);
+  assert.equal(Math.abs(mapPanelLayout.mapWidth - mapPanelLayout.mapHeight) <= 1, true);
+  assert.ok(mapPanelLayout.mapWidth >= 360);
+  assert.ok(mapPanelLayout.mapWidth >= mapPanelLayout.panelWidth - 4);
+  assert.ok(mapPanelLayout.mapHeight >= mapPanelLayout.panelHeight - 4);
+  assert.equal(mapPanelLayout.hasHeader, false);
+  assert.equal(mapPanelLayout.hasAttribution, false);
+  assert.equal(mapPanelLayout.hasResetIcon, true);
+  assert.equal(mapPanelLayout.resetText, "");
+  assert.ok(mapPanelLayout.resetTopOffset >= 8);
+  assert.ok(mapPanelLayout.resetTopOffset <= 20);
+  assert.ok(mapPanelLayout.resetRightOffset >= 8);
+  assert.ok(mapPanelLayout.resetRightOffset <= 20);
 
   const firstRouteCellText = (await page.locator(".contracts-board-table tbody tr").first().locator("td").nth(0).textContent()) ?? "";
   assert.equal(firstRouteCellText.includes("Nearest aircraft:"), false);

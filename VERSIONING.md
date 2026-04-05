@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.22.4`
+- `0.22.5`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -96,6 +96,7 @@ The Contracts Hours Left urgency-color threshold follow-up advances the release 
 The continuous Contracts urgency-price curve follow-up that discounts long-horizon offers, ramps payout smoothly toward expiry, and keeps accepted payout locked at acceptance advances the release to `0.22.2`.
 The denser Contracts selected-pane layout follow-up that removes the oversized metric-card treatment and avoids inner scrolling advances the release to `0.22.3`.
 The Contracts selected-pane route-header and whole-pane accept affordance follow-up advances the release to `0.22.4`.
+The Contracts map-card full-bleed map and icon refocus-control follow-up advances the release to `0.22.5`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules
