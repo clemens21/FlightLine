@@ -82,13 +82,13 @@ interface FlashMessage {
 
 // Module bootstrap is intentionally thin: parse inline config and hand control to the mounted controller.
 const appRoot = document.querySelector<HTMLElement>("[data-save-shell-app]");
-const clockRateModes: ClockRateMode[] = ["paused", "1x", "4x", "10x", "60x"];
+const clockRateModes: ClockRateMode[] = ["paused", "1x", "10x", "60x", "360x"];
 const clockRateLabels: Record<ClockRateMode, string> = {
   paused: "Pause",
   "1x": "1x",
-  "4x": "4x",
   "10x": "10x",
   "60x": "60x",
+  "360x": "360x",
 };
 const themeLabels: Record<ThemeName, string> = {
   light: "Light",
@@ -1509,12 +1509,12 @@ function rateMultiplier(mode: ClockRateMode): number {
       return 0;
     case "1x":
       return 1;
-    case "4x":
-      return 4;
     case "10x":
       return 10;
     case "60x":
       return 60;
+    case "360x":
+      return 360;
   }
 }
 

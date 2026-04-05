@@ -383,7 +383,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 42px;
+      min-width: 52px;
       padding: 7px 10px;
       border-radius: 999px;
       background: var(--accent-soft);
