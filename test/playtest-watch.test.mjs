@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import {
   chooseRandomPlaytestDifficulty,
   createPlaytestArtifactRecorder,
+  defaultPlaytestStrategy,
   parsePlaytestWatchArgs,
 } from "../scripts/playtest-watch.mjs";
 
@@ -15,6 +16,7 @@ assert.equal(chooseRandomPlaytestDifficulty(0), "easy");
 assert.equal(chooseRandomPlaytestDifficulty(1), "medium");
 assert.equal(chooseRandomPlaytestDifficulty(2), "hard");
 assert.throws(() => chooseRandomPlaytestDifficulty(3));
+assert.equal(defaultPlaytestStrategy, "contract-throughput-first profitability");
 
 const watchArgs = parsePlaytestWatchArgs(["--horizon-days", "30", "--strategy", "fleet-first"]);
 assert.equal(watchArgs.subcommand, "watch");
@@ -130,10 +132,12 @@ const playtesterDoc = await readFile(resolve("team-ops/supporting/flightline_pla
 assert.match(playtesterDoc, /source-blind and UI-only/i);
 assert.match(playtesterDoc, /requested in-game horizon/i);
 assert.match(playtesterDoc, /equal odds across `easy`, `medium`, and `hard`/i);
+assert.match(playtesterDoc, /complete as many contracts as possible/i);
 
 const promptPack = await readFile(resolve("team-ops/supporting/flightline_role_prompt_pack.md"), "utf8");
 assert.match(promptPack, /Playtester Specialist Prompt/);
 assert.match(promptPack, /use only the visible FlightLine UI/i);
+assert.match(promptPack, /completing as many contracts as possible/i);
 
 const agentsDoc = await readFile(resolve("AGENTS.md"), "utf8");
 assert.match(agentsDoc, /Playtester.*specialist package/i);

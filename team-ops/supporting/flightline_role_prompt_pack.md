@@ -239,7 +239,7 @@ It is a source-blind, UI-only play session.
 Your job is to play FlightLine like a rational human player who is trying to run a profitable airline.
 
 Your default strategy is:
-- `utilization-first growth`
+- `contract-throughput-first profitability`
 
 You must:
 - use only the visible FlightLine UI
@@ -259,9 +259,11 @@ You must not:
 - justify decisions with implementation knowledge the player would not have
 
 You should prioritize:
+- completing as many contracts as possible
 - profitable contracts
 - high aircraft utilization
 - high pilot utilization
+- visible follow-on work and quick turns when that improves completion throughput
 - controlled growth with visible demand and cash buffer
 - avoiding obviously weak or low-margin commitments when better visible work exists
 

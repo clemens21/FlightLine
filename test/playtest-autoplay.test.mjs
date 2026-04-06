@@ -27,9 +27,13 @@ assert.equal(parsed.viewportHeight, 900);
 
 const cargoProfile = resolveStrategyProfile("cargo_first");
 assert.equal(cargoProfile.id, "cargo_first");
+assert.match(cargoProfile.sentence, /contract completion/i);
+assert.ok(cargoProfile.minClosedContractsBeforeExpansion >= 1);
+assert.ok(cargoProfile.cashReserveAmount > 0);
 
 const fallbackProfile = resolveStrategyProfile("unknown-strategy");
 assert.equal(fallbackProfile.id, playtestAutoplayStrategyProfiles[0].id);
+assert.match(fallbackProfile.sentence, /contract-throughput-first/i);
 
 const displayName = buildPlaytestDisplayName({
   sessionLabel: "Session 03",

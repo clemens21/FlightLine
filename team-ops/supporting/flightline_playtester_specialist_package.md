@@ -47,15 +47,17 @@ If stronger isolation is needed, launch the playtester in a fresh session withou
 
 Default mission:
 
-- maximize profit while keeping the business solvent and growing through visible demand
+- complete as many contracts as possible while keeping the business solvent and profitable
 
 Default strategy:
 
-- `utilization-first growth`
+- `contract-throughput-first profitability`
 
 That means the playtester should usually:
-- keep aircraft busy on revenue work when sensible
+- keep aircraft busy on contract work as often as possible
 - keep pilots utilized instead of idle
+- favor contracts that look likely to complete successfully over speculative long-shot work
+- favor visible follow-on work and quick turns when that improves completion throughput
 - grow fleet and staffing only when visible demand plus cash buffer justify it
 - avoid obviously weak or low-margin commitments when better visible work exists
 

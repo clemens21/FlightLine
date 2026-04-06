@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomInt } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -10,7 +10,7 @@ import { launchBrowser } from "../test/helpers/playwright-ui-testkit.mjs";
 import { allocatePort, startUiServer } from "../test/helpers/ui-testkit.mjs";
 
 export const playtestDifficultyOptions = ["easy", "medium", "hard"];
-export const defaultPlaytestStrategy = "utilization-first growth";
+export const defaultPlaytestStrategy = "contract-throughput-first profitability";
 export const defaultPlaytestViewport = {
   width: 1600,
   height: 1000,
@@ -434,6 +434,10 @@ export async function createPlaytestArtifactRecorder({
     return record;
   }
 
+  async function hasFinalReport() {
+    return access(join(artifactDirectory, "final-report.json")).then(() => true).catch(() => false);
+  }
+
   await persistManifest();
 
   return {
@@ -451,6 +455,7 @@ export async function createPlaytestArtifactRecorder({
     recordCheckpoint,
     recordIssue,
     writeFinalReport,
+    hasFinalReport,
     async loadManifest() {
       return loadJsonFile(manifestPath);
     },
@@ -498,17 +503,19 @@ export async function startWatchedPlaytestSession({
       browser.close(),
       server.stop(),
     ]);
-    await artifactRecorder.writeFinalReport({
-      stopReason: reason,
-      endingCash: 0,
-      fleet: 0,
-      staff: 0,
-      workSummary: "Session ended before the operator wrote a final report override.",
-      issuesFiled: "See issue drafts in the artifacts directory if any were recorded.",
-      nextMove: "No next move captured.",
-    }).catch(() => {
-      // Do not block shutdown if the operator already wrote a final report.
-    });
+    if (!(await artifactRecorder.hasFinalReport())) {
+      await artifactRecorder.writeFinalReport({
+        stopReason: reason,
+        endingCash: 0,
+        fleet: 0,
+        staff: 0,
+        workSummary: "Session ended before the operator wrote a final report override.",
+        issuesFiled: "See issue drafts in the artifacts directory if any were recorded.",
+        nextMove: "No next move captured.",
+      }).catch(() => {
+        // Do not block shutdown if the operator already wrote a final report.
+      });
+    }
   }
 
   return {

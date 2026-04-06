@@ -21,68 +21,80 @@ export const playtestAutoplayStrategyProfiles = [
   {
     id: "balanced_growth",
     label: "balanced-growth",
-    sentence: "balanced utilization-first growth with cautious expansion",
+    sentence: "contract-throughput-first profitability with cautious balanced expansion",
     preferredVolumeType: "any",
     preferredKeywords: ["caravan", "cessna 208"],
     preferredAirport: defaultHomeAirport,
     fleetCashThresholds: [5_500_000, 8_500_000],
     fleetCap: 3,
     distanceBias: 1.0,
+    minClosedContractsBeforeExpansion: 4,
+    cashReserveAmount: 1_500_000,
   },
   {
     id: "cargo_first",
     label: "cargo-first",
-    sentence: "cargo-first utilization with tight cost control",
+    sentence: "cargo-first contract completion with tight cost control",
     preferredVolumeType: "cargo",
     preferredKeywords: ["cargo", "freighter", "caravan", "cessna 208"],
     preferredAirport: defaultHomeAirport,
     fleetCashThresholds: [5_000_000, 7_500_000],
     fleetCap: 3,
     distanceBias: 0.85,
+    minClosedContractsBeforeExpansion: 4,
+    cashReserveAmount: 1_250_000,
   },
   {
     id: "passenger_first",
     label: "passenger-first",
-    sentence: "passenger-heavy short-haul growth with conservative fleet expansion",
+    sentence: "passenger-heavy short-haul contract completion with conservative fleet expansion",
     preferredVolumeType: "passenger",
     preferredKeywords: ["passenger", "commuter", "caravan", "cessna 208"],
     preferredAirport: defaultHomeAirport,
     fleetCashThresholds: [5_250_000, 8_000_000],
     fleetCap: 3,
     distanceBias: 0.8,
+    minClosedContractsBeforeExpansion: 4,
+    cashReserveAmount: 1_250_000,
   },
   {
     id: "aggressive_growth",
     label: "aggressive-growth",
-    sentence: "aggressive utilization-first growth that expands quickly once cash is secure",
+    sentence: "contract-throughput-first growth that expands quickly only after proving repeatable completions",
     preferredVolumeType: "any",
     preferredKeywords: ["caravan", "cessna 208"],
     preferredAirport: defaultHomeAirport,
     fleetCashThresholds: [4_750_000, 6_750_000, 9_250_000],
     fleetCap: 4,
     distanceBias: 1.0,
+    minClosedContractsBeforeExpansion: 3,
+    cashReserveAmount: 1_000_000,
   },
   {
     id: "conservative_cargo",
     label: "conservative-cargo",
-    sentence: "conservative cargo flying with spare cash preserved for downside protection",
+    sentence: "conservative cargo contract completion with spare cash preserved for downside protection",
     preferredVolumeType: "cargo",
     preferredKeywords: ["cargo", "freighter", "caravan", "cessna 208"],
     preferredAirport: defaultHomeAirport,
     fleetCashThresholds: [6_250_000],
     fleetCap: 2,
     distanceBias: 0.75,
+    minClosedContractsBeforeExpansion: 5,
+    cashReserveAmount: 2_000_000,
   },
   {
     id: "shorthaul_balanced",
     label: "shorthaul-balanced",
-    sentence: "short-haul balanced flying that favors quick turns and tighter loops",
+    sentence: "short-haul balanced contract completion that favors quick turns and tighter loops",
     preferredVolumeType: "any",
     preferredKeywords: ["caravan", "cessna 208"],
     preferredAirport: defaultHomeAirport,
     fleetCashThresholds: [5_250_000, 7_250_000],
     fleetCap: 3,
     distanceBias: 0.65,
+    minClosedContractsBeforeExpansion: 4,
+    cashReserveAmount: 1_250_000,
   },
 ];
 
@@ -262,6 +274,48 @@ function deriveAircraftVolumePreference(text) {
   return "any";
 }
 
+function parseTrailingCount(text) {
+  const matches = String(text ?? "").match(/\d+/g) ?? [];
+  if (matches.length === 0) {
+    return 0;
+  }
+  return Number.parseInt(matches.at(-1) ?? "0", 10);
+}
+
+function estimateContractCycleHours(contract) {
+  const cruiseHours = Math.max(1, contract.distanceNm / 180);
+  return cruiseHours + 1.5;
+}
+
+function scoreDispatchableContract({
+  contract,
+  homeAirport,
+  preferredVolumeType,
+  preferredAirport,
+}) {
+  const estimatedCycleHours = estimateContractCycleHours(contract);
+  const slackHours = Number.isFinite(contract.hoursRemaining)
+    ? Math.max(-24, contract.hoursRemaining - estimatedCycleHours)
+    : 48;
+  const payoutPerCycleHour = contract.payoutAmount / Math.max(1, estimatedCycleHours);
+  const shorthaulBias = Math.max(0, 1_400 - contract.distanceNm) * 40;
+  const slackBias = Math.min(72, Math.max(0, slackHours)) * 2_500;
+  const urgencyPenalty = slackHours < 8 ? (8 - slackHours) * 30_000 : 0;
+  const volumeBias = preferredVolumeType !== "any" && contract.volumeType === preferredVolumeType ? 45_000 : 0;
+  const homeReturnBias = contract.destination === homeAirport ? 55_000 : 0;
+  const preferredAirportBias = contract.destination === preferredAirport ? 25_000 : 0;
+  return (
+    contract.payoutAmount
+    + (payoutPerCycleHour * 900)
+    + shorthaulBias
+    + slackBias
+    + volumeBias
+    + homeReturnBias
+    + preferredAirportBias
+    - urgencyPenalty
+  );
+}
+
 function desiredFleetSize(strategyProfile, cashAmount) {
   const unlockedFleet = 1 + strategyProfile.fleetCashThresholds.filter((threshold) => cashAmount >= threshold).length;
   return Math.max(1, Math.min(strategyProfile.fleetCap, unlockedFleet));
@@ -282,8 +336,10 @@ function isRunGoingWell({
   endingCashAmount,
   fleetCount,
   staffCount,
+  closedContractCount,
 }) {
   return endingCashAmount >= startingCashAmount * 1.05
+    && closedContractCount >= 8
     && fleetCount >= 1
     && staffCount >= fleetCount;
 }
@@ -605,12 +661,53 @@ export class FlightLineAutoplayBot {
     return await this.page.locator("[data-staffing-pilot-row]").count();
   }
 
+  async ensureContractsBoardView(boardTab = "available") {
+    await this.openTab("contracts");
+    await this.page.waitForFunction(() => document.querySelector("[data-contracts-host]") instanceof HTMLElement);
+    await clickUi(this.page.locator("[data-workspace-tab='board']").first());
+    await clickUi(this.page.locator(`[data-board-tab='${boardTab}']`).first());
+    await this.page.waitForFunction((expectedTab) => {
+      return document.querySelector(`[data-board-tab="${expectedTab}"]`)?.getAttribute("aria-selected") === "true";
+    }, boardTab);
+  }
+
+  async applyContractDepartureFilter(departureCode) {
+    await this.ensureContractsBoardView("available");
+    let popover = this.page.locator("[data-contracts-board-popover='routeSearch']").first();
+    if ((await popover.count()) === 0) {
+      await clickUi(this.page.locator("button[aria-label='Route search']").first());
+      await this.page.waitForFunction(() => {
+        const routePopover = document.querySelector("[data-contracts-board-popover='routeSearch']");
+        return routePopover instanceof HTMLElement
+          && routePopover.querySelector("input[name='departureSearchText']") instanceof HTMLInputElement
+          && routePopover.querySelector("input[name='destinationSearchText']") instanceof HTMLInputElement;
+      }, { timeout: 60_000 });
+      popover = this.page.locator("[data-contracts-board-popover='routeSearch']").first();
+    }
+
+    const departureInput = popover.locator("input[name='departureSearchText']").first();
+    const destinationInput = popover.locator("input[name='destinationSearchText']").first();
+    await departureInput.fill(departureCode);
+    await destinationInput.fill("");
+    await this.page.waitForFunction((expectedDeparture) => {
+      const input = document.querySelector("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']");
+      return input instanceof HTMLInputElement && input.value.trim().toUpperCase() === expectedDeparture;
+    }, String(departureCode ?? "").trim().toUpperCase(), { timeout: 60_000 });
+    await delay(260);
+  }
+
   async readAcceptedOrActiveContractCount() {
     await this.openTab("contracts");
     await this.page.waitForFunction(() => document.querySelector("[data-contracts-host]") instanceof HTMLElement);
-    await clickUi(this.page.locator("[data-board-tab='active']").first());
-    await this.page.waitForFunction(() => document.querySelector("[data-board-tab='active']")?.getAttribute("aria-selected") === "true");
-    return await this.page.locator("[data-select-company-contract-row]").count();
+    const activeTabText = await this.page.locator("[data-board-tab='active']").first().textContent().catch(() => "");
+    return parseTrailingCount(activeTabText);
+  }
+
+  async readClosedContractCount() {
+    await this.openTab("contracts");
+    await this.page.waitForFunction(() => document.querySelector("[data-contracts-host]") instanceof HTMLElement);
+    const closedTabText = await this.page.locator("[data-board-tab='closed']").first().textContent().catch(() => "");
+    return parseTrailingCount(closedTabText);
   }
 
   async openDispatchAndReadAircraft() {
@@ -788,12 +885,12 @@ export class FlightLineAutoplayBot {
     return false;
   }
 
-  async listVisibleContracts() {
-    await this.openTab("contracts");
-    await this.page.waitForFunction(() => document.querySelector("[data-contracts-host]") instanceof HTMLElement);
-    await clickUi(this.page.locator("[data-workspace-tab='board']").first());
-    await clickUi(this.page.locator("[data-board-tab='available']").first());
-    await this.page.waitForFunction(() => document.querySelector("[data-board-tab='available']")?.getAttribute("aria-selected") === "true");
+  async listVisibleContracts(departureCode = "") {
+    if (departureCode) {
+      await this.applyContractDepartureFilter(departureCode);
+    } else {
+      await this.ensureContractsBoardView("available");
+    }
     return await this.page.evaluate(() => {
       return [...document.querySelectorAll("[data-select-offer-row]")].map((row) => ({
         offerId: row.getAttribute("data-select-offer-row") ?? "",
@@ -836,7 +933,12 @@ export class FlightLineAutoplayBot {
         if (notEnoughTime) {
           return null;
         }
-        const score = parsed.payoutAmount - (parsed.distanceNm * 5);
+        const score = scoreDispatchableContract({
+          contract: parsed,
+          homeAirport: this.homeAirport,
+          preferredVolumeType,
+          preferredAirport: this.strategyProfile.preferredAirport,
+        });
         return {
           ...row,
           parsed,
@@ -855,7 +957,7 @@ export class FlightLineAutoplayBot {
       return false;
     }
 
-    const visibleContracts = await this.listVisibleContracts();
+    const visibleContracts = await this.listVisibleContracts(aircraft.currentAirport);
     const candidate = this.chooseContractForAircraft(aircraft, aircraftProfile, visibleContracts);
     if (!candidate) {
       return false;
@@ -920,7 +1022,15 @@ export class FlightLineAutoplayBot {
 
   async dispatchIdleAircraft() {
     const aircraft = await this.openDispatchAndReadAircraft();
-    const idleAircraft = aircraft.filter((entry) => /available/i.test(entry.statusText) && !/committed/i.test(entry.scheduleText));
+    const idleAircraft = aircraft
+      .filter((entry) => /available/i.test(entry.statusText) && !/committed/i.test(entry.scheduleText))
+      .sort((left, right) => {
+        const homeBias = Number(right.currentAirport === this.homeAirport) - Number(left.currentAirport === this.homeAirport);
+        if (homeBias !== 0) {
+          return homeBias;
+        }
+        return left.registration.localeCompare(right.registration);
+      });
     for (const entry of idleAircraft) {
       const dispatched = await this.tryDispatchForAircraft(entry);
       if (dispatched) {
@@ -969,7 +1079,18 @@ export class FlightLineAutoplayBot {
     const cashAmount = await this.readCashAmount();
     const fleetCount = await this.readFleetCount();
     const staffCount = await this.readStaffCount();
+    const acceptedOrActiveContractCount = await this.readAcceptedOrActiveContractCount();
+    const closedContractCount = await this.readClosedContractCount();
     const targetFleet = desiredFleetSize(this.strategyProfile, cashAmount);
+    if (cashAmount <= this.strategyProfile.cashReserveAmount) {
+      return false;
+    }
+    if (acceptedOrActiveContractCount > 0) {
+      return false;
+    }
+    if (closedContractCount < this.strategyProfile.minClosedContractsBeforeExpansion) {
+      return false;
+    }
     if (fleetCount < targetFleet) {
       const acquired = await this.tryAcquireAircraft();
       if (acquired) {
@@ -1056,11 +1177,13 @@ export class FlightLineAutoplayBot {
         acceptedOrActiveContractCount: 0,
         currentDate: this.startDate,
       }));
+      const closedContractCount = await this.readClosedContractCount().catch(() => 0);
       const extensionRecommendation = isRunGoingWell({
         startingCashAmount: this.startingCashAmount,
         endingCashAmount: summary.cashAmount,
         fleetCount: summary.fleetCount,
         staffCount: summary.staffCount,
+        closedContractCount,
       });
       await this.session?.writeFinalReport({
         saveId: this.saveId,
@@ -1069,7 +1192,7 @@ export class FlightLineAutoplayBot {
         endingCash: summary.cashAmount,
         fleet: summary.fleetCount,
         staff: summary.staffCount,
-        workSummary: summarizeWorkload(summary.acceptedOrActiveContractCount, summary.fleetCount),
+        workSummary: `${closedContractCount} closed contract${closedContractCount === 1 ? "" : "s"} | ${summarizeWorkload(summary.acceptedOrActiveContractCount, summary.fleetCount)}`,
         issuesFiled: this.stopReason === "blocker_bug" ? "Issue draft needed from visible blocker." : "No issue drafts recorded.",
         nextMove: extensionRecommendation
           ? "Run is going well after the requested horizon; consider extending it."
