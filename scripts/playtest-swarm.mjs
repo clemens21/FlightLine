@@ -14,8 +14,8 @@ import {
 
 const defaultSwarmCount = 6;
 const defaultSwarmViewport = {
-  width: 1280,
-  height: 800,
+  width: 1600,
+  height: 1000,
 };
 
 function parseCliOptions(args) {
