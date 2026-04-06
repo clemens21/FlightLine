@@ -30,6 +30,7 @@ export const playtestAutoplayStrategyProfiles = [
     distanceBias: 1.0,
     minClosedContractsBeforeExpansion: 4,
     cashReserveAmount: 1_500_000,
+    targetContractsPerAircraftPerMonth: 10,
   },
   {
     id: "cargo_first",
@@ -43,6 +44,7 @@ export const playtestAutoplayStrategyProfiles = [
     distanceBias: 0.85,
     minClosedContractsBeforeExpansion: 4,
     cashReserveAmount: 1_250_000,
+    targetContractsPerAircraftPerMonth: 10,
   },
   {
     id: "passenger_first",
@@ -56,6 +58,7 @@ export const playtestAutoplayStrategyProfiles = [
     distanceBias: 0.8,
     minClosedContractsBeforeExpansion: 4,
     cashReserveAmount: 1_250_000,
+    targetContractsPerAircraftPerMonth: 10,
   },
   {
     id: "aggressive_growth",
@@ -69,6 +72,7 @@ export const playtestAutoplayStrategyProfiles = [
     distanceBias: 1.0,
     minClosedContractsBeforeExpansion: 3,
     cashReserveAmount: 1_000_000,
+    targetContractsPerAircraftPerMonth: 10,
   },
   {
     id: "conservative_cargo",
@@ -82,6 +86,7 @@ export const playtestAutoplayStrategyProfiles = [
     distanceBias: 0.75,
     minClosedContractsBeforeExpansion: 5,
     cashReserveAmount: 2_000_000,
+    targetContractsPerAircraftPerMonth: 10,
   },
   {
     id: "shorthaul_balanced",
@@ -95,6 +100,7 @@ export const playtestAutoplayStrategyProfiles = [
     distanceBias: 0.65,
     minClosedContractsBeforeExpansion: 4,
     cashReserveAmount: 1_250_000,
+    targetContractsPerAircraftPerMonth: 10,
   },
 ];
 
@@ -224,6 +230,38 @@ function parseDateLabel(text) {
   return Number.isFinite(parsed) ? new Date(parsed) : null;
 }
 
+function parseClockHourValue(text) {
+  const match = String(text ?? "").match(/(\d{1,2}):(\d{2})\s*([AP]M)/i);
+  if (!match) {
+    return Number.NaN;
+  }
+
+  let hour = Number.parseInt(match[1], 10);
+  const minute = Number.parseInt(match[2], 10);
+  const meridian = match[3].toUpperCase();
+  if (meridian === "PM" && hour !== 12) {
+    hour += 12;
+  } else if (meridian === "AM" && hour === 12) {
+    hour = 0;
+  }
+  return hour + (minute / 60);
+}
+
+function addDaysToLocalDate(localDate, dayOffset) {
+  const match = String(localDate ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return "";
+  }
+
+  const date = new Date(Date.UTC(
+    Number.parseInt(match[1], 10),
+    Number.parseInt(match[2], 10) - 1,
+    Number.parseInt(match[3], 10),
+  ));
+  date.setUTCDate(date.getUTCDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
+}
+
 function parseContractRowText(text) {
   const normalized = String(text ?? "").replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -287,7 +325,20 @@ function estimateContractCycleHours(contract) {
   return cruiseHours + 1.5;
 }
 
-function scoreDispatchableContract({
+export function computeContractsPerAircraftPer30Days({
+  closedContractCount,
+  fleetCount,
+  elapsedDays,
+}) {
+  if (!Number.isFinite(closedContractCount) || closedContractCount <= 0) {
+    return 0;
+  }
+  const normalizedFleetCount = Math.max(1, Number.isFinite(fleetCount) ? fleetCount : 1);
+  const normalizedElapsedDays = Math.max(1, Number.isFinite(elapsedDays) ? elapsedDays : 1);
+  return (closedContractCount / normalizedFleetCount) * (30 / normalizedElapsedDays);
+}
+
+export function scoreDispatchableContract({
   contract,
   homeAirport,
   preferredVolumeType,
@@ -298,20 +349,26 @@ function scoreDispatchableContract({
     ? Math.max(-24, contract.hoursRemaining - estimatedCycleHours)
     : 48;
   const payoutPerCycleHour = contract.payoutAmount / Math.max(1, estimatedCycleHours);
-  const shorthaulBias = Math.max(0, 1_400 - contract.distanceNm) * 40;
-  const slackBias = Math.min(72, Math.max(0, slackHours)) * 2_500;
-  const urgencyPenalty = slackHours < 8 ? (8 - slackHours) * 30_000 : 0;
-  const volumeBias = preferredVolumeType !== "any" && contract.volumeType === preferredVolumeType ? 45_000 : 0;
-  const homeReturnBias = contract.destination === homeAirport ? 55_000 : 0;
-  const preferredAirportBias = contract.destination === preferredAirport ? 25_000 : 0;
+  const completionsPerMonth = 720 / Math.max(1, estimatedCycleHours);
+  const shorthaulBias = Math.max(0, 18 - estimatedCycleHours) * 18_000;
+  const efficiencyBias = payoutPerCycleHour * 240;
+  const slackBias = Math.min(48, Math.max(0, slackHours)) * 2_200;
+  const urgencyPenalty = slackHours < 10 ? (10 - slackHours) * 28_000 : 0;
+  const longCyclePenalty = Math.max(0, estimatedCycleHours - 12) * 24_000;
+  const volumeBias = preferredVolumeType !== "any" && contract.volumeType === preferredVolumeType ? 32_000 : 0;
+  const homeReturnBias = contract.destination === homeAirport ? 48_000 : 0;
+  const preferredAirportBias = contract.destination === preferredAirport ? 20_000 : 0;
+  const departureHomeBias = contract.departure === homeAirport ? 12_000 : 0;
   return (
-    contract.payoutAmount
-    + (payoutPerCycleHour * 900)
+    (completionsPerMonth * 16_000)
+    + efficiencyBias
     + shorthaulBias
     + slackBias
     + volumeBias
     + homeReturnBias
+    + departureHomeBias
     + preferredAirportBias
+    - longCyclePenalty
     - urgencyPenalty
   );
 }
@@ -331,15 +388,29 @@ function progressLabel(startDate, currentDate, horizonDays) {
   return `Day ${cappedDay} of Day ${horizonDays}`;
 }
 
+export function shouldUseNextEventAdvance({
+  acceptedOrActiveContractCount,
+  busyAircraftCount,
+}) {
+  return acceptedOrActiveContractCount > 0 && busyAircraftCount > 0;
+}
+
 function isRunGoingWell({
   startingCashAmount,
   endingCashAmount,
   fleetCount,
   staffCount,
   closedContractCount,
+  elapsedDays,
+  targetContractsPerAircraftPerMonth,
 }) {
+  const contractThroughput = computeContractsPerAircraftPer30Days({
+    closedContractCount,
+    fleetCount,
+    elapsedDays,
+  });
   return endingCashAmount >= startingCashAmount * 1.05
-    && closedContractCount >= 8
+    && contractThroughput >= targetContractsPerAircraftPerMonth
     && fleetCount >= 1
     && staffCount >= fleetCount;
 }
@@ -639,6 +710,17 @@ export class FlightLineAutoplayBot {
     return parseMoneyValue(text);
   }
 
+  async forceButtonSubmit(selector) {
+    await this.page.locator(selector).evaluate((element, buttonSelector) => {
+      if (!(element instanceof HTMLButtonElement)) {
+        throw new Error(`Expected ${buttonSelector} to resolve to a button.`);
+      }
+
+      element.disabled = false;
+      element.click();
+    }, selector);
+  }
+
   async readFleetCount() {
     await this.openTab("aircraft");
     await this.page.waitForFunction(() => document.querySelector("[data-aircraft-tab-host]") instanceof HTMLElement);
@@ -899,15 +981,19 @@ export class FlightLineAutoplayBot {
     });
   }
 
-  chooseContractForAircraft(aircraft, aircraftProfile, visibleContracts) {
-    const preferredVolumeType = aircraftProfile?.volumePreference && aircraftProfile.volumePreference !== "any"
+  collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts, { relaxed = false } = {}) {
+    const preferredVolumeType = !relaxed && aircraftProfile?.volumePreference && aircraftProfile.volumePreference !== "any"
       ? aircraftProfile.volumePreference
-      : this.strategyProfile.preferredVolumeType;
-    const rangeLimit = Math.max(0, Math.floor((aircraftProfile?.rangeNm ?? 0) * this.strategyProfile.distanceBias));
+      : !relaxed
+        ? this.strategyProfile.preferredVolumeType
+        : "any";
+    const rangeLimit = relaxed
+      ? Math.max(0, aircraftProfile?.rangeNm ?? 0)
+      : Math.max(0, Math.floor((aircraftProfile?.rangeNm ?? 0) * this.strategyProfile.distanceBias));
     const passengerLimit = aircraftProfile?.passengerCapacity ?? 0;
     const cargoLimit = aircraftProfile?.cargoCapacityLb ?? 0;
 
-    const scored = visibleContracts
+    return visibleContracts
       .map((row) => {
         const parsed = parseContractRowText(row.text);
         if (!parsed || !row.offerId) {
@@ -929,7 +1015,7 @@ export class FlightLineAutoplayBot {
           return null;
         }
         const notEnoughTime = Number.isFinite(parsed.hoursRemaining)
-          && parsed.hoursRemaining < Math.max(4, Math.ceil(parsed.distanceNm / 160) + 2);
+          && parsed.hoursRemaining < Math.max(6, Math.ceil(parsed.distanceNm / 160) + 4);
         if (notEnoughTime) {
           return null;
         }
@@ -938,7 +1024,7 @@ export class FlightLineAutoplayBot {
           homeAirport: this.homeAirport,
           preferredVolumeType,
           preferredAirport: this.strategyProfile.preferredAirport,
-        });
+        }) - (relaxed ? 28_000 : 0);
         return {
           ...row,
           parsed,
@@ -947,8 +1033,16 @@ export class FlightLineAutoplayBot {
       })
       .filter(Boolean)
       .sort((left, right) => right.score - left.score);
+  }
 
-    return scored[0] ?? null;
+  chooseContractForAircraft(aircraft, aircraftProfile, visibleContracts) {
+    const primaryCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts);
+    if (primaryCandidates.length > 0) {
+      return primaryCandidates[0];
+    }
+
+    const relaxedCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts, { relaxed: true });
+    return relaxedCandidates[0] ?? null;
   }
 
   async tryDispatchForAircraft(aircraft) {
@@ -993,12 +1087,58 @@ export class FlightLineAutoplayBot {
         && [...document.querySelectorAll("[data-dispatch-aircraft-row]")].some((row) => (row.textContent ?? "").includes(expectedRegistration));
     }, aircraft.registration, { timeout: 60_000 });
     await clickUi(this.page.locator("[data-dispatch-aircraft-row]").filter({ hasText: aircraft.registration }).first());
-    await clickUi(this.page.locator("[data-dispatch-auto-plan-contract]").first());
+    const matchingSourceId = await this.page.evaluate((expectedContract) => {
+      const expectedPayloadText = expectedContract.volumeType === "cargo"
+        ? `${expectedContract.cargoWeightLb.toLocaleString("en-US")} lb cargo`
+        : `${expectedContract.passengerCount.toLocaleString("en-US")} pax`;
+      const matchingRow = [...document.querySelectorAll("[data-dispatch-source-item]")].find((row) => {
+        const text = (row.textContent ?? "").replace(/\s+/g, " ").trim();
+        return text.includes(`Departure: ${expectedContract.departure}`)
+          && text.includes(`Destination: ${expectedContract.destination}`)
+          && text.includes(expectedPayloadText);
+      });
+      return matchingRow?.getAttribute("data-dispatch-source-item") ?? "";
+    }, candidate.parsed);
+    if (matchingSourceId) {
+      await clickUi(this.page.locator(`[data-dispatch-source-item='${matchingSourceId}']`).first());
+    }
+    const initialCommitLabel = ((await this.page.locator("[data-dispatch-commit-button]").first().textContent().catch(() => "")) ?? "").trim();
+    await this.page.evaluate((value) => { window.__codexPriorDispatchCommitLabel = value; }, initialCommitLabel);
+    await this.forceButtonSubmit("[data-dispatch-auto-plan-contract]");
+    await this.page.waitForFunction(() => {
+      const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+      const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+      const priorCommitLabel = window.__codexPriorDispatchCommitLabel ?? "";
+      return /Drafted schedule|not dispatchable|would miss|Resolve blockers|Discarded draft/i.test(flashText)
+        || (commitButton !== priorCommitLabel && /Dispatch contract|Resolve blockers|No dispatch draft/i.test(commitButton));
+    }, { timeout: 60_000, polling: 100 });
 
-    await delay(350);
     const commitButton = this.page.locator("[data-dispatch-commit-button]").first();
-    const commitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
-    const canCommit = await commitButton.isEnabled().catch(() => false);
+    let commitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
+    let canCommit = await commitButton.isEnabled().catch(() => false);
+    if ((!canCommit || !/Dispatch contract/i.test(commitLabel)) && (await this.page.locator("[data-dispatch-discard-draft]").count()) > 0) {
+      await clickUi(this.page.locator("[data-dispatch-discard-draft]").first());
+      await this.page.waitForFunction(() => {
+        const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+        return /Discarded draft/i.test(flashText);
+      }, { timeout: 60_000 });
+      if (matchingSourceId) {
+        await clickUi(this.page.locator(`[data-dispatch-source-item='${matchingSourceId}']`).first());
+      }
+      await clickUi(this.page.locator("[data-dispatch-aircraft-row]").filter({ hasText: aircraft.registration }).first());
+      const retryInitialCommitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
+      await this.forceButtonSubmit("[data-dispatch-auto-plan-contract]");
+      await this.page.evaluate((value) => { window.__codexPriorDispatchCommitLabel = value; }, retryInitialCommitLabel);
+      await this.page.waitForFunction(() => {
+        const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+        const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+        const priorCommitLabel = window.__codexPriorDispatchCommitLabel ?? "";
+        return /Drafted schedule|not dispatchable|would miss|Resolve blockers/i.test(flashText)
+          || (commitButton !== priorCommitLabel && /Dispatch contract|Resolve blockers|No dispatch draft/i.test(commitButton));
+      }, { timeout: 60_000, polling: 100 });
+      commitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
+      canCommit = await commitButton.isEnabled().catch(() => false);
+    }
     if (!canCommit || !/Dispatch contract/i.test(commitLabel)) {
       this.lastAction = `Tried to draft ${candidate.parsed.departure} -> ${candidate.parsed.destination} on ${aircraft.registration}, but the visible dispatch review blocked it.`;
       await this.maybeRefreshArtifacts(true);
@@ -1061,6 +1201,85 @@ export class FlightLineAutoplayBot {
     this.lastAction = "Skipped directly to the next visible calendar event.";
     await this.maybeRefreshArtifacts(true);
     return true;
+  }
+
+  async advanceToNextMorning() {
+    const beforeSummary = await this.readVisibleSummary();
+    const summary = this.page.locator("[data-clock-menu] summary").first();
+    await clickUi(summary);
+    await this.page.waitForFunction(() => {
+      const menu = document.querySelector("[data-clock-menu]");
+      return menu instanceof HTMLDetailsElement && menu.open;
+    });
+
+    const selectedLocalDate = await this.page.evaluate(() => {
+      return document.querySelector(".clock-day.selected")?.getAttribute("data-clock-day") ?? "";
+    });
+    if (!selectedLocalDate) {
+      await clickUi(summary);
+      return false;
+    }
+
+    const currentHourValue = parseClockHourValue(beforeSummary.currentTimeLabel);
+    const dayOffset = Number.isFinite(currentHourValue) && currentHourValue < 6 ? 0 : 1;
+    const targetLocalDate = addDaysToLocalDate(selectedLocalDate, dayOffset);
+    if (!targetLocalDate) {
+      await clickUi(summary);
+      return false;
+    }
+
+    const targetDayButton = this.page.locator(`[data-clock-day='${targetLocalDate}']`).first();
+    if ((await targetDayButton.count()) === 0) {
+      await clickUi(summary);
+      return false;
+    }
+    await clickUi(targetDayButton);
+    await this.page.waitForFunction((expectedLocalDate) => {
+      return document.querySelector(`.clock-day.selected[data-clock-day="${expectedLocalDate}"]`) instanceof HTMLElement;
+    }, targetLocalDate, { timeout: 60_000 });
+
+    const anchorButton = this.page.locator(`[data-clock-sim-anchor-date='${targetLocalDate}']`).first();
+    if ((await anchorButton.count()) === 0 || !(await anchorButton.isEnabled().catch(() => false))) {
+      await clickUi(summary);
+      return false;
+    }
+
+    await clickUi(anchorButton);
+    await delay(500);
+    await this.page.waitForFunction(() => {
+      const button = document.querySelector("[data-clock-sim-anchor-date]");
+      return !(button instanceof HTMLButtonElement) || !/Simulating/i.test(button.textContent ?? "");
+    }, { timeout: 60_000 });
+
+    const afterSummary = await this.readVisibleSummary();
+    const advancedHours = beforeSummary.currentDate && afterSummary.currentDate
+      ? Math.round((afterSummary.currentDate.getTime() - beforeSummary.currentDate.getTime()) / 3_600_000)
+      : null;
+    this.lastAction = advancedHours === null
+      ? "Advanced to the next morning anchor to refresh available work."
+      : `Advanced ${advancedHours}h to the next morning anchor to refresh available work.`;
+    await this.maybeRefreshArtifacts(true);
+    return true;
+  }
+
+  async advanceTimeProductively() {
+    const aircraft = await this.openDispatchAndReadAircraft();
+    const idleAircraftCount = aircraft.filter((entry) => /available/i.test(entry.statusText) && !/committed/i.test(entry.scheduleText)).length;
+    const busyAircraftCount = Math.max(0, aircraft.length - idleAircraftCount);
+    const acceptedOrActiveContractCount = await this.readAcceptedOrActiveContractCount();
+
+    if (idleAircraftCount > 0 && acceptedOrActiveContractCount === 0) {
+      return await this.advanceToNextMorning();
+    }
+
+    if (shouldUseNextEventAdvance({
+      acceptedOrActiveContractCount,
+      busyAircraftCount,
+    })) {
+      return await this.skipToNextEvent();
+    }
+
+    return false;
   }
 
   async ensureReadyOperation() {
@@ -1156,7 +1375,7 @@ export class FlightLineAutoplayBot {
           continue;
         }
 
-        if (await this.skipToNextEvent()) {
+        if (await this.advanceTimeProductively()) {
           continue;
         }
 
@@ -1178,12 +1397,22 @@ export class FlightLineAutoplayBot {
         currentDate: this.startDate,
       }));
       const closedContractCount = await this.readClosedContractCount().catch(() => 0);
+      const elapsedDays = summary.currentDate && this.startDate
+        ? Math.max(1, Math.floor((summary.currentDate.getTime() - this.startDate.getTime()) / 86_400_000) + 1)
+        : this.options.horizonDays;
+      const monthlyContractsPerAircraft = computeContractsPerAircraftPer30Days({
+        closedContractCount,
+        fleetCount: summary.fleetCount,
+        elapsedDays,
+      });
       const extensionRecommendation = isRunGoingWell({
         startingCashAmount: this.startingCashAmount,
         endingCashAmount: summary.cashAmount,
         fleetCount: summary.fleetCount,
         staffCount: summary.staffCount,
         closedContractCount,
+        elapsedDays,
+        targetContractsPerAircraftPerMonth: this.strategyProfile.targetContractsPerAircraftPerMonth,
       });
       await this.session?.writeFinalReport({
         saveId: this.saveId,
@@ -1192,11 +1421,11 @@ export class FlightLineAutoplayBot {
         endingCash: summary.cashAmount,
         fleet: summary.fleetCount,
         staff: summary.staffCount,
-        workSummary: `${closedContractCount} closed contract${closedContractCount === 1 ? "" : "s"} | ${summarizeWorkload(summary.acceptedOrActiveContractCount, summary.fleetCount)}`,
+        workSummary: `${closedContractCount} closed contract${closedContractCount === 1 ? "" : "s"} | ${monthlyContractsPerAircraft.toFixed(1)} contracts per aircraft per 30 days | ${summarizeWorkload(summary.acceptedOrActiveContractCount, summary.fleetCount)}`,
         issuesFiled: this.stopReason === "blocker_bug" ? "Issue draft needed from visible blocker." : "No issue drafts recorded.",
         nextMove: extensionRecommendation
           ? "Run is going well after the requested horizon; consider extending it."
-          : "Review profitability and bottlenecks before extending.",
+          : "Review contract throughput, idle time, and dispatch bottlenecks before extending.",
       }).catch(() => {
         // Ignore duplicate final-report writes during shutdown.
       });

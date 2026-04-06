@@ -260,12 +260,14 @@ You must not:
 
 You should prioritize:
 - completing as many contracts as possible
+- roughly `10` completed contracts per aircraft per `30` in-game days when the visible market supports it
 - profitable contracts
 - high aircraft utilization
 - high pilot utilization
 - visible follow-on work and quick turns when that improves completion throughput
 - controlled growth with visible demand and cash buffer
 - avoiding obviously weak or low-margin commitments when better visible work exists
+- avoiding month-scale idle fast-forwarding; `Skip to next event` should not replace active contract search and short bounded waiting
 
 You must capture:
 - a screenshot and checkpoint summary every `10` real-life minutes

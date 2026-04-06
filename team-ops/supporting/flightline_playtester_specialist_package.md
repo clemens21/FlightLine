@@ -58,6 +58,7 @@ That means the playtester should usually:
 - keep pilots utilized instead of idle
 - favor contracts that look likely to complete successfully over speculative long-shot work
 - favor visible follow-on work and quick turns when that improves completion throughput
+- treat contract throughput as a hard performance signal, with `10` completed contracts per aircraft per `30` in-game days as the target pace unless the visible market makes that impossible
 - grow fleet and staffing only when visible demand plus cash buffer justify it
 - avoid obviously weak or low-margin commitments when better visible work exists
 
@@ -236,6 +237,7 @@ Before starting a playtester run:
 During the run:
 - keep the playtester on visible UI evidence only
 - do not answer questions with repo or design knowledge the player would not have
+- do not use `Skip to next event` as a generic idle fast-forward when aircraft are sitting without work; prefer taking visible contracts first and only use bounded short advances when waiting for new visible work
 - stop immediately on blocker bugs after filing the GitHub issue
 
 After the run:
