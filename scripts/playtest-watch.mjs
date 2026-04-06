@@ -487,10 +487,14 @@ export async function startWatchedPlaytestSession({
   const page = await browser.newPage({ viewport });
 
   await page.goto(server.baseUrl, { waitUntil: "domcontentloaded" });
-  await artifactRecorder.captureScreenshot({
-    label: "session-start",
-    takeScreenshot: (filePath) => page.screenshot({ path: filePath, fullPage: true }),
-  });
+  try {
+    await artifactRecorder.captureScreenshot({
+      label: "session-start",
+      takeScreenshot: (filePath) => page.screenshot({ path: filePath, fullPage: true }),
+    });
+  } catch {
+    // Do not block the playtest session on a startup screenshot failure.
+  }
 
   let stopped = false;
 

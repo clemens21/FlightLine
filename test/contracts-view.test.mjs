@@ -6,6 +6,8 @@
 import assert from "node:assert/strict";
 
 import {
+  acquireAircraft,
+  activateStaffingPackage,
   createCompanySave,
   createTestHarness,
   uniqueSaveId,
@@ -129,6 +131,53 @@ try {
   );
   assert.ok(lockedAcceptedContract);
   assert.equal(lockedAcceptedContract.payoutAmount, acceptedPayoutAmount);
+
+  const rangeTruthSaveId = uniqueSaveId("contracts_view_range_truth");
+  const rangeTruthStartedAtUtc = await createCompanySave(backend, rangeTruthSaveId, {
+    startedAtUtc: "2026-03-16T13:00:00.000Z",
+    startingCashAmount: 10_000_000,
+  });
+  await acquireAircraft(backend, rangeTruthSaveId, rangeTruthStartedAtUtc, {
+    aircraftModelId: "cessna_208b_grand_caravan_ex_passenger",
+    registration: `N${rangeTruthSaveId.slice(-5).toUpperCase()}`,
+  });
+  await activateStaffingPackage(backend, rangeTruthSaveId, rangeTruthStartedAtUtc, {
+    laborCategory: "pilot",
+    employmentModel: "direct_hire",
+    qualificationGroup: "single_turboprop_utility",
+    coverageUnits: 1,
+    fixedCostAmount: 4_200,
+  });
+  await refreshContractBoard(backend, rangeTruthSaveId, rangeTruthStartedAtUtc, "bootstrap");
+
+  const rangeTruthBoard = await backend.loadActiveContractBoard(rangeTruthSaveId);
+  assert.ok(rangeTruthBoard);
+  const rangeTruthOffer = rangeTruthBoard.offers.find((offer) => offer.offerStatus === "available");
+  assert.ok(rangeTruthOffer);
+  await backend.withExistingSaveDatabase(rangeTruthSaveId, async (context) => {
+    context.saveDatabase.run(
+      `UPDATE contract_offer
+       SET origin_airport_id = 'KDEN',
+           destination_airport_id = 'LFPG',
+           volume_type = 'passenger',
+           passenger_count = 7,
+           cargo_weight_lb = NULL,
+           earliest_start_utc = '2026-03-16T15:00:00.000Z',
+           latest_completion_utc = '2026-03-17T23:00:00.000Z'
+       WHERE contract_offer_id = $contract_offer_id`,
+      {
+        $contract_offer_id: rangeTruthOffer.contractOfferId,
+      },
+    );
+    await context.saveDatabase.persist();
+  });
+
+  const rangeTruthPayload = await loadContractsViewPayload(backend, airportReference, rangeTruthSaveId, "scheduled");
+  assert.ok(rangeTruthPayload);
+  const blockedRangeOffer = rangeTruthPayload.offers.find((offer) => offer.contractOfferId === rangeTruthOffer.contractOfferId);
+  assert.ok(blockedRangeOffer);
+  assert.equal(blockedRangeOffer.directDispatchEligible, false);
+  assert.equal(blockedRangeOffer.nearestRelevantAircraft, null);
 }
 finally {
   await harness.cleanup();

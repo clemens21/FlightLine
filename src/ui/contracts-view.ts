@@ -230,7 +230,6 @@ function canAircraftOperateRoute(
   routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
   originAirport: AirportRecord,
   destinationAirport: AirportRecord,
-  distanceNm: number,
 ): boolean {
   const originAirportSize = originAirport.airportSize ?? 0;
   const destinationAirportSize = destinationAirport.airportSize ?? 0;
@@ -257,7 +256,8 @@ function canAircraftOperateRoute(
     return false;
   }
 
-  if (distanceNm > aircraft.rangeNm * 0.9) {
+  const routeDistanceNm = haversineDistanceNm(originAirport, destinationAirport);
+  if (routeDistanceNm > aircraft.rangeNm * 0.9) {
     return false;
   }
 
@@ -281,11 +281,10 @@ function canAircraftCoverRoute(
   routeRequirements: RouteCapacityRequirements & RouteScheduleRequirements,
   originAirport: AirportRecord,
   destinationAirport: AirportRecord,
-  distanceNm: number,
   staffingState: StaffingStateView | null,
   airportReference: AirportReferenceRepository,
 ): boolean {
-  if (!canAircraftOperateRoute(aircraft, aircraftReference, routeRequirements, originAirport, destinationAirport, distanceNm)) {
+  if (!canAircraftOperateRoute(aircraft, aircraftReference, routeRequirements, originAirport, destinationAirport)) {
     return false;
   }
 
@@ -343,7 +342,6 @@ function buildAircraftCue(
     routeRequirements,
     originAirport,
     destinationAirport,
-    distanceNm,
     staffingState,
     airportReference,
   )) {
@@ -759,8 +757,6 @@ function buildPlannerEligibleAircraftIds(
     return [];
   }
 
-  const distanceNm = haversineDistanceNm(originAirport, destinationAirport);
-
   return (fleetState?.aircraft ?? [])
     .filter((aircraft) =>
       canAircraftOperateRoute(
@@ -769,7 +765,6 @@ function buildPlannerEligibleAircraftIds(
         routeRequirements,
         originAirport,
         destinationAirport,
-        distanceNm,
       ))
     .map((aircraft) => aircraft.aircraftId);
 }

@@ -373,6 +373,91 @@ export function scoreDispatchableContract({
   );
 }
 
+function buildContractSignature(contract) {
+  if (!contract) {
+    return "";
+  }
+  return [
+    contract.departure ?? "",
+    contract.destination ?? "",
+    contract.volumeType ?? "",
+    Number.isFinite(contract.passengerCount) ? contract.passengerCount : 0,
+    Number.isFinite(contract.cargoWeightLb) ? contract.cargoWeightLb : 0,
+  ].join("|");
+}
+
+export function isContractCompatibleWithAircraft({
+  contract,
+  aircraftProfile,
+  preferredVolumeType = "any",
+  distanceBias = 1,
+}) {
+  if (!contract || !aircraftProfile) {
+    return false;
+  }
+  if (preferredVolumeType !== "any" && contract.volumeType !== preferredVolumeType) {
+    return false;
+  }
+
+  const rangeLimit = Math.max(0, Math.floor((aircraftProfile.rangeNm ?? 0) * 0.9 * distanceBias));
+  if (rangeLimit > 0 && contract.distanceNm > rangeLimit) {
+    return false;
+  }
+
+  const passengerLimit = aircraftProfile.passengerCapacity ?? 0;
+  const cargoLimit = aircraftProfile.cargoCapacityLb ?? 0;
+  if (contract.volumeType === "passenger") {
+    if (passengerLimit <= 0 || contract.passengerCount > passengerLimit) {
+      return false;
+    }
+  } else if (contract.volumeType === "cargo") {
+    if (cargoLimit <= 0 || contract.cargoWeightLb > cargoLimit) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  const notEnoughTime = Number.isFinite(contract.hoursRemaining)
+    && contract.hoursRemaining < Math.max(6, Math.ceil(contract.distanceNm / 160) + 4);
+  return !notEnoughTime;
+}
+
+export function scoreAircraftOfferForAutoplay({
+  aircraftOffer,
+  strategyProfile,
+}) {
+  if (!aircraftOffer || !strategyProfile) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const passengerBias = aircraftOffer.passengerCapacity > 0
+    ? 240_000 + (aircraftOffer.passengerCapacity * 12_000)
+    : 0;
+  const cargoBias = aircraftOffer.cargoCapacityLb > 0
+    ? Math.min(5_000, aircraftOffer.cargoCapacityLb) * 25
+    : 0;
+  const homeBias = aircraftOffer.matchesHome ? 600_000 : 0;
+  const rangeBias = Math.min(1_200, aircraftOffer.rangeNm ?? 0) * 40;
+  const pricePenalty = Math.round((aircraftOffer.askingPrice ?? 0) / 200);
+
+  let strategyBias = passengerBias + cargoBias;
+  if (strategyProfile.preferredVolumeType === "passenger") {
+    strategyBias = (passengerBias * 2) - (aircraftOffer.volumePreference === "cargo" ? 240_000 : 0);
+  } else if (strategyProfile.preferredVolumeType === "cargo") {
+    strategyBias = (cargoBias * 2) + (aircraftOffer.volumePreference === "cargo" ? 140_000 : 0);
+  }
+
+  return homeBias + strategyBias + rangeBias - pricePenalty;
+}
+
+export function isAutoplayOperableAircraftOffer(text) {
+  const normalized = String(text ?? "").toLowerCase();
+  return normalized.includes("utility")
+    || normalized.includes("caravan")
+    || normalized.includes("cessna 208");
+}
+
 function desiredFleetSize(strategyProfile, cashAmount) {
   const unlockedFleet = 1 + strategyProfile.fleetCashThresholds.filter((threshold) => cashAmount >= threshold).length;
   return Math.max(1, Math.min(strategyProfile.fleetCap, unlockedFleet));
@@ -393,6 +478,12 @@ export function shouldUseNextEventAdvance({
   busyAircraftCount,
 }) {
   return acceptedOrActiveContractCount > 0 && busyAircraftCount > 0;
+}
+
+export function isAutoplayIdleAircraft(entry) {
+  const availabilityText = String(entry?.statusLabel ?? entry?.statusText ?? "").toLowerCase();
+  const scheduleLabel = String(entry?.scheduleLabel ?? "").toLowerCase();
+  return availabilityText.includes("available") && !scheduleLabel.includes("draft");
 }
 
 function isRunGoingWell({
@@ -463,6 +554,8 @@ export class FlightLineAutoplayBot {
     this.stopReason = null;
     this.lastAction = "Session initialized";
     this.cachedAircraftProfiles = new Map();
+    this.blockedContractSignatures = new Set();
+    this.waitingForReadyAircraftEvent = false;
     this.statusFilePath = null;
     this.liveScreenshotPath = null;
     this.logFilePath = null;
@@ -556,9 +649,14 @@ export class FlightLineAutoplayBot {
     if (!this.page || !this.session) {
       return;
     }
-    await this.page.screenshot({ path: this.liveScreenshotPath, fullPage: true });
-    await this.session.captureLiveScreenshot(label);
-    this.lastLiveScreenshotAtMs = Date.now();
+    try {
+      await this.page.screenshot({ path: this.liveScreenshotPath, fullPage: true });
+      await this.session.captureLiveScreenshot(label);
+      this.lastLiveScreenshotAtMs = Date.now();
+    } catch (error) {
+      this.lastLiveScreenshotAtMs = Date.now();
+      this.log("Live screenshot capture failed.", error instanceof Error ? error.message : String(error));
+    }
   }
 
   async maybeRecordCheckpoint() {
@@ -617,9 +715,9 @@ export class FlightLineAutoplayBot {
     const currentTimeLabel = clockParts[0] ?? "";
     const cashAmount = parseMoneyValue(shell.cashText);
     const currentDate = parseDateLabel(currentDateLabel || shell.clockText);
-    const fleetCount = this.page ? await this.readFleetCount() : 0;
-    const staffCount = this.page ? await this.readStaffCount() : 0;
-    const acceptedOrActiveContractCount = this.page ? await this.readAcceptedOrActiveContractCount() : 0;
+    const fleetCount = this.page ? await this.readFleetCount().catch(() => 0) : 0;
+    const staffCount = this.page ? await this.readStaffCount().catch(() => 0) : 0;
+    const acceptedOrActiveContractCount = this.page ? await this.readAcceptedOrActiveContractCount().catch(() => 0) : 0;
     return {
       title: shell.title,
       cashAmount,
@@ -721,25 +819,63 @@ export class FlightLineAutoplayBot {
     }, selector);
   }
 
+  async reloadCurrentSaveView() {
+    const currentUrl = this.page.url();
+    await this.page.goto(currentUrl, { waitUntil: "networkidle", timeout: 60_000 });
+    await waitForShellTitle(this.page, this.displayName);
+  }
+
   async readFleetCount() {
     await this.openTab("aircraft");
-    await this.page.waitForFunction(() => document.querySelector("[data-aircraft-tab-host]") instanceof HTMLElement);
+    await this.page.waitForFunction(() => {
+      const host = document.querySelector("[data-aircraft-tab-host]");
+      const fleetWorkspace = document.querySelector("[data-aircraft-workspace='fleet']");
+      return host instanceof HTMLElement
+        && !host.hidden
+        && fleetWorkspace instanceof HTMLElement
+        && fleetWorkspace.getBoundingClientRect().width > 0
+        && fleetWorkspace.getBoundingClientRect().height > 0;
+    }, { timeout: 60_000 });
     const fleetWorkspace = this.page.locator("[data-aircraft-workspace='fleet']").first();
     if (await fleetWorkspace.count()) {
-      await clickUi(fleetWorkspace);
-      await this.page.waitForFunction(() => document.querySelector("[data-aircraft-workspace='fleet']")?.getAttribute("aria-selected") === "true");
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        if ((await fleetWorkspace.getAttribute("aria-selected").catch(() => "")) === "true") {
+          break;
+        }
+        await clickUi(fleetWorkspace);
+        try {
+          await this.page.waitForFunction(() => document.querySelector("[data-aircraft-workspace='fleet']")?.getAttribute("aria-selected") === "true", { timeout: 15_000 });
+          break;
+        } catch (error) {
+          if (attempt === 2) {
+            throw error;
+          }
+          await delay(300);
+        }
+      }
     }
-    return await this.page.locator("[data-aircraft-select]").count();
+    return await this.page.locator("tr[data-aircraft-select]").count();
   }
 
   async readStaffCount() {
     await this.openTab("staffing");
-    await this.page.waitForFunction(() => document.querySelector("[data-staffing-tab-host]") instanceof HTMLElement);
-    await clickUi(this.page.locator("[data-staffing-workspace-tab='employees']").first());
+    await this.page.waitForFunction(() => {
+      const host = document.querySelector("[data-staffing-tab-host]");
+      const employeesTab = document.querySelector("[data-staffing-workspace-tab='employees']");
+      return host instanceof HTMLElement
+        && !host.hidden
+        && employeesTab instanceof HTMLElement
+        && employeesTab.getBoundingClientRect().width > 0
+        && employeesTab.getBoundingClientRect().height > 0;
+    }, { timeout: 60_000 });
+    const employeesTab = this.page.locator("[data-staffing-workspace-tab='employees']").first();
+    if ((await employeesTab.getAttribute("aria-selected").catch(() => "")) !== "true") {
+      await clickUi(employeesTab);
+    }
     await this.page.waitForFunction(() => {
       const panel = document.querySelector("[data-staffing-workspace-panel='employees']");
       return panel instanceof HTMLElement && !panel.hidden;
-    });
+    }, { timeout: 60_000 });
     return await this.page.locator("[data-staffing-pilot-row]").count();
   }
 
@@ -753,7 +889,7 @@ export class FlightLineAutoplayBot {
     }, boardTab);
   }
 
-  async applyContractDepartureFilter(departureCode) {
+  async openContractRouteSearchPopover() {
     await this.ensureContractsBoardView("available");
     let popover = this.page.locator("[data-contracts-board-popover='routeSearch']").first();
     if ((await popover.count()) === 0) {
@@ -766,15 +902,31 @@ export class FlightLineAutoplayBot {
       }, { timeout: 60_000 });
       popover = this.page.locator("[data-contracts-board-popover='routeSearch']").first();
     }
+    return popover;
+  }
 
+  async setContractRouteFilters({
+    departureCode = "",
+    destinationCode = "",
+  } = {}) {
+    const popover = await this.openContractRouteSearchPopover();
     const departureInput = popover.locator("input[name='departureSearchText']").first();
     const destinationInput = popover.locator("input[name='destinationSearchText']").first();
-    await departureInput.fill(departureCode);
-    await destinationInput.fill("");
-    await this.page.waitForFunction((expectedDeparture) => {
-      const input = document.querySelector("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']");
-      return input instanceof HTMLInputElement && input.value.trim().toUpperCase() === expectedDeparture;
-    }, String(departureCode ?? "").trim().toUpperCase(), { timeout: 60_000 });
+    const normalizedDeparture = String(departureCode ?? "").trim().toUpperCase();
+    const normalizedDestination = String(destinationCode ?? "").trim().toUpperCase();
+    await departureInput.fill(normalizedDeparture);
+    await destinationInput.fill(normalizedDestination);
+    await this.page.waitForFunction(({ expectedDeparture, expectedDestination }) => {
+      const departureInput = document.querySelector("[data-contracts-board-popover='routeSearch'] input[name='departureSearchText']");
+      const destinationInput = document.querySelector("[data-contracts-board-popover='routeSearch'] input[name='destinationSearchText']");
+      return departureInput instanceof HTMLInputElement
+        && destinationInput instanceof HTMLInputElement
+        && departureInput.value.trim().toUpperCase() === expectedDeparture
+        && destinationInput.value.trim().toUpperCase() === expectedDestination;
+    }, {
+      expectedDeparture: normalizedDeparture,
+      expectedDestination: normalizedDestination,
+    }, { timeout: 60_000 });
     await delay(260);
   }
 
@@ -803,14 +955,67 @@ export class FlightLineAutoplayBot {
           aircraftId: row.getAttribute("data-dispatch-aircraft-row") ?? "",
           registration: cells[0]?.querySelector("strong")?.textContent?.trim() ?? "",
           currentAirport: cells[1]?.querySelector("strong")?.textContent?.trim() ?? "",
+          scheduleLabel: cells[2]?.querySelector("strong")?.textContent?.trim() ?? "",
           scheduleText: cells[2]?.textContent?.replace(/\s+/g, " ").trim() ?? "",
           pilotCoverageText: cells[3]?.textContent?.replace(/\s+/g, " ").trim() ?? "",
+          statusLabel: cells[4]?.querySelector(".badge")?.textContent?.trim() ?? "",
           statusText: cells[4]?.textContent?.replace(/\s+/g, " ").trim() ?? "",
           selected: row.getAttribute("aria-pressed") === "true",
           rowText: text,
         };
       });
     });
+  }
+
+  async selectDispatchAircraft(registration) {
+    const row = this.page.locator("[data-dispatch-aircraft-row]").filter({ hasText: registration }).first();
+    if ((await row.count()) === 0) {
+      return false;
+    }
+    await clickUi(row);
+    await this.page.waitForFunction((expectedRegistration) => {
+      return [...document.querySelectorAll("[data-dispatch-aircraft-row]")].some((entry) =>
+        (entry.getAttribute("aria-pressed") === "true")
+        && (entry.textContent ?? "").includes(expectedRegistration));
+    }, registration, { timeout: 60_000 });
+    return true;
+  }
+
+  async ensureDispatchSourceMode(sourceMode) {
+    await this.openTab("dispatch");
+    await this.page.waitForFunction(() => document.querySelector("[data-dispatch-tab-host]") instanceof HTMLElement);
+    const tabSelector = `.dispatch-source-selector [role='tab'][data-dispatch-source-mode='${sourceMode}']`;
+    const button = this.page.locator(tabSelector).first();
+    if ((await button.count()) === 0) {
+      return false;
+    }
+    if ((await button.getAttribute("aria-selected").catch(() => "")) !== "true") {
+      await clickUi(button);
+    }
+    await this.page.waitForFunction((expectedMode) => {
+      return document.querySelector(`.dispatch-source-selector [role="tab"][data-dispatch-source-mode="${expectedMode}"]`)?.getAttribute("aria-selected") === "true";
+    }, sourceMode, { timeout: 60_000 });
+    return true;
+  }
+
+  async listAcceptedDispatchSources() {
+    const switched = await this.ensureDispatchSourceMode("accepted_contracts");
+    if (!switched) {
+      return [];
+    }
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const rows = await this.page.evaluate(() => {
+        return [...document.querySelectorAll("[data-dispatch-source-item][data-dispatch-source-mode='accepted_contracts']")].map((row) => ({
+          sourceId: row.getAttribute("data-dispatch-source-item") ?? "",
+          text: (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+        }));
+      });
+      if (rows.length > 0) {
+        return rows;
+      }
+      await delay(300);
+    }
+    return [];
   }
 
   async readAircraftProfile(registration) {
@@ -867,18 +1072,47 @@ export class FlightLineAutoplayBot {
           volumePreference: deriveAircraftVolumePreference(row.text),
         };
       })
-      .filter((row) => row.offerId && row.askingPrice > 0 && row.askingPrice <= cashAmount);
+      .filter((row) => row.offerId && row.askingPrice > 0 && row.askingPrice <= cashAmount)
+      .filter((row) => isAutoplayOperableAircraftOffer(row.text));
 
+    const strongVolumeMatch = (row) => {
+      if (this.strategyProfile.preferredVolumeType === "passenger") {
+        return row.volumePreference === "passenger";
+      }
+      if (this.strategyProfile.preferredVolumeType === "cargo") {
+        return row.volumePreference === "cargo" || row.cargoCapacityLb > 0;
+      }
+      return true;
+    };
     const preferred = candidates
       .filter((row) => this.strategyProfile.preferredKeywords.some((keyword) => row.text.toLowerCase().includes(keyword)))
+      .filter((row) => strongVolumeMatch(row))
       .sort((left, right) => {
-        const homeBias = Number(right.matchesHome) - Number(left.matchesHome);
-        if (homeBias !== 0) {
-          return homeBias;
+        const scoreDelta = scoreAircraftOfferForAutoplay({
+          aircraftOffer: right,
+          strategyProfile: this.strategyProfile,
+        }) - scoreAircraftOfferForAutoplay({
+          aircraftOffer: left,
+          strategyProfile: this.strategyProfile,
+        });
+        if (scoreDelta !== 0) {
+          return scoreDelta;
         }
         return left.askingPrice - right.askingPrice;
       })[0];
-    const fallback = candidates.sort((left, right) => left.askingPrice - right.askingPrice)[0];
+    const fallback = [...candidates].sort((left, right) => {
+      const scoreDelta = scoreAircraftOfferForAutoplay({
+        aircraftOffer: right,
+        strategyProfile: this.strategyProfile,
+      }) - scoreAircraftOfferForAutoplay({
+        aircraftOffer: left,
+        strategyProfile: this.strategyProfile,
+      });
+      if (scoreDelta !== 0) {
+        return scoreDelta;
+      }
+      return left.askingPrice - right.askingPrice;
+    })[0];
     const chosen = preferred ?? fallback;
     if (!chosen) {
       return false;
@@ -968,11 +1202,8 @@ export class FlightLineAutoplayBot {
   }
 
   async listVisibleContracts(departureCode = "") {
-    if (departureCode) {
-      await this.applyContractDepartureFilter(departureCode);
-    } else {
-      await this.ensureContractsBoardView("available");
-    }
+    void departureCode;
+    await this.ensureContractsBoardView("available");
     return await this.page.evaluate(() => {
       return [...document.querySelectorAll("[data-select-offer-row]")].map((row) => ({
         offerId: row.getAttribute("data-select-offer-row") ?? "",
@@ -987,11 +1218,7 @@ export class FlightLineAutoplayBot {
       : !relaxed
         ? this.strategyProfile.preferredVolumeType
         : "any";
-    const rangeLimit = relaxed
-      ? Math.max(0, aircraftProfile?.rangeNm ?? 0)
-      : Math.max(0, Math.floor((aircraftProfile?.rangeNm ?? 0) * this.strategyProfile.distanceBias));
-    const passengerLimit = aircraftProfile?.passengerCapacity ?? 0;
-    const cargoLimit = aircraftProfile?.cargoCapacityLb ?? 0;
+    const distanceBias = relaxed ? 1 : this.strategyProfile.distanceBias;
 
     return visibleContracts
       .map((row) => {
@@ -1002,21 +1229,16 @@ export class FlightLineAutoplayBot {
         if (parsed.departure !== aircraft.currentAirport) {
           return null;
         }
-        if (preferredVolumeType !== "any" && parsed.volumeType !== preferredVolumeType) {
+        if (!isContractCompatibleWithAircraft({
+          contract: parsed,
+          aircraftProfile,
+          preferredVolumeType,
+          distanceBias,
+        })) {
           return null;
         }
-        if (rangeLimit > 0 && parsed.distanceNm > rangeLimit) {
-          return null;
-        }
-        if (parsed.volumeType === "passenger" && passengerLimit > 0 && parsed.passengerCount > passengerLimit) {
-          return null;
-        }
-        if (parsed.volumeType === "cargo" && cargoLimit > 0 && parsed.cargoWeightLb > cargoLimit) {
-          return null;
-        }
-        const notEnoughTime = Number.isFinite(parsed.hoursRemaining)
-          && parsed.hoursRemaining < Math.max(6, Math.ceil(parsed.distanceNm / 160) + 4);
-        if (notEnoughTime) {
+        const contractSignature = buildContractSignature(parsed);
+        if (contractSignature && this.blockedContractSignatures.has(contractSignature)) {
           return null;
         }
         const score = scoreDispatchableContract({
@@ -1035,85 +1257,129 @@ export class FlightLineAutoplayBot {
       .sort((left, right) => right.score - left.score);
   }
 
-  chooseContractForAircraft(aircraft, aircraftProfile, visibleContracts) {
-    const primaryCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts);
-    if (primaryCandidates.length > 0) {
-      return primaryCandidates[0];
-    }
+  buildDestinationContinuityMap(aircraft, aircraftProfile, allVisibleContracts) {
+    const continuityCache = new Map();
+    const strictPreferredVolumeType = aircraftProfile?.volumePreference && aircraftProfile.volumePreference !== "any"
+      ? aircraftProfile.volumePreference
+      : this.strategyProfile.preferredVolumeType;
+    return {
+      get: (candidate) => {
+        const arrivalDelayHours = Math.max(1, Math.ceil(estimateContractCycleHours(candidate.parsed)));
+        const cacheKey = `${candidate.parsed.destination}|${arrivalDelayHours}`;
+        if (!continuityCache.has(cacheKey)) {
+          let strictCount = 0;
+          let relaxedCount = 0;
+          let homeReturnCount = 0;
+          for (const row of allVisibleContracts) {
+            const parsed = parseContractRowText(row.text);
+            if (!parsed || parsed.departure !== candidate.parsed.destination) {
+              continue;
+            }
 
-    const relaxedCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts, { relaxed: true });
-    return relaxedCandidates[0] ?? null;
+            const shiftedContract = {
+              ...parsed,
+              hoursRemaining: Number.isFinite(parsed.hoursRemaining)
+                ? Math.max(-24, parsed.hoursRemaining - arrivalDelayHours)
+                : parsed.hoursRemaining,
+            };
+
+            const strictCompatible = isContractCompatibleWithAircraft({
+              contract: shiftedContract,
+              aircraftProfile,
+              preferredVolumeType: strictPreferredVolumeType,
+              distanceBias: this.strategyProfile.distanceBias,
+            });
+            const relaxedCompatible = strictCompatible || isContractCompatibleWithAircraft({
+              contract: shiftedContract,
+              aircraftProfile,
+              preferredVolumeType: "any",
+              distanceBias: 1,
+            });
+
+            if (strictCompatible) {
+              strictCount += 1;
+            }
+            if (relaxedCompatible) {
+              relaxedCount += 1;
+              if (shiftedContract.destination === this.homeAirport) {
+                homeReturnCount += 1;
+              }
+            }
+          }
+
+          continuityCache.set(cacheKey, {
+            strictCount,
+            relaxedCount,
+            homeReturnCount,
+          });
+        }
+        return continuityCache.get(cacheKey);
+      },
+    };
   }
 
-  async tryDispatchForAircraft(aircraft) {
-    const aircraftProfile = await this.readAircraftProfile(aircraft.registration);
-    if (!aircraftProfile) {
-      return false;
-    }
+  buildDispatchableContractQueue(aircraft, aircraftProfile, visibleContracts, allVisibleContracts = visibleContracts) {
+    const continuityMap = this.buildDestinationContinuityMap(aircraft, aircraftProfile, allVisibleContracts);
+    const primaryCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts);
+    const relaxedCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, visibleContracts, { relaxed: true });
+    const seenOfferIds = new Set();
+    const rankedCandidates = [...primaryCandidates, ...relaxedCandidates]
+      .filter((candidate) => {
+        if (!candidate?.offerId || seenOfferIds.has(candidate.offerId)) {
+          return false;
+        }
+        seenOfferIds.add(candidate.offerId);
+        return true;
+      })
+      .map((candidate) => {
+        const continuity = continuityMap.get(candidate);
+        const continuityBias = (continuity.strictCount * 72_000)
+          + (continuity.relaxedCount * 18_000)
+          + (continuity.homeReturnCount * 55_000)
+          - (continuity.relaxedCount === 0 && candidate.parsed.destination !== this.homeAirport ? 220_000 : 0);
+        return {
+          ...candidate,
+          continuity,
+          score: candidate.score + continuityBias,
+        };
+      })
+      .sort((left, right) => right.score - left.score);
 
-    const visibleContracts = await this.listVisibleContracts(aircraft.currentAirport);
-    const candidate = this.chooseContractForAircraft(aircraft, aircraftProfile, visibleContracts);
-    if (!candidate) {
-      return false;
-    }
+    const chainableCandidates = rankedCandidates.filter((candidate) =>
+      candidate.parsed.destination === this.homeAirport || candidate.continuity.relaxedCount > 0);
+    return chainableCandidates.length > 0 ? chainableCandidates : rankedCandidates;
+  }
 
-    await clickUi(this.page.locator(`[data-select-offer-row='${candidate.offerId}']`).first());
-    await this.page.waitForFunction((offerId) => {
-      const pane = document.querySelector(`[data-accept-selected-pane="${offerId}"]`);
-      return pane instanceof HTMLElement;
-    }, candidate.offerId);
+  buildAcceptedDispatchSourceQueueForAircraft(aircraft, aircraftProfile, acceptedSources) {
+    const candidates = this.collectDispatchableContracts(aircraft, aircraftProfile, acceptedSources);
+    const relaxedCandidates = this.collectDispatchableContracts(aircraft, aircraftProfile, acceptedSources, { relaxed: true });
+    const seenSourceIds = new Set();
+    return [...candidates, ...relaxedCandidates].filter((candidate) => {
+      if (!candidate?.sourceId || seenSourceIds.has(candidate.sourceId)) {
+        return false;
+      }
+      seenSourceIds.add(candidate.sourceId);
+      return true;
+    });
+  }
 
-    const paneText = ((await this.page.locator(`[data-accept-selected-pane='${candidate.offerId}']`).textContent()) ?? "").replace(/\s+/g, " ").trim();
-    if (/No ready aircraft/i.test(paneText)) {
-      return false;
-    }
-
-    await clickUi(this.page.locator(`[data-accept-selected-pane='${candidate.offerId}']`).first());
-    await this.page.waitForFunction(() => {
-      const callout = document.querySelector(".contracts-next-step");
-      return callout instanceof HTMLElement || document.querySelector("[data-board-tab='active']")?.getAttribute("aria-selected") === "true";
-    }, { timeout: 60_000 });
-
-    const dispatchButton = this.page.locator(".contracts-next-step [data-next-step-dispatch]").first();
-    if ((await dispatchButton.count()) === 0 || !(await dispatchButton.isEnabled().catch(() => false))) {
-      this.lastAction = `Accepted ${candidate.parsed.departure} -> ${candidate.parsed.destination}, but it was not immediately dispatchable.`;
-      await this.maybeRefreshArtifacts(true);
-      return false;
-    }
-
-    await clickUi(dispatchButton);
-    await this.page.waitForFunction((expectedRegistration) => {
-      return Boolean(document.querySelector("[data-dispatch-tab-host]"))
-        && [...document.querySelectorAll("[data-dispatch-aircraft-row]")].some((row) => (row.textContent ?? "").includes(expectedRegistration));
-    }, aircraft.registration, { timeout: 60_000 });
-    await clickUi(this.page.locator("[data-dispatch-aircraft-row]").filter({ hasText: aircraft.registration }).first());
-    const matchingSourceId = await this.page.evaluate((expectedContract) => {
-      const expectedPayloadText = expectedContract.volumeType === "cargo"
-        ? `${expectedContract.cargoWeightLb.toLocaleString("en-US")} lb cargo`
-        : `${expectedContract.passengerCount.toLocaleString("en-US")} pax`;
-      const matchingRow = [...document.querySelectorAll("[data-dispatch-source-item]")].find((row) => {
-        const text = (row.textContent ?? "").replace(/\s+/g, " ").trim();
-        return text.includes(`Departure: ${expectedContract.departure}`)
-          && text.includes(`Destination: ${expectedContract.destination}`)
-          && text.includes(expectedPayloadText);
-      });
-      return matchingRow?.getAttribute("data-dispatch-source-item") ?? "";
-    }, candidate.parsed);
-    if (matchingSourceId) {
-      await clickUi(this.page.locator(`[data-dispatch-source-item='${matchingSourceId}']`).first());
-    }
-    const initialCommitLabel = ((await this.page.locator("[data-dispatch-commit-button]").first().textContent().catch(() => "")) ?? "").trim();
+  async stageAndCommitSelectedDispatchContract({
+    aircraft,
+    contract,
+    sourceId,
+  }) {
+    const commitButton = this.page.locator("[data-dispatch-commit-button]").first();
+    const initialCommitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
     await this.page.evaluate((value) => { window.__codexPriorDispatchCommitLabel = value; }, initialCommitLabel);
     await this.forceButtonSubmit("[data-dispatch-auto-plan-contract]");
     await this.page.waitForFunction(() => {
       const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
-      const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+      const commitButtonText = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
       const priorCommitLabel = window.__codexPriorDispatchCommitLabel ?? "";
       return /Drafted schedule|not dispatchable|would miss|Resolve blockers|Discarded draft/i.test(flashText)
-        || (commitButton !== priorCommitLabel && /Dispatch contract|Resolve blockers|No dispatch draft/i.test(commitButton));
+        || (commitButtonText !== priorCommitLabel && /Dispatch contract|Resolve blockers|No dispatch draft/i.test(commitButtonText));
     }, { timeout: 60_000, polling: 100 });
 
-    const commitButton = this.page.locator("[data-dispatch-commit-button]").first();
     let commitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
     let canCommit = await commitButton.isEnabled().catch(() => false);
     if ((!canCommit || !/Dispatch contract/i.test(commitLabel)) && (await this.page.locator("[data-dispatch-discard-draft]").count()) > 0) {
@@ -1122,25 +1388,26 @@ export class FlightLineAutoplayBot {
         const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
         return /Discarded draft/i.test(flashText);
       }, { timeout: 60_000 });
-      if (matchingSourceId) {
-        await clickUi(this.page.locator(`[data-dispatch-source-item='${matchingSourceId}']`).first());
+      if (sourceId) {
+        await clickUi(this.page.locator(`[data-dispatch-source-item='${sourceId}']`).first());
       }
-      await clickUi(this.page.locator("[data-dispatch-aircraft-row]").filter({ hasText: aircraft.registration }).first());
+      await this.selectDispatchAircraft(aircraft.registration);
       const retryInitialCommitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
-      await this.forceButtonSubmit("[data-dispatch-auto-plan-contract]");
       await this.page.evaluate((value) => { window.__codexPriorDispatchCommitLabel = value; }, retryInitialCommitLabel);
+      await this.forceButtonSubmit("[data-dispatch-auto-plan-contract]");
       await this.page.waitForFunction(() => {
         const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
-        const commitButton = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
+        const commitButtonText = document.querySelector("[data-dispatch-commit-button]")?.textContent ?? "";
         const priorCommitLabel = window.__codexPriorDispatchCommitLabel ?? "";
         return /Drafted schedule|not dispatchable|would miss|Resolve blockers/i.test(flashText)
-          || (commitButton !== priorCommitLabel && /Dispatch contract|Resolve blockers|No dispatch draft/i.test(commitButton));
+          || (commitButtonText !== priorCommitLabel && /Dispatch contract|Resolve blockers|No dispatch draft/i.test(commitButtonText));
       }, { timeout: 60_000, polling: 100 });
       commitLabel = ((await commitButton.textContent().catch(() => "")) ?? "").trim();
       canCommit = await commitButton.isEnabled().catch(() => false);
     }
+
     if (!canCommit || !/Dispatch contract/i.test(commitLabel)) {
-      this.lastAction = `Tried to draft ${candidate.parsed.departure} -> ${candidate.parsed.destination} on ${aircraft.registration}, but the visible dispatch review blocked it.`;
+      this.lastAction = `Tried to draft ${contract.departure} -> ${contract.destination} on ${aircraft.registration}, but the visible dispatch review blocked it.`;
       await this.maybeRefreshArtifacts(true);
       return false;
     }
@@ -1150,20 +1417,175 @@ export class FlightLineAutoplayBot {
       const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
       return /Committed schedule/i.test(flashText);
     }, { timeout: 60_000 });
-
-    this.lastAction = `Accepted and dispatched ${candidate.parsed.departure} -> ${candidate.parsed.destination} on ${aircraft.registration} for ${candidate.parsed.payoutAmount.toLocaleString("en-US")}.`;
-    this.log("Contract dispatched.", {
-      registration: aircraft.registration,
-      contract: candidate.parsed,
-    });
-    await this.maybeRefreshArtifacts(true);
     return true;
+  }
+
+  async tryDispatchAcceptedBacklogForAircraft(aircraft, aircraftProfile) {
+    const selected = await this.selectDispatchAircraft(aircraft.registration);
+    if (!selected) {
+      return false;
+    }
+
+    const acceptedSources = await this.listAcceptedDispatchSources();
+    const candidates = this.buildAcceptedDispatchSourceQueueForAircraft(aircraft, aircraftProfile, acceptedSources);
+    if (candidates.length === 0) {
+      return false;
+    }
+
+    for (const candidate of candidates) {
+      await clickUi(this.page.locator(`[data-dispatch-source-item='${candidate.sourceId}']`).first());
+      const committed = await this.stageAndCommitSelectedDispatchContract({
+        aircraft,
+        contract: candidate.parsed,
+        sourceId: candidate.sourceId,
+      });
+      if (!committed) {
+        const contractSignature = buildContractSignature(candidate.parsed);
+        if (contractSignature) {
+          this.blockedContractSignatures.add(contractSignature);
+        }
+        continue;
+      }
+
+      this.lastAction = `Dispatched accepted ${candidate.parsed.departure} -> ${candidate.parsed.destination} on ${aircraft.registration} for ${candidate.parsed.payoutAmount.toLocaleString("en-US")}.`;
+      this.waitingForReadyAircraftEvent = false;
+      this.log("Accepted backlog contract dispatched.", {
+        registration: aircraft.registration,
+        contract: candidate.parsed,
+      });
+      await this.maybeRefreshArtifacts(true);
+      return true;
+    }
+
+    return false;
+  }
+
+  async tryDispatchForAircraft(aircraft) {
+    const aircraftProfile = await this.readAircraftProfile(aircraft.registration);
+    if (!aircraftProfile) {
+      return false;
+    }
+
+    await this.openTab("dispatch");
+    await this.page.waitForFunction(() => document.querySelector("[data-dispatch-tab-host]") instanceof HTMLElement);
+    if (await this.tryDispatchAcceptedBacklogForAircraft(aircraft, aircraftProfile)) {
+      return true;
+    }
+
+    const allVisibleContracts = await this.listVisibleContracts("");
+    const visibleContracts = allVisibleContracts.filter((row) => {
+      const parsed = parseContractRowText(row.text);
+      return parsed?.departure === aircraft.currentAirport;
+    });
+    const candidates = this.buildDispatchableContractQueue(aircraft, aircraftProfile, visibleContracts, allVisibleContracts);
+    if (candidates.length === 0) {
+      return false;
+    }
+    this.log("Top dispatch candidates.", candidates.slice(0, 5).map((candidate) => ({
+      route: `${candidate.parsed.departure}->${candidate.parsed.destination}`,
+      payoutAmount: candidate.parsed.payoutAmount,
+      continuity: candidate.continuity,
+      score: candidate.score,
+    })));
+
+    let sawNoReadyAircraftCandidate = false;
+    for (const candidate of candidates) {
+      const contractSignature = buildContractSignature(candidate.parsed);
+      const acceptedCountBefore = await this.readAcceptedOrActiveContractCount();
+      await clickUi(this.page.locator(`[data-select-offer-row='${candidate.offerId}']`).first());
+      await this.page.waitForFunction((offerId) => {
+        const pane = document.querySelector(`[data-accept-selected-pane="${offerId}"]`);
+        return pane instanceof HTMLElement;
+      }, candidate.offerId);
+
+      const paneText = ((await this.page.locator(`[data-accept-selected-pane='${candidate.offerId}']`).textContent()) ?? "").replace(/\s+/g, " ").trim();
+      if (/No ready aircraft/i.test(paneText)) {
+        sawNoReadyAircraftCandidate = true;
+        continue;
+      }
+
+      await clickUi(this.page.locator(`[data-accept-selected-pane='${candidate.offerId}']`).first());
+      await this.page.waitForFunction((previousAcceptedCount) => {
+        const callout = document.querySelector(".contracts-next-step");
+        const flashText = document.querySelector("[data-shell-flash]")?.textContent ?? "";
+        const activeTabText = document.querySelector("[data-board-tab='active']")?.textContent ?? "";
+        const activeCountMatches = activeTabText.match(/\d+/g) ?? [];
+        const activeCount = activeCountMatches.length > 0 ? Number.parseInt(activeCountMatches.at(-1) ?? "0", 10) : 0;
+        return callout instanceof HTMLElement
+          || /Accepted/i.test(flashText)
+          || activeCount > previousAcceptedCount;
+      }, acceptedCountBefore, { timeout: 60_000, polling: 100 });
+
+      const dispatchButton = this.page.locator(".contracts-next-step [data-next-step-dispatch]").first();
+      if ((await dispatchButton.count()) === 0 || !(await dispatchButton.isEnabled().catch(() => false))) {
+        if (await this.tryDispatchAcceptedBacklogForAircraft(aircraft, aircraftProfile)) {
+          return true;
+        }
+        if (contractSignature) {
+          this.blockedContractSignatures.add(contractSignature);
+        }
+        this.lastAction = `Accepted ${candidate.parsed.departure} -> ${candidate.parsed.destination}, but it was not immediately dispatchable. Trying another contract.`;
+        await this.maybeRefreshArtifacts(true);
+        continue;
+      }
+
+      await clickUi(dispatchButton);
+      await this.page.waitForFunction((expectedRegistration) => {
+        return Boolean(document.querySelector("[data-dispatch-tab-host]"))
+          && [...document.querySelectorAll("[data-dispatch-aircraft-row]")].some((row) => (row.textContent ?? "").includes(expectedRegistration));
+      }, aircraft.registration, { timeout: 60_000 });
+      await this.selectDispatchAircraft(aircraft.registration);
+      const matchingSourceId = await this.page.evaluate((expectedContract) => {
+        const expectedPayloadText = expectedContract.volumeType === "cargo"
+          ? `${expectedContract.cargoWeightLb.toLocaleString("en-US")} lb cargo`
+          : `${expectedContract.passengerCount.toLocaleString("en-US")} pax`;
+        const matchingRow = [...document.querySelectorAll("[data-dispatch-source-item]")].find((row) => {
+          const text = (row.textContent ?? "").replace(/\s+/g, " ").trim();
+          return text.includes(`Departure: ${expectedContract.departure}`)
+            && text.includes(`Destination: ${expectedContract.destination}`)
+            && text.includes(expectedPayloadText);
+        });
+        return matchingRow?.getAttribute("data-dispatch-source-item") ?? "";
+      }, candidate.parsed);
+      if (matchingSourceId) {
+        await clickUi(this.page.locator(`[data-dispatch-source-item='${matchingSourceId}']`).first());
+      }
+      const committed = await this.stageAndCommitSelectedDispatchContract({
+        aircraft,
+        contract: candidate.parsed,
+        sourceId: matchingSourceId,
+      });
+      if (!committed) {
+        if (await this.tryDispatchAcceptedBacklogForAircraft(aircraft, aircraftProfile)) {
+          return true;
+        }
+        if (contractSignature) {
+          this.blockedContractSignatures.add(contractSignature);
+        }
+        continue;
+      }
+
+      this.lastAction = `Accepted and dispatched ${candidate.parsed.departure} -> ${candidate.parsed.destination} on ${aircraft.registration} for ${candidate.parsed.payoutAmount.toLocaleString("en-US")}.`;
+      this.waitingForReadyAircraftEvent = false;
+      this.log("Contract dispatched.", {
+        registration: aircraft.registration,
+        contract: candidate.parsed,
+      });
+      await this.maybeRefreshArtifacts(true);
+      return true;
+    }
+
+    if (sawNoReadyAircraftCandidate) {
+      this.waitingForReadyAircraftEvent = true;
+      this.lastAction = `Visible work exists at ${aircraft.currentAirport}, but no aircraft is dispatch-ready yet. Waiting for the next event.`;
+    }
+    return false;
   }
 
   async dispatchIdleAircraft() {
     const aircraft = await this.openDispatchAndReadAircraft();
     const idleAircraft = aircraft
-      .filter((entry) => /available/i.test(entry.statusText) && !/committed/i.test(entry.scheduleText))
+      .filter((entry) => isAutoplayIdleAircraft(entry))
       .sort((left, right) => {
         const homeBias = Number(right.currentAirport === this.homeAirport) - Number(left.currentAirport === this.homeAirport);
         if (homeBias !== 0) {
@@ -1198,12 +1620,13 @@ export class FlightLineAutoplayBot {
       const button = document.querySelector("[data-clock-next-event]");
       return !(button instanceof HTMLButtonElement) || !/Skipping/i.test(button.textContent ?? "");
     }, { timeout: 60_000 });
+    await this.reloadCurrentSaveView();
     this.lastAction = "Skipped directly to the next visible calendar event.";
     await this.maybeRefreshArtifacts(true);
     return true;
   }
 
-  async advanceToNextMorning() {
+  async advanceToNextMorning(forceNextDay = false) {
     const beforeSummary = await this.readVisibleSummary();
     const summary = this.page.locator("[data-clock-menu] summary").first();
     await clickUi(summary);
@@ -1221,7 +1644,11 @@ export class FlightLineAutoplayBot {
     }
 
     const currentHourValue = parseClockHourValue(beforeSummary.currentTimeLabel);
-    const dayOffset = Number.isFinite(currentHourValue) && currentHourValue < 6 ? 0 : 1;
+    const dayOffset = forceNextDay
+      ? 1
+      : Number.isFinite(currentHourValue) && currentHourValue < 6
+        ? 0
+        : 1;
     const targetLocalDate = addDaysToLocalDate(selectedLocalDate, dayOffset);
     if (!targetLocalDate) {
       await clickUi(summary);
@@ -1250,6 +1677,7 @@ export class FlightLineAutoplayBot {
       const button = document.querySelector("[data-clock-sim-anchor-date]");
       return !(button instanceof HTMLButtonElement) || !/Simulating/i.test(button.textContent ?? "");
     }, { timeout: 60_000 });
+    await this.reloadCurrentSaveView();
 
     const afterSummary = await this.readVisibleSummary();
     const advancedHours = beforeSummary.currentDate && afterSummary.currentDate
@@ -1264,11 +1692,15 @@ export class FlightLineAutoplayBot {
 
   async advanceTimeProductively() {
     const aircraft = await this.openDispatchAndReadAircraft();
-    const idleAircraftCount = aircraft.filter((entry) => /available/i.test(entry.statusText) && !/committed/i.test(entry.scheduleText)).length;
+    const idleAircraftCount = aircraft.filter((entry) => isAutoplayIdleAircraft(entry)).length;
     const busyAircraftCount = Math.max(0, aircraft.length - idleAircraftCount);
     const acceptedOrActiveContractCount = await this.readAcceptedOrActiveContractCount();
 
-    if (idleAircraftCount > 0 && acceptedOrActiveContractCount === 0) {
+    if (idleAircraftCount > 0 && busyAircraftCount === 0) {
+      if (this.waitingForReadyAircraftEvent) {
+        this.waitingForReadyAircraftEvent = false;
+        return await this.advanceToNextMorning(true);
+      }
       return await this.advanceToNextMorning();
     }
 
