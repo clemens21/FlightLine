@@ -12,8 +12,8 @@ import { allocatePort, startUiServer } from "../test/helpers/ui-testkit.mjs";
 export const playtestDifficultyOptions = ["easy", "medium", "hard"];
 export const defaultPlaytestStrategy = "contract-throughput-first profitability";
 export const defaultPlaytestViewport = {
-  width: 1600,
-  height: 1000,
+  width: 1920,
+  height: 1080,
 };
 export const defaultCheckpointIntervalMinutes = 10;
 
