@@ -2131,34 +2131,27 @@ function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem, currentTimeUtc
 
   return `
     <article class="planner-item ${item.plannerItemStatus} ${item.sourceType}">
-      <div class="planner-item-row">
+      <div class="planner-item-header">
         <span class="planner-sequence">${item.sequenceNumber}</span>
-        <div class="planner-item-main">
-          <div class="planner-item-line">
-            <div class="planner-item-route-block">
-              <strong class="planner-item-route">${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
-              <div class="planner-item-meta-strip">
-                <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
-                ${renderBadge(statusLabel)}
-              </div>
-            </div>
-            <div class="planner-item-value-block">
-              <span class="eyebrow">Payout</span>
-              <strong>${escapeHtml(formatMoney(item.payoutAmount))}</strong>
-            </div>
+        <div class="planner-item-header-main">
+          <strong class="planner-item-route">${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
+          <div class="planner-item-meta-strip">
+            <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
+            ${renderBadge(statusLabel)}
           </div>
-          <div class="planner-item-subline muted">
-            <span class="planner-item-meta-pill">${escapeHtml(formatPayload(item))}</span>
-            <span class="planner-item-meta-pill">Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
-            <span class="planner-item-meta-pill">${escapeHtml(formatDeadlineCountdown(item.deadlineUtc, currentTimeUtc))}</span>
-          </div>
-        </div>
-        <div class="planner-item-actions">
-          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up" aria-label="Move route item up">Up</button>
-          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down" aria-label="Move route item down">Down</button>
-          <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Drop</button>
         </div>
       </div>
+      <div class="planner-item-facts muted">
+        <span class="planner-item-meta-pill">Payout ${escapeHtml(formatMoney(item.payoutAmount))}</span>
+        <span class="planner-item-meta-pill">${escapeHtml(formatPayload(item))}</span>
+        <span class="planner-item-meta-pill">Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+        <span class="planner-item-meta-pill">${escapeHtml(formatDeadlineCountdown(item.deadlineUtc, currentTimeUtc))}</span>
+      </div>
+      <div class="planner-item-actions">
+        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up" aria-label="Move route item up">Up</button>
+        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down" aria-label="Move route item down">Down</button>
+        <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Drop</button>
+        </div>
     </article>
   `;
 }

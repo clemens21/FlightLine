@@ -2658,29 +2658,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 4px;
     }
-    .planner-item-row {
+    .planner-item-header {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      align-items: center;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
       gap: 6px;
     }
-    .planner-item-main {
+    .planner-item-header-main {
       min-width: 0;
       display: grid;
       gap: 2px;
-    }
-    .planner-item-line {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-    }
-    .planner-item-route-block {
-      min-width: 0;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 6px;
     }
     .planner-item-route {
       font-size: 14px;
@@ -2694,26 +2681,17 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 5px;
       min-width: 0;
     }
-    .planner-item-value-block {
-      display: grid;
-      justify-items: end;
-      gap: 1px;
-      white-space: nowrap;
-    }
-    .planner-item-value-block strong {
-      font-size: 14px;
-      line-height: 1.15;
-    }
     .planner-item-route,
     .planner-review-item .meta-stack strong {
       overflow-wrap: anywhere;
     }
-    .planner-item-subline {
+    .planner-item-facts {
       display: flex;
       flex-wrap: wrap;
       gap: 4px 8px;
       font-size: 12px;
       line-height: 1.2;
+      padding-left: 28px;
     }
     .planner-item-meta-pill {
       display: inline-flex;
@@ -2737,10 +2715,10 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .planner-item-actions {
       display: flex;
-      flex-wrap: nowrap;
+      flex-wrap: wrap;
       gap: 4px;
-      justify-content: end;
-      white-space: nowrap;
+      justify-content: flex-start;
+      padding-left: 28px;
     }
     .planner-item-actions .button-secondary {
       padding: 4px 7px;
@@ -2916,19 +2894,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .planner-selection-actions {
         justify-content: start;
       }
-      .planner-item-row {
-        grid-template-columns: auto minmax(0, 1fr);
-      }
-      .planner-item-line {
-        align-items: start;
-        flex-direction: column;
-      }
-      .planner-item-value-block {
-        justify-items: start;
-      }
+      .planner-item-facts,
       .planner-item-actions {
-        grid-column: 2;
-        justify-content: start;
+        padding-left: 0;
       }
     }
     .aircraft-tab-grid {
