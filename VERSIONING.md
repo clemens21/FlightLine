@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.24.7`
+- `0.24.8`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -107,6 +107,7 @@ The Route Planning shared-table follow-up that puts accepted contracts and next-
 The Route Planning chain-density follow-up that compresses the saved route summary and route-chain items into a tighter inline layout advances the release to `0.24.5`.
 The Route Planning chain-cleanup follow-up that collapses the route summary into compact decision stats and surfaces per-leg route, payout, load, deadline, and status in a tighter row layout advances the release to `0.24.6`.
 The Route Planning next-leg table width follow-up that trims the candidate column widths, shrinks the table minimum width, and tightens the plan cell advances the release to `0.24.7`.
+The Route Planning de-carding follow-up that flattens the setup block into an ops strip, removes extra planner pills, and turns the saved-chain items into denser list rows advances the release to `0.24.8`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

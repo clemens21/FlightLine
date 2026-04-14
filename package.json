@@ -1,6 +1,6 @@
 {
   "name": "flightline",
-  "version": "0.24.7",
+  "version": "0.24.8",
   "description": "FlightLine airline management simulation",
   "main": "dist/desktop/main.js",
   "scripts": {

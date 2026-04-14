@@ -2046,11 +2046,9 @@ function renderPlannerPanel(
             ${renderPlannerTableToggle("accepted", `Accepted (${filteredAcceptedContracts.length})`, activePlannerTable === "accepted")}
             ${renderPlannerTableToggle("candidates", `Next leg (${plannerCandidates.length})`, activePlannerTable === "candidates")}
           </div>
-          <div class="pill-row">
-            <span class="pill">${escapeHtml(activePlannerTable === "accepted"
-              ? `${filteredAcceptedContracts.length} visible accepted`
-              : renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
-          </div>
+          <span class="muted planner-panel-note">${escapeHtml(activePlannerTable === "accepted"
+            ? `${filteredAcceptedContracts.length} visible accepted`
+            : renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
         </div>
         <div class="panel-body">
           ${activePlannerTable === "accepted"
@@ -2059,14 +2057,11 @@ function renderPlannerPanel(
         </div>
       </section>
       <div class="planner-workbench">
-        ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft, summary)}
+        ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft)}
         <section class="panel planner-chain-panel">
           <div class="panel-head">
             <strong>Saved route chain</strong>
-            <div class="pill-row">
-              <span class="pill">${escapeHtml(String(summary.itemCount))} items</span>
-              <span class="pill">${escapeHtml(formatMoney(summary.payoutTotal))} total payout</span>
-            </div>
+            <span class="muted planner-panel-note">${escapeHtml(`${summary.itemCount} items | ${formatMoney(summary.payoutTotal)} total payout`)}</span>
           </div>
           <div class="panel-body">
             ${renderPlannerSummary(summary)}
@@ -2285,7 +2280,6 @@ function renderPlannerSetupCard(
   state: ContractsUiState,
   selectedAcceptedContract: ContractsViewAcceptedContract | null,
   selectedAircraft: ContractsPlannerAircraft | null,
-  summary: PlannerChainSummary,
 ): string {
   const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
   const routePlanHasItems = (state.payload.routePlan?.items.length ?? 0) > 0;
@@ -2307,34 +2301,29 @@ function renderPlannerSetupCard(
     : "";
 
   return `
-    <section class="planner-setup-card">
-      <div class="planner-setup-grid">
-        <article class="planner-setup-metric">
+    <section class="planner-setup-strip">
+      <div class="planner-setup-line">
+        <article class="planner-setup-field">
           <span class="eyebrow">Selected contract</span>
           <strong>${escapeHtml(selectedAcceptedContract ? `${selectedAcceptedContract.origin.code} -> ${selectedAcceptedContract.destination.code}` : "No selection")}</strong>
           <span class="muted">${escapeHtml(selectedAcceptedContract ? `${formatPayload(selectedAcceptedContract)} | due ${formatDate(selectedAcceptedContract.deadlineUtc)}` : "No visible accepted contract")}</span>
         </article>
-        <article class="planner-setup-metric">
+        <article class="planner-setup-field" data-planner-next-origin>
           <span class="eyebrow">Current next origin</span>
           <strong>${escapeHtml(plannerEndpointAirport?.code ?? selectedAcceptedContract?.destination.code ?? "--")}</strong>
           <span class="muted">${escapeHtml(plannerEndpointAirport?.name ?? selectedAcceptedContract?.destination.name ?? "No route anchor selected")}</span>
         </article>
-        <label class="planner-setup-metric planner-aircraft-picker">
+        <label class="planner-setup-field planner-aircraft-picker">
           <span class="eyebrow">Aircraft filter</span>
           <select name="plannerAircraftId">
             ${aircraftOptions}
           </select>
           <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName}` : "All company aircraft")}</span>
         </label>
-        <article class="planner-setup-metric">
-          <span class="eyebrow">Saved chain</span>
-          <strong>${escapeHtml(String(summary.itemCount))} item${summary.itemCount === 1 ? "" : "s"}</strong>
-          <span class="muted">${escapeHtml(summary.itemCount > 0 ? `${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned` : "0 accepted / 0 planned")}</span>
-        </article>
-      </div>
-      <div class="planner-selection-actions">
-        <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(selectedAcceptedContract?.companyContractId ?? "")}" ${routeActionDisabled ? "disabled" : ""}>${escapeHtml(routeActionLabel)}</button>
-        ${dispatchAction}
+        <div class="planner-selection-actions">
+          <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(selectedAcceptedContract?.companyContractId ?? "")}" ${routeActionDisabled ? "disabled" : ""}>${escapeHtml(routeActionLabel)}</button>
+          ${dispatchAction}
+        </div>
       </div>
     </section>
   `;
@@ -4058,26 +4047,26 @@ function renderPlannerSummary(summary: PlannerChainSummary): string {
   const continuityTone = summary.continuityIssues.length > 0 ? "warning" : "accent";
   return `
     <div class="planner-summary-strip">
-      <article class="planner-summary-stat">
+      <div class="planner-summary-kv">
         <span class="eyebrow">Chain</span>
         <strong>${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"}`)}</strong>
         <span class="muted">${escapeHtml(`${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned`)}</span>
-      </article>
-      <article class="planner-summary-stat">
+      </div>
+      <div class="planner-summary-kv">
         <span class="eyebrow">Endpoint</span>
         <strong>${escapeHtml(summary.endpointAirport ? summary.endpointAirport.code : "Not set")}</strong>
         <span class="muted">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "Start a chain to set the endpoint.")}</span>
-      </article>
-      <article class="planner-summary-stat">
+      </div>
+      <div class="planner-summary-kv">
         <span class="eyebrow">Payout</span>
         <strong>${escapeHtml(formatMoney(summary.payoutTotal))}</strong>
         <span class="muted">Accepted plus planned value</span>
-      </article>
-      <article class="planner-summary-stat ${continuityTone}">
+      </div>
+      <div class="planner-summary-kv ${continuityTone}">
         <span class="eyebrow">Continuity</span>
         <strong>${escapeHtml(continuityStatus)}</strong>
         <span class="muted">${escapeHtml(summary.continuityIssues.length === 0 ? "No breaks visible." : "Review the flagged legs below.")}</span>
-      </article>
+      </div>
     </div>
     ${summary.continuityIssues.length > 0
       ? `<div class="planner-continuity-inline-list">${summary.continuityIssues.map((issue) => `<div class="planner-continuity-inline-issue">${escapeHtml(issue)}</div>`).join("")}</div>`

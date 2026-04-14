@@ -501,7 +501,7 @@ try {
     initialPlannerAddCount = await plannerAddButtons.count();
   }
   assert.ok(initialPlannerAddCount > 0);
-  const plannerNextOriginCode = ((await page.locator(".planner-setup-grid .planner-setup-metric").nth(1).locator("strong").textContent()) ?? "").trim();
+  const plannerNextOriginCode = ((await page.locator("[data-planner-next-origin] strong").textContent()) ?? "").trim();
   assert.ok(plannerNextOriginCode.length > 0);
   await page.waitForFunction((expectedOriginCode) => {
     const rows = [...document.querySelectorAll(".planner-candidate-table tbody tr")];
@@ -523,7 +523,7 @@ try {
   assert.ok(firstAircraftOption);
   await plannerAircraftSelect.selectOption(firstAircraftOption.value);
   await page.waitForFunction((registration) => {
-    return document.querySelector(".planner-setup-card")?.textContent?.includes(registration) ?? false;
+    return document.querySelector(".planner-setup-strip")?.textContent?.includes(registration) ?? false;
   }, firstAircraftOption.text.split("|")[0]?.trim() ?? "");
   const filteredPlannerAddCount = await plannerAddButtons.count();
   assert.ok(filteredPlannerAddCount <= initialPlannerAddCount);
