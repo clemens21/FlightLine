@@ -2504,7 +2504,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       table-layout: fixed;
     }
     .planner-anchor-table {
-      min-width: 760px;
+      min-width: 620px;
     }
     .planner-candidate-table {
       min-width: 1126px;
@@ -2536,6 +2536,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-aircraft-brief {
       display: grid;
       gap: 4px;
+    }
+    .planner-selection-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
     }
     .planner-summary-grid {
       display: grid;

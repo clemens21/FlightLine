@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.24.2`
+- `0.24.3`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -102,6 +102,7 @@ The clock agenda scheduled-contract visibility fix and the shell-level `skip to 
 The player-blind Playtester specialist package, watched-run harness, artifact workflow, and prompt-pack rollout advance the release to `0.24.0`.
 The Contracts direct-dispatch readiness truth fix plus autoplay chaining, rest-wait recovery, and watched-session startup hardening advance the release to `0.24.1`.
 The Route Planning density follow-up that adds accepted-contract table filters, removes the planner map, and rebalances the workspace into a denser half-width anchor table advances the release to `0.24.2`.
+The Route Planning accepted-table follow-up that restores sortable headers, removes the action and payload columns, strips route-cell tags, and tightens the anchor table width advances the release to `0.24.3`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

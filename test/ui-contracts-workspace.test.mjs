@@ -403,12 +403,20 @@ try {
   assert.equal(await page.locator(".planner-anchor-panel h4").count(), 0);
   assert.equal(await page.locator(".planner-anchor-table.contracts-board-table").count(), 1);
   assert.equal(await page.locator(".planner-candidate-table.contracts-board-table").count(), 1);
-  assert.equal(await page.locator(".planner-anchor-table button[aria-label='Route search']").count(), 1);
-  assert.equal(await page.locator(".planner-anchor-table button[aria-label='Payload filter']").count(), 1);
-  assert.equal(await page.locator(".planner-anchor-table button[aria-label='Due filter']").count(), 1);
+  assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerRouteSearch']").count(), 1);
+  assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerHoursFilter']").count(), 1);
+  assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerDueFilter']").count(), 1);
   assert.equal(await page.locator(".planner-inline-callout").count(), 0);
   assert.equal(await page.locator("[data-contracts-plan-map]").count(), 0);
   assert.equal(await page.locator(".planner-chain-map-card").count(), 0);
+  const plannerAnchorHeaderOrder = await page.locator(".planner-anchor-table thead th").evaluateAll((cells) =>
+    cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  assert.deepEqual(plannerAnchorHeaderOrder, [
+    "Route",
+    "Hours Left",
+    "Due",
+  ]);
   const plannerCandidateHeaderOrder = await page.locator(".planner-candidate-table thead th").evaluateAll((cells) =>
     cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
   );
@@ -449,7 +457,7 @@ try {
   const plannerAnchorCodes = plannerAnchorFirstRouteText.match(/\b[A-Z]{3,4}\b/g) ?? [];
   const plannerAnchorDepartureCode = plannerAnchorCodes[0] ?? "";
   assert.ok(plannerAnchorDepartureCode.length > 0);
-  await clickUi(page.locator(".planner-anchor-table button[aria-label='Route search']").first());
+  await clickUi(page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerRouteSearch']").first());
   await page.waitForFunction(() => {
     const popover = document.querySelector("[data-planner-anchor-popover='plannerRouteSearch']");
     return popover instanceof HTMLElement
@@ -463,10 +471,20 @@ try {
   }, plannerAnchorDepartureCode);
   await page.locator("[data-planner-anchor-popover='plannerRouteSearch'] input[name='departureSearchText']").fill("");
   await page.keyboard.press("Escape");
+  await clickUi(page.locator(".planner-anchor-table button[data-planner-anchor-sort-field='dueUtc']").first());
+  const plannerAnchorDueSort = await page.locator(".planner-anchor-table button[data-planner-anchor-sort-field='dueUtc']").evaluate((button) => {
+    const column = button.closest("th");
+    return {
+      ariaSort: column?.getAttribute("aria-sort") ?? "",
+      current: button.classList.contains("current"),
+    };
+  });
+  assert.equal(plannerAnchorDueSort.ariaSort, "ascending");
+  assert.equal(plannerAnchorDueSort.current, true);
   const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
   let initialPlannerAddCount = await plannerAddButtons.count();
   if (initialPlannerAddCount === 0) {
-    const inChainAnchorRow = page.locator(".planner-anchor-table tbody tr").filter({ has: page.locator("button[data-plan-start-contract][disabled]") }).first();
+    const inChainAnchorRow = page.locator(".planner-anchor-table tbody tr[data-planner-anchor-in-chain='true']").first();
     assert.equal(await inChainAnchorRow.count(), 1);
     await clickUi(inChainAnchorRow);
     await page.waitForFunction(() => document.querySelectorAll(".planner-candidate-panel [data-planner-add-candidate]").length > 0);

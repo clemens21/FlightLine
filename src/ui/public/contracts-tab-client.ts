@@ -77,10 +77,8 @@ interface AppliedTextFilters {
 interface PlannerAnchorFilterState {
   departureSearchText: string;
   destinationSearchText: string;
-  passengerPayloadMin: string;
-  passengerPayloadMax: string;
-  cargoPayloadMin: string;
-  cargoPayloadMax: string;
+  hoursRemainingMin: string;
+  hoursRemainingMax: string;
   dueHoursMin: string;
   dueHoursMax: string;
 }
@@ -138,6 +136,8 @@ interface ContractsUiState {
   plannerAnchorAppliedTextFilters: PlannerAnchorAppliedTextFilters;
   plannerSelection: PlannerSelectionState;
   plannerReview: PlannerReviewState;
+  plannerAnchorSortField: PlannerAnchorSortField | null;
+  plannerAnchorSortDirection: SortDirection;
   workspaceTab: ContractsWorkspaceTab;
   boardTab: ContractsBoardTab;
   sortField: SortField | null;
@@ -156,9 +156,10 @@ type ContractsBoardTab = "available" | "active" | "closed";
 type ContractsBoardScope = "all" | "my_contracts";
 type ContractsWorkspaceTab = "board" | "planning";
 type SortField = "route" | "payload" | "nearestAircraft" | "distanceNm" | "hoursRemaining" | "dueUtc" | "payout";
+type PlannerAnchorSortField = "route" | "hoursRemaining" | "dueUtc";
 type SortDirection = "asc" | "desc";
-type RouteLike = ContractsViewOffer | ContractsBoardCompanyContractLike;
-type PlannerAnchorPopoverKey = "plannerRouteSearch" | "plannerPayloadFilter" | "plannerDueFilter";
+type RouteLike = ContractsViewOffer | ContractsBoardCompanyContractLike | ContractsViewAcceptedContract;
+type PlannerAnchorPopoverKey = "plannerRouteSearch" | "plannerHoursFilter" | "plannerDueFilter";
 
 type SelectedRoute =
   | { kind: "offer"; route: ContractsViewOffer }
@@ -212,10 +213,8 @@ const debouncedFilterNames = new Set([
 const plannerAnchorDebouncedFilterNames = new Set([
   "departureSearchText",
   "destinationSearchText",
-  "passengerPayloadMin",
-  "passengerPayloadMax",
-  "cargoPayloadMin",
-  "cargoPayloadMax",
+  "hoursRemainingMin",
+  "hoursRemainingMax",
   "dueHoursMin",
   "dueHoursMax",
 ]);
@@ -308,10 +307,8 @@ export function mountContractsTab(
     plannerAnchorFilters: {
       departureSearchText: "",
       destinationSearchText: "",
-      passengerPayloadMin: "",
-      passengerPayloadMax: "",
-      cargoPayloadMin: "",
-      cargoPayloadMax: "",
+      hoursRemainingMin: "",
+      hoursRemainingMax: "",
       dueHoursMin: "",
       dueHoursMax: "",
     },
@@ -327,6 +324,8 @@ export function mountContractsTab(
       isOpen: false,
       selectedRoutePlanItemIds: [],
     },
+    plannerAnchorSortField: null,
+    plannerAnchorSortDirection: "asc",
     workspaceTab: "board",
     boardTab: initialContractsView === "my_contracts" ? "active" : "available",
     sortField: null,
@@ -664,6 +663,23 @@ export function mountContractsTab(
           ...state.plannerSelection,
           acceptedContractId,
         };
+        render();
+      }
+      return;
+    }
+
+    const plannerAnchorSortButton = target.closest<HTMLElement>("[data-planner-anchor-sort-field]");
+    if (plannerAnchorSortButton) {
+      const nextField = plannerAnchorSortButton.dataset.plannerAnchorSortField as PlannerAnchorSortField | undefined;
+      if (nextField) {
+        activeBoardPopover = null;
+        activePlannerAnchorPopover = null;
+        if (state.plannerAnchorSortField === nextField) {
+          state.plannerAnchorSortDirection = state.plannerAnchorSortDirection === "asc" ? "desc" : "asc";
+        } else {
+          state.plannerAnchorSortField = nextField;
+          state.plannerAnchorSortDirection = "asc";
+        }
         render();
       }
       return;
@@ -1478,6 +1494,7 @@ export function mountContractsTab(
     `;
 
     syncBoardHeaderState();
+    syncPlannerAnchorHeaderState();
     renderVisibleMap(root, state, selectedRoute);
     restoreNamedControlFocus(root, focusState);
     positionActiveBoardPopover();
@@ -1609,6 +1626,23 @@ export function mountContractsTab(
         return;
       }
       focusControlAtEnd(firstField);
+    });
+  }
+
+  function syncPlannerAnchorHeaderState(): void {
+    root.querySelectorAll<HTMLElement>("[data-planner-anchor-sort-field]").forEach((button) => {
+      const sortField = button.dataset.plannerAnchorSortField as PlannerAnchorSortField | undefined;
+      const column = button.closest<HTMLElement>(".table-header-column");
+      if (!sortField || !column) {
+        return;
+      }
+
+      const isActive = state.plannerAnchorSortField === sortField;
+      column.setAttribute("aria-sort", isActive
+        ? state.plannerAnchorSortDirection === "asc" ? "ascending" : "descending"
+        : "none");
+      column.classList.toggle("is-sorted", isActive);
+      button.classList.toggle("current", isActive);
     });
   }
 
@@ -2103,37 +2137,38 @@ function renderPlannerAcceptedContractList(
     return `
       <div class="planner-anchor-stage" data-planner-anchor-stage>
         <div class="planner-anchor-table-wrap" data-planner-anchor-wrap>
-          <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
-            <colgroup>
-              <col />
-              <col style="width:100px" />
-              <col style="width:154px" />
-              <col style="width:182px" />
-            </colgroup>
-            <thead>
-              <tr>
-                ${renderPlannerAnchorHeaderCell("Route", activePlannerAnchorPopover, {
-                  search: {
-                    key: "plannerRouteSearch",
-                    label: "Route search",
-                  },
-                })}
-                ${renderPlannerAnchorHeaderCell("Payload", activePlannerAnchorPopover, {
-                  filter: {
-                    key: "plannerPayloadFilter",
-                    label: "Payload filter",
-                  },
-                })}
-                ${renderPlannerAnchorHeaderCell("Due", activePlannerAnchorPopover, {
-                  filter: {
-                    key: "plannerDueFilter",
-                    label: "Due filter",
-                  },
-                })}
-                ${renderContractsStaticHeaderCell("Action")}
-              </tr>
-            </thead>
-          </table>
+        <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
+          <colgroup>
+            <col />
+            <col style="width:118px" />
+            <col style="width:154px" />
+          </colgroup>
+          <thead>
+            <tr>
+              ${renderPlannerAnchorHeaderCell("Route", state, activePlannerAnchorPopover, {
+                search: {
+                  key: "plannerRouteSearch",
+                  label: "Route search",
+                },
+                sortField: "route",
+              })}
+              ${renderPlannerAnchorHeaderCell("Hours Left", state, activePlannerAnchorPopover, {
+                filter: {
+                  key: "plannerHoursFilter",
+                  label: "Hours remaining filter",
+                },
+                sortField: "hoursRemaining",
+              })}
+              ${renderPlannerAnchorHeaderCell("Due", state, activePlannerAnchorPopover, {
+                filter: {
+                  key: "plannerDueFilter",
+                  label: "Due filter",
+                },
+                sortField: "dueUtc",
+              })}
+            </tr>
+          </thead>
+        </table>
         </div>
         ${renderPlannerAcceptedContractsActivePopover(state, activePlannerAnchorPopover)}
         <div class="empty-state compact">No accepted contracts match the current planner filters.</div>
@@ -2147,31 +2182,32 @@ function renderPlannerAcceptedContractList(
         <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
           <colgroup>
             <col />
-            <col style="width:100px" />
+            <col style="width:118px" />
             <col style="width:154px" />
-            <col style="width:182px" />
           </colgroup>
           <thead>
             <tr>
-              ${renderPlannerAnchorHeaderCell("Route", activePlannerAnchorPopover, {
+              ${renderPlannerAnchorHeaderCell("Route", state, activePlannerAnchorPopover, {
                 search: {
                   key: "plannerRouteSearch",
                   label: "Route search",
                 },
+                sortField: "route",
               })}
-              ${renderPlannerAnchorHeaderCell("Payload", activePlannerAnchorPopover, {
+              ${renderPlannerAnchorHeaderCell("Hours Left", state, activePlannerAnchorPopover, {
                 filter: {
-                  key: "plannerPayloadFilter",
-                  label: "Payload filter",
+                  key: "plannerHoursFilter",
+                  label: "Hours remaining filter",
                 },
+                sortField: "hoursRemaining",
               })}
-              ${renderPlannerAnchorHeaderCell("Due", activePlannerAnchorPopover, {
+              ${renderPlannerAnchorHeaderCell("Due", state, activePlannerAnchorPopover, {
                 filter: {
                   key: "plannerDueFilter",
                   label: "Due filter",
                 },
+                sortField: "dueUtc",
               })}
-              ${renderContractsStaticHeaderCell("Action")}
             </tr>
           </thead>
           <tbody>
@@ -2189,34 +2225,13 @@ function renderPlannerAcceptedContractRow(
   contract: ContractsViewAcceptedContract,
   isSelected: boolean,
 ): string {
-  const routePlanHasItems = (state.payload.routePlan?.items.length ?? 0) > 0;
-  const actionLabel = contract.routePlanItemId
-    ? "Route started"
-    : routePlanHasItems
-    ? "Clear & start route"
-    : "Start route";
-  const actionDisabled = contract.routePlanItemId ? "disabled" : "";
-  const statusBadges = [
-    renderBadge(resolveCompanyContractBadgeState(contract, "active")),
-    renderContractWorkStateBadge(contract.workState),
-  ].join("");
-
   return `
-    <tr class="contract-row planner-anchor-row ${isSelected ? "selected" : ""}" data-planner-select-contract="${escapeHtml(contract.companyContractId)}" data-planner-anchor-row="${escapeHtml(contract.companyContractId)}">
+    <tr class="contract-row planner-anchor-row ${isSelected ? "selected" : ""}" data-planner-select-contract="${escapeHtml(contract.companyContractId)}" data-planner-anchor-row="${escapeHtml(contract.companyContractId)}" ${contract.routePlanItemId ? 'data-planner-anchor-in-chain="true"' : ""}>
       <td>
-        <div class="meta-stack">
-          ${renderRouteColumn(contract.origin, contract.destination)}
-          <div class="pill-row">${statusBadges}</div>
-        </div>
+        ${renderRouteColumn(contract.origin, contract.destination)}
       </td>
-      <td>${escapeHtml(formatPayload(contract))}</td>
+      <td>${renderHoursLeftCell(routeHoursRemaining(contract, state.payload.currentTimeUtc), contract.urgencyBand)}</td>
       <td>${renderDueCell(contract.deadlineUtc, state.payload.currentTimeUtc)}</td>
-      <td>
-        <div class="planner-table-action-cell">
-          <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(contract.companyContractId)}" ${actionDisabled}>${escapeHtml(actionLabel)}</button>
-          ${contract.assignedAircraftReady ? `<button type="button" data-open-dispatch="${escapeHtml(contract.companyContractId)}">Dispatch</button>` : ""}
-        </div>
-      </td>
     </tr>
   `;
 }
@@ -2228,11 +2243,23 @@ function renderPlannerSetupCard(
   summary: PlannerChainSummary,
 ): string {
   const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
+  const routePlanHasItems = (state.payload.routePlan?.items.length ?? 0) > 0;
   const aircraftOptions = [`<option value="">All company aircraft</option>`]
     .concat(state.payload.plannerAircraft.map((aircraft) => (
       `<option value="${escapeHtml(aircraft.aircraftId)}" ${state.plannerSelection.aircraftId === aircraft.aircraftId ? "selected" : ""}>${escapeHtml(`${aircraft.registration} | ${aircraft.modelDisplayName}`)}</option>`
     )))
     .join("");
+  const routeActionLabel = selectedAcceptedContract
+    ? selectedAcceptedContract.routePlanItemId
+      ? "Route started"
+      : routePlanHasItems
+      ? "Clear & start route"
+      : "Start route"
+    : "Start route";
+  const routeActionDisabled = !selectedAcceptedContract || Boolean(selectedAcceptedContract.routePlanItemId);
+  const dispatchAction = selectedAcceptedContract?.assignedAircraftReady
+    ? `<button type="button" data-open-dispatch="${escapeHtml(selectedAcceptedContract.companyContractId)}">Dispatch</button>`
+    : "";
 
   return `
     <section class="planner-setup-card">
@@ -2259,6 +2286,10 @@ function renderPlannerSetupCard(
           <strong>${escapeHtml(String(summary.itemCount))} item${summary.itemCount === 1 ? "" : "s"}</strong>
           <span class="muted">${escapeHtml(summary.itemCount > 0 ? `${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned` : "0 accepted / 0 planned")}</span>
         </article>
+      </div>
+      <div class="planner-selection-actions">
+        <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(selectedAcceptedContract?.companyContractId ?? "")}" ${routeActionDisabled ? "disabled" : ""}>${escapeHtml(routeActionLabel)}</button>
+        ${dispatchAction}
       </div>
     </section>
   `;
@@ -2692,6 +2723,10 @@ function renderSortButton(field: SortField, label: string): string {
   return `<button type="button" class="table-sort" data-sort-field="${field}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
 }
 
+function renderPlannerAnchorSortButton(field: PlannerAnchorSortField, label: string): string {
+  return `<button type="button" class="table-sort" data-planner-anchor-sort-field="${field}"><span class="table-header-label">${escapeHtml(label)}</span></button>`;
+}
+
 function renderContractsHeaderIcon(kind: "search" | "filter"): string {
   if (kind === "search") {
     return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M10.5 3a7.5 7.5 0 1 1 0 15a7.5 7.5 0 0 1 0-15Zm0 2a5.5 5.5 0 1 0 0 11a5.5 5.5 0 0 0 0-11Zm8.2 12.8 2.8 2.8-1.4 1.4-2.8-2.8 1.4-1.4Z"/></svg>`;
@@ -2749,6 +2784,7 @@ function renderContractsBoardHeaderCell(
 
 function renderPlannerAnchorHeaderCell(
   label: string,
+  state: ContractsUiState,
   activePopover: PlannerAnchorPopoverKey | null,
   options: {
     search?: {
@@ -2759,15 +2795,25 @@ function renderPlannerAnchorHeaderCell(
       key: PlannerAnchorPopoverKey;
       label: string;
     };
+    sortField?: PlannerAnchorSortField;
   },
 ): string {
+  const isSorted = options.sortField ? state.plannerAnchorSortField === options.sortField : false;
+  const ariaSort = options.sortField
+    ? isSorted
+      ? state.plannerAnchorSortDirection === "asc" ? "ascending" : "descending"
+      : "none"
+    : undefined;
   const searchButton = options.search
     ? renderPlannerAnchorIconButton(options.search.key, "search", options.search.label, activePopover === options.search.key)
     : "";
   const filterButton = options.filter
     ? renderPlannerAnchorIconButton(options.filter.key, "filter", options.filter.label, activePopover === options.filter.key)
     : "";
-  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions">${searchButton}${filterButton}</span></div></th>`;
+  const labelHtml = options.sortField
+    ? renderPlannerAnchorSortButton(options.sortField, label)
+    : `<span class="table-header-label">${escapeHtml(label)}</span>`;
+  return `<th class="table-header-column${options.sortField ? " sortable" : ""}${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control">${labelHtml}<span class="table-header-actions">${searchButton}${filterButton}</span></div></th>`;
 }
 
 function renderContractsStaticHeaderCell(label: string): string {
@@ -2952,30 +2998,20 @@ function renderPlannerAcceptedContractsActivePopover(
           },
         ],
       );
-    case "plannerPayloadFilter":
+    case "plannerHoursFilter":
       return renderPlannerAnchorFilterControl(
-        "plannerPayloadFilter",
-        `${renderContractsCompactField(
-          "Passengers",
-          renderPlannerAnchorRangeFields("passengerPayloadMin", "passengerPayloadMax", {
+        "plannerHoursFilter",
+        renderContractsCompactField(
+          "Hours left",
+          renderPlannerAnchorRangeFields("hoursRemainingMin", "hoursRemainingMax", {
             minimum: 0,
             step: 1,
             minPlaceholder: "Min",
             maxPlaceholder: "Max",
-            minValue: state.plannerAnchorFilters.passengerPayloadMin,
-            maxValue: state.plannerAnchorFilters.passengerPayloadMax,
+            minValue: state.plannerAnchorFilters.hoursRemainingMin,
+            maxValue: state.plannerAnchorFilters.hoursRemainingMax,
           }),
-        )}${renderContractsCompactField(
-          "Cargo (lb)",
-          renderPlannerAnchorRangeFields("cargoPayloadMin", "cargoPayloadMax", {
-            minimum: 0,
-            step: 100,
-            minPlaceholder: "Min",
-            maxPlaceholder: "Max",
-            minValue: state.plannerAnchorFilters.cargoPayloadMin,
-            maxValue: state.plannerAnchorFilters.cargoPayloadMax,
-          }),
-        )}`,
+        ),
       );
     case "plannerDueFilter":
       return renderPlannerAnchorFilterControl(
@@ -3109,7 +3145,7 @@ function normalizeContractsBoardPopoverKey(value: string | undefined): Contracts
 function normalizePlannerAnchorPopoverKey(value: string | undefined): PlannerAnchorPopoverKey | null {
   switch (value) {
     case "plannerRouteSearch":
-    case "plannerPayloadFilter":
+    case "plannerHoursFilter":
     case "plannerDueFilter":
       return value;
     default:
@@ -3575,10 +3611,8 @@ function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidate
 }
 
 function getFilteredPlannerAcceptedContracts(state: ContractsUiState): ContractsViewAcceptedContract[] {
-  const passengerPayloadMin = Number.parseInt(state.plannerAnchorFilters.passengerPayloadMin, 10);
-  const passengerPayloadMax = Number.parseInt(state.plannerAnchorFilters.passengerPayloadMax, 10);
-  const cargoPayloadMin = Number.parseInt(state.plannerAnchorFilters.cargoPayloadMin, 10);
-  const cargoPayloadMax = Number.parseInt(state.plannerAnchorFilters.cargoPayloadMax, 10);
+  const hoursRemainingMin = Number.parseInt(state.plannerAnchorFilters.hoursRemainingMin, 10);
+  const hoursRemainingMax = Number.parseInt(state.plannerAnchorFilters.hoursRemainingMax, 10);
   const dueHoursMin = Number.parseInt(state.plannerAnchorFilters.dueHoursMin, 10);
   const dueHoursMax = Number.parseInt(state.plannerAnchorFilters.dueHoursMax, 10);
   const departureSearchText = state.plannerAnchorAppliedTextFilters.departureSearchText.trim().toLowerCase();
@@ -3591,7 +3625,7 @@ function getFilteredPlannerAcceptedContracts(state: ContractsUiState): Contracts
       return false;
     }
 
-    if (!matchesPayloadFilters(contract, passengerPayloadMin, passengerPayloadMax, cargoPayloadMin, cargoPayloadMax)) {
+    if (!matchesNumericRange(hoursRemaining, hoursRemainingMin, hoursRemainingMax)) {
       return false;
     }
 
@@ -3600,7 +3634,32 @@ function getFilteredPlannerAcceptedContracts(state: ContractsUiState): Contracts
     }
 
     return true;
-  });
+  }).sort((left, right) => comparePlannerAcceptedContracts(left, right, state.plannerAnchorSortField, state.plannerAnchorSortDirection, state.payload.currentTimeUtc));
+}
+
+function comparePlannerAcceptedContracts(
+  left: ContractsViewAcceptedContract,
+  right: ContractsViewAcceptedContract,
+  sortField: PlannerAnchorSortField | null,
+  sortDirection: SortDirection,
+  currentTimeUtc: string,
+): number {
+  if (!sortField) {
+    return compareText(routeSortLabel(left), routeSortLabel(right), "asc");
+  }
+
+  switch (sortField) {
+    case "route":
+      return compareText(routeSortLabel(left), routeSortLabel(right), sortDirection);
+    case "hoursRemaining":
+      return compareNumber(routeHoursRemaining(left, currentTimeUtc), routeHoursRemaining(right, currentTimeUtc), sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), "asc");
+    case "dueUtc":
+      return compareText(routeDueUtc(left), routeDueUtc(right), sortDirection)
+        || compareText(routeSortLabel(left), routeSortLabel(right), "asc");
+    default:
+      return compareText(routeSortLabel(left), routeSortLabel(right), "asc");
+  }
 }
 
 function matchesNumericRange(value: number, min: number, max: number): boolean {
