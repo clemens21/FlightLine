@@ -2373,15 +2373,15 @@ function renderPlannerCandidateList(
 
   return `
     <div class="planner-candidate-table-wrap" data-planner-candidate-wrap>
-      <table class="contracts-board-table planner-candidate-table" data-planner-candidate-table>
+        <table class="contracts-board-table planner-candidate-table" data-planner-candidate-table>
         <colgroup>
-          <col style="width:320px" />
-          <col style="width:114px" />
-          <col style="width:124px" />
-          <col style="width:112px" />
-          <col style="width:112px" />
-          <col style="width:166px" />
-          <col style="width:182px" />
+          <col style="width:292px" />
+          <col style="width:104px" />
+          <col style="width:116px" />
+          <col style="width:96px" />
+          <col style="width:102px" />
+          <col style="width:150px" />
+          <col style="width:168px" />
         </colgroup>
         <thead>
           <tr>

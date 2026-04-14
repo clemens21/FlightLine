@@ -2533,7 +2533,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-width: 620px;
     }
     .planner-candidate-table {
-      min-width: 1126px;
+      min-width: 1028px;
     }
     .planner-setup-card {
       border: 1px solid var(--line);
@@ -2738,13 +2738,19 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .planner-table-action-cell {
       display: grid;
-      gap: 6px;
+      gap: 4px;
       align-items: start;
       justify-items: start;
     }
-    .planner-table-action-cell .muted {
+    .planner-table-action-cell .button-secondary {
+      padding: 5px 8px;
+      min-height: 0;
       font-size: 12px;
-      line-height: 1.25;
+      line-height: 1.1;
+    }
+    .planner-table-action-cell .muted {
+      font-size: 11px;
+      line-height: 1.2;
     }
     .planner-anchor-row.selected td {
       background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
