@@ -2457,16 +2457,16 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       height: 100%;
       display: grid;
-      grid-template-columns: minmax(320px, .72fr) minmax(0, 1.28fr);
-      gap: 18px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
       overflow: hidden;
     }
     .planner-workbench {
       min-height: 0;
       min-width: 0;
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr) minmax(260px, .82fr);
-      gap: 14px;
+      grid-template-rows: auto minmax(0, 1fr) minmax(220px, .64fr);
+      gap: 12px;
       overflow: hidden;
     }
     .planner-anchor-panel .panel-body,
@@ -2475,11 +2475,21 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       overflow: hidden;
       padding: 0;
     }
+    .planner-anchor-stage {
+      position: relative;
+      min-height: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: visible;
+    }
     .planner-anchor-table-wrap,
     .planner-candidate-table-wrap {
       min-height: 0;
       height: 100%;
       overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
       background: var(--panel-strong);
     }
     .planner-anchor-table-wrap thead,
@@ -2494,7 +2504,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       table-layout: fixed;
     }
     .planner-anchor-table {
-      min-width: 0;
+      min-width: 760px;
     }
     .planner-candidate-table {
       min-width: 1126px;
@@ -2502,23 +2512,22 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-setup-card {
       border: 1px solid var(--line);
       border-radius: 16px;
-      padding: 12px 14px;
+      padding: 10px 12px;
       background: var(--panel-strong);
-      display: grid;
-      gap: 10px;
+      display: block;
     }
     .planner-setup-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
     }
     .planner-setup-metric {
       border: 1px solid var(--line);
       border-radius: 14px;
-      padding: 10px 12px;
+      padding: 8px 10px;
       background: var(--panel);
       display: grid;
-      gap: 6px;
+      gap: 4px;
     }
     .planner-setup-metric strong {
       font-size: 14px;
@@ -2526,29 +2535,21 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-aircraft-picker,
     .planner-aircraft-brief {
       display: grid;
-      gap: 6px;
-    }
-    .planner-inline-callout {
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 10px 12px;
-      background: var(--panel);
-      display: grid;
-      gap: 6px;
+      gap: 4px;
     }
     .planner-summary-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
     }
     .planner-summary-card,
     .planner-continuity-issue {
       border: 1px solid var(--line);
       border-radius: 16px;
-      padding: 10px 12px;
+      padding: 8px 10px;
       background: var(--panel-strong);
       display: grid;
-      gap: 5px;
+      gap: 4px;
     }
     .planner-summary-card.accent {
       border-color: rgba(13,106,119,.22);
@@ -2632,12 +2633,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: auto;
       display: grid;
-      gap: 12px;
+      gap: 10px;
       padding: 12px 14px 14px;
-    }
-    .planner-chain-map-card {
-      display: grid;
-      gap: 8px;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -2782,9 +2779,12 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .contracts-accepted-body { overflow: auto; }
     @media (max-width: 1480px) {
       .planner-shell {
-        grid-template-columns: minmax(300px, .78fr) minmax(0, 1.22fr);
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       }
       .planner-setup-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .planner-summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }

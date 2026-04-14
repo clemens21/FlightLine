@@ -74,6 +74,22 @@ interface AppliedTextFilters {
   nearestAircraftSearchText: string;
 }
 
+interface PlannerAnchorFilterState {
+  departureSearchText: string;
+  destinationSearchText: string;
+  passengerPayloadMin: string;
+  passengerPayloadMax: string;
+  cargoPayloadMin: string;
+  cargoPayloadMax: string;
+  dueHoursMin: string;
+  dueHoursMax: string;
+}
+
+interface PlannerAnchorAppliedTextFilters {
+  departureSearchText: string;
+  destinationSearchText: string;
+}
+
 interface PlannerReviewState {
   isOpen: boolean;
   selectedRoutePlanItemIds: string[];
@@ -118,6 +134,8 @@ interface ContractsUiState {
   payload: ContractsViewPayload;
   filters: FilterState;
   appliedTextFilters: AppliedTextFilters;
+  plannerAnchorFilters: PlannerAnchorFilterState;
+  plannerAnchorAppliedTextFilters: PlannerAnchorAppliedTextFilters;
   plannerSelection: PlannerSelectionState;
   plannerReview: PlannerReviewState;
   workspaceTab: ContractsWorkspaceTab;
@@ -140,6 +158,7 @@ type ContractsWorkspaceTab = "board" | "planning";
 type SortField = "route" | "payload" | "nearestAircraft" | "distanceNm" | "hoursRemaining" | "dueUtc" | "payout";
 type SortDirection = "asc" | "desc";
 type RouteLike = ContractsViewOffer | ContractsBoardCompanyContractLike;
+type PlannerAnchorPopoverKey = "plannerRouteSearch" | "plannerPayloadFilter" | "plannerDueFilter";
 
 type SelectedRoute =
   | { kind: "offer"; route: ContractsViewOffer }
@@ -189,6 +208,16 @@ const debouncedFilterNames = new Set([
   "dueHoursMax",
   "payoutMin",
   "payoutMax",
+]);
+const plannerAnchorDebouncedFilterNames = new Set([
+  "departureSearchText",
+  "destinationSearchText",
+  "passengerPayloadMin",
+  "passengerPayloadMax",
+  "cargoPayloadMin",
+  "cargoPayloadMax",
+  "dueHoursMin",
+  "dueHoursMax",
 ]);
 const filterDebounceMs = 180;
 const emptyPlannerCandidates: PlannerCandidateView[] = [];
@@ -276,6 +305,20 @@ export function mountContractsTab(
       destinationSearchText: "",
       nearestAircraftSearchText: "",
     },
+    plannerAnchorFilters: {
+      departureSearchText: "",
+      destinationSearchText: "",
+      passengerPayloadMin: "",
+      passengerPayloadMax: "",
+      cargoPayloadMin: "",
+      cargoPayloadMax: "",
+      dueHoursMin: "",
+      dueHoursMax: "",
+    },
+    plannerAnchorAppliedTextFilters: {
+      departureSearchText: "",
+      destinationSearchText: "",
+    },
     plannerSelection: {
       acceptedContractId: selectDefaultPlannerAcceptedContractId(initialPayload),
       aircraftId: "",
@@ -302,7 +345,9 @@ export function mountContractsTab(
   let lastX = 0;
   let lastY = 0;
   let textFilterDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+  let plannerAnchorFilterDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let activeBoardPopover: ContractsBoardPopoverKey | null = null;
+  let activePlannerAnchorPopover: PlannerAnchorPopoverKey | null = null;
   let pendingAvailableOfferSelectionTimeout: number | null = null;
   let pendingAvailableOfferId: string | null = null;
   const acceptingContractOfferIds = new Set<string>();
@@ -403,6 +448,7 @@ export function mountContractsTab(
         if (nextTab) {
           state.workspaceTab = nextTab;
           activeBoardPopover = null;
+          activePlannerAnchorPopover = null;
           if (nextTab === "planning") {
             state.acceptanceNextStepTab = null;
             focusPlannerChain(state);
@@ -420,6 +466,7 @@ export function mountContractsTab(
         if (nextTab) {
           state.boardTab = nextTab;
           activeBoardPopover = null;
+          activePlannerAnchorPopover = null;
           if (nextTab !== "available") {
             state.acceptanceNextStepTab = null;
             state.acceptanceNextStepOfferId = null;
@@ -438,6 +485,7 @@ export function mountContractsTab(
         if (nextScope) {
           state.boardScope = nextScope;
           activeBoardPopover = null;
+          activePlannerAnchorPopover = null;
           if (state.boardTab !== "active") {
             state.boardTab = "active";
           }
@@ -454,7 +502,21 @@ export function mountContractsTab(
       event.stopPropagation();
       const popoverKey = normalizeContractsBoardPopoverKey(boardPopoverToggleButton.dataset.contractsBoardPopoverToggle);
       if (popoverKey) {
+        activePlannerAnchorPopover = null;
         activeBoardPopover = activeBoardPopover === popoverKey ? null : popoverKey;
+        render();
+      }
+      return;
+    }
+
+    const plannerAnchorPopoverToggleButton = target.closest<HTMLElement>("[data-planner-anchor-popover-toggle]");
+    if (plannerAnchorPopoverToggleButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const popoverKey = normalizePlannerAnchorPopoverKey(plannerAnchorPopoverToggleButton.dataset.plannerAnchorPopoverToggle);
+      if (popoverKey) {
+        activeBoardPopover = null;
+        activePlannerAnchorPopover = activePlannerAnchorPopover === popoverKey ? null : popoverKey;
         render();
       }
       return;
@@ -465,6 +527,7 @@ export function mountContractsTab(
       const nextField = sortButton.dataset.sortField as SortField | undefined;
       if (nextField) {
         activeBoardPopover = null;
+        activePlannerAnchorPopover = null;
         if (state.sortField === nextField) {
           state.sortDirection = state.sortDirection === "asc" ? "desc" : "asc";
         } else {
@@ -728,6 +791,12 @@ export function mountContractsTab(
       return;
     }
 
+    if (activePlannerAnchorPopover !== null && !target.closest("[data-planner-anchor-popover]") && !target.closest("[data-planner-anchor-popover-toggle]")) {
+      activePlannerAnchorPopover = null;
+      render();
+      return;
+    }
+
     const resetButton = target.closest<HTMLElement>("[data-map-reset]");
     if (resetButton) {
       focusSelectedRoute(state);
@@ -753,10 +822,11 @@ export function mountContractsTab(
       return;
     }
 
-    const isBoardFilter = Object.hasOwn(state.filters, target.name);
+    const isPlannerAnchorFilter = target instanceof HTMLInputElement && target.dataset.plannerAnchorField !== undefined;
+    const isBoardFilter = target instanceof HTMLInputElement && target.dataset.contractsBoardField !== undefined;
     const isPlannerAircraftSelect = target.name === "plannerAircraftId";
 
-    if (!isBoardFilter && !isPlannerAircraftSelect) {
+    if (!isBoardFilter && !isPlannerAnchorFilter && !isPlannerAircraftSelect) {
       return;
     }
 
@@ -766,6 +836,11 @@ export function mountContractsTab(
         ...state.filters,
         [target.name]: nextValue,
       };
+    } else if (isPlannerAnchorFilter) {
+      state.plannerAnchorFilters = {
+        ...state.plannerAnchorFilters,
+        [target.name]: String(nextValue),
+      };
     } else {
       state.plannerSelection = {
         ...state.plannerSelection,
@@ -773,7 +848,7 @@ export function mountContractsTab(
       };
     }
 
-    if (debouncedFilterNames.has(target.name)) {
+    if (isBoardFilter && debouncedFilterNames.has(target.name)) {
       if (textFilterDebounceTimeout) {
         clearTimeout(textFilterDebounceTimeout);
       }
@@ -791,7 +866,25 @@ export function mountContractsTab(
       return;
     }
 
+    if (isPlannerAnchorFilter && plannerAnchorDebouncedFilterNames.has(target.name)) {
+      if (plannerAnchorFilterDebounceTimeout) {
+        clearTimeout(plannerAnchorFilterDebounceTimeout);
+      }
+
+      plannerAnchorFilterDebounceTimeout = setTimeout(() => {
+        plannerAnchorFilterDebounceTimeout = null;
+        state.plannerAnchorAppliedTextFilters = {
+          departureSearchText: state.plannerAnchorFilters.departureSearchText,
+          destinationSearchText: state.plannerAnchorFilters.destinationSearchText,
+        };
+        ensurePlannerSelections(state);
+        render(captureNamedControlFocus(root));
+      }, filterDebounceMs);
+      return;
+    }
+
     ensureActiveTabSelection(state);
+    ensurePlannerSelections(state);
     render(captureNamedControlFocus(root));
   };
 
@@ -806,20 +899,22 @@ export function mountContractsTab(
       return;
     }
 
-    if (event.key !== "Escape" || activeBoardPopover === null) {
+    if (event.key !== "Escape") {
       return;
     }
     event.preventDefault();
     activeBoardPopover = null;
+    activePlannerAnchorPopover = null;
     render(captureNamedControlFocus(root));
   };
 
   const handleDocumentClick = (event: MouseEvent) => {
     const target = event.target instanceof Element ? event.target : null;
-    if (!target || activeBoardPopover === null || root.contains(target)) {
+    if (!target || root.contains(target) || (activeBoardPopover === null && activePlannerAnchorPopover === null)) {
       return;
     }
     activeBoardPopover = null;
+    activePlannerAnchorPopover = null;
     render();
   };
 
@@ -936,6 +1031,10 @@ export function mountContractsTab(
       if (textFilterDebounceTimeout) {
         clearTimeout(textFilterDebounceTimeout);
         textFilterDebounceTimeout = null;
+      }
+      if (plannerAnchorFilterDebounceTimeout) {
+        clearTimeout(plannerAnchorFilterDebounceTimeout);
+        plannerAnchorFilterDebounceTimeout = null;
       }
       clearPendingAvailableOfferSelection();
       root.removeEventListener("click", handleClick);
@@ -1354,7 +1453,7 @@ export function mountContractsTab(
           </div>
         </div>
         <div class="panel-body contracts-planner-body">
-          ${renderPlannerPanel(state.payload.routePlan, state.plannerReview, plannerCandidates, state)}
+          ${renderPlannerPanel(state.payload.routePlan, state.plannerReview, plannerCandidates, state, activePlannerAnchorPopover)}
         </div>
       </section>
     `;
@@ -1382,7 +1481,9 @@ export function mountContractsTab(
     renderVisibleMap(root, state, selectedRoute);
     restoreNamedControlFocus(root, focusState);
     positionActiveBoardPopover();
+    positionActivePlannerAnchorPopover();
     focusActiveBoardPopoverField(focusState);
+    focusActivePlannerAnchorPopoverField(focusState);
   }
 
   function syncBoardHeaderState(): void {
@@ -1498,6 +1599,111 @@ export function mountContractsTab(
 
     const firstField = root.querySelector<HTMLElement>(
       `[data-contracts-board-popover="${activeBoardPopover}"] [data-contracts-board-field]`,
+    );
+    if (!firstField) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (!(firstField instanceof HTMLInputElement || firstField instanceof HTMLSelectElement || firstField instanceof HTMLTextAreaElement)) {
+        return;
+      }
+      focusControlAtEnd(firstField);
+    });
+  }
+
+  function positionActivePlannerAnchorPopover(): void {
+    if (activePlannerAnchorPopover === null) {
+      return;
+    }
+
+    const popover = root.querySelector<HTMLElement>(`[data-planner-anchor-popover="${activePlannerAnchorPopover}"]`);
+    const toggle = root.querySelector<HTMLElement>(`[data-planner-anchor-popover-toggle="${activePlannerAnchorPopover}"]`);
+    const stage = root.querySelector<HTMLElement>("[data-planner-anchor-stage]");
+    if (!popover || popover.hidden || !toggle || !stage) {
+      return;
+    }
+
+    const viewportPadding = 12;
+    const toggleRect = toggle.getBoundingClientRect();
+    const headerRect = toggle.closest("th")?.getBoundingClientRect() ?? toggleRect;
+    const stageRect = stage.getBoundingClientRect();
+    const viewportLeft = viewportPadding;
+    const viewportRight = window.innerWidth - viewportPadding;
+    const viewportTop = viewportPadding;
+    const viewportBottom = window.innerHeight - viewportPadding;
+    const controlType = popover.dataset.plannerAnchorControlType ?? "filter";
+    const clampViewportLeft = (left: number, width: number): number => {
+      const maxLeft = Math.max(viewportLeft, viewportRight - width);
+      return Math.max(viewportLeft, Math.min(left, maxLeft));
+    };
+
+    popover.style.removeProperty("--contracts-board-popover-width");
+    popover.style.removeProperty("--contracts-board-popover-left");
+    popover.style.removeProperty("--contracts-board-popover-top");
+
+    if (controlType === "search") {
+      const searchFieldCount = popover.querySelectorAll(".contracts-board-search-field").length;
+      const isSearchGroup = popover.dataset.plannerAnchorSearchGroup === "true";
+      const preferredWidth = searchFieldCount > 1
+        ? Math.max(320, Math.min(420, Math.round(headerRect.width + 140)))
+        : Math.max(180, Math.min(320, Math.round(headerRect.width - 16)));
+      const width = Math.min(preferredWidth, window.innerWidth - (viewportPadding * 2));
+      const left = clampViewportLeft(toggleRect.right - width, width);
+      popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
+      popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
+      let top = isSearchGroup
+        ? Math.round(toggleRect.bottom + 8)
+        : Math.max(viewportTop, Math.min(
+          Math.round(toggleRect.top + (toggleRect.height / 2)),
+          viewportBottom,
+        ));
+      if (isSearchGroup) {
+        const popoverHeight = Math.max(120, Math.ceil(popover.getBoundingClientRect().height));
+        if (top + popoverHeight > viewportBottom) {
+          top = Math.max(viewportTop, Math.round(toggleRect.top - popoverHeight - 8));
+        }
+        const maxTop = Math.max(viewportTop, viewportBottom - popoverHeight);
+        top = Math.max(viewportTop, Math.min(top, maxTop));
+      }
+      popover.style.setProperty("--contracts-board-popover-top", `${Math.round(top - stageRect.top)}px`);
+      return;
+    }
+
+    const preferredWidth = Math.min(236, window.innerWidth - (viewportPadding * 2));
+    const width = Math.max(180, preferredWidth);
+    const left = clampViewportLeft(toggleRect.right - width, width);
+    popover.style.setProperty("--contracts-board-popover-width", `${width}px`);
+    popover.style.setProperty("--contracts-board-popover-left", `${Math.round(left - stageRect.left)}px`);
+
+    const previousHidden = popover.hidden;
+    const previousVisibility = popover.style.visibility;
+    if (previousHidden) {
+      popover.hidden = false;
+      popover.style.visibility = "hidden";
+    }
+    const popoverHeight = Math.max(120, Math.ceil(popover.getBoundingClientRect().height));
+    if (previousHidden) {
+      popover.hidden = true;
+      popover.style.visibility = previousVisibility;
+    }
+
+    let top = Math.round(toggleRect.bottom + 8);
+    if (top + popoverHeight > viewportBottom) {
+      top = Math.max(viewportTop, Math.round(toggleRect.top - popoverHeight - 8));
+    }
+    const maxTop = Math.max(viewportTop, viewportBottom - popoverHeight);
+    const clampedTop = Math.max(viewportTop, Math.min(top, maxTop));
+    popover.style.setProperty("--contracts-board-popover-top", `${Math.round(clampedTop - stageRect.top)}px`);
+  }
+
+  function focusActivePlannerAnchorPopoverField(focusState: NamedControlFocusState | null): void {
+    if (activePlannerAnchorPopover === null || focusState !== null) {
+      return;
+    }
+
+    const firstField = root.querySelector<HTMLElement>(
+      `[data-planner-anchor-popover="${activePlannerAnchorPopover}"] [data-planner-anchor-field]`,
     );
     if (!firstField) {
       return;
@@ -1771,34 +1977,30 @@ function renderPlannerPanel(
   plannerReview: PlannerReviewState,
   plannerCandidates: PlannerCandidateView[],
   state: ContractsUiState,
+  activePlannerAnchorPopover: PlannerAnchorPopoverKey | null,
 ): string {
   const summary = buildPlannerChainSummary(routePlan);
+  const filteredAcceptedContracts = getFilteredPlannerAcceptedContracts(state);
   const selectedAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
   const selectedAircraft = resolveSelectedPlannerAircraft(state);
   const routePlanHtml = routePlan && routePlan.items.length > 0
     ? renderPlannerRoutePlan(routePlan, plannerReview)
-    : `<div class="empty-state compact">Start from an accepted contract, then add next-leg candidates here.</div>`;
+    : `<div class="empty-state compact">No saved route chain.</div>`;
 
   return `
     <div class="planner-shell">
       <section class="panel planner-anchor-panel">
-        <div class="panel-head">
-          <div>
-            <h4>Accepted contracts</h4>
-            <span class="muted">Pick accepted work to anchor the route, then build only the next eligible legs.</span>
-          </div>
-        </div>
         <div class="panel-body">
-          ${renderPlannerAcceptedContractList(state, selectedAcceptedContract)}
+          ${renderPlannerAcceptedContractList(state, filteredAcceptedContracts, selectedAcceptedContract, activePlannerAnchorPopover)}
         </div>
       </section>
       <div class="planner-workbench">
         ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft, summary)}
         <section class="panel planner-candidate-panel">
           <div class="panel-head">
-            <div>
-              <h4>Next-leg candidates</h4>
-              <span class="muted">${escapeHtml(renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
+            <strong>Next-leg candidates</strong>
+            <div class="pill-row">
+              <span class="pill">${escapeHtml(renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
             </div>
           </div>
           <div class="panel-body">
@@ -1807,20 +2009,13 @@ function renderPlannerPanel(
         </section>
         <section class="panel planner-chain-panel">
           <div class="panel-head">
-            <div>
-              <h4>Saved route chain</h4>
-              <span class="muted">${escapeHtml(summary.endpointAirport ? `${summary.endpointAirport.code} - ${summary.endpointAirport.name}` : "No endpoint set yet")}</span>
-            </div>
+            <strong>Saved route chain</strong>
             <div class="pill-row">
               <span class="pill">${escapeHtml(String(summary.itemCount))} items</span>
               <span class="pill">${escapeHtml(formatMoney(summary.payoutTotal))} total payout</span>
             </div>
           </div>
           <div class="panel-body">
-            <section class="planner-chain-map-card">
-              ${renderPlannerChainMap(summary)}
-              <div class="map-attribution">The saved chain map follows the current route-plan order. Accepted work anchors the chain and planned candidates extend it.</div>
-            </section>
             ${renderPlannerSummary(summary)}
             ${routePlanHtml}
           </div>
@@ -1832,7 +2027,7 @@ function renderPlannerPanel(
 
 function renderPlannerRoutePlan(routePlan: ContractsViewPayload["routePlan"], plannerReview: PlannerReviewState): string {
   if (!routePlan) {
-    return `<div class="empty-state compact">Saved route plans and accepted work will appear here.</div>`;
+    return `<div class="empty-state compact">No saved route chain.</div>`;
   }
 
   if (plannerReview.isOpen) {
@@ -1896,33 +2091,95 @@ function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
 
 function renderPlannerAcceptedContractList(
   state: ContractsUiState,
+  acceptedContracts: ContractsViewAcceptedContract[],
   selectedAcceptedContract: ContractsViewAcceptedContract | null,
+  activePlannerAnchorPopover: PlannerAnchorPopoverKey | null,
 ): string {
   if (state.payload.acceptedContracts.length === 0) {
-    return `<div class="empty-state compact">Accepted contracts appear here once you take work from the board.</div>`;
+    return `<div class="empty-state compact">No accepted contracts.</div>`;
+  }
+
+  if (acceptedContracts.length === 0) {
+    return `
+      <div class="planner-anchor-stage" data-planner-anchor-stage>
+        <div class="planner-anchor-table-wrap" data-planner-anchor-wrap>
+          <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
+            <colgroup>
+              <col />
+              <col style="width:100px" />
+              <col style="width:154px" />
+              <col style="width:182px" />
+            </colgroup>
+            <thead>
+              <tr>
+                ${renderPlannerAnchorHeaderCell("Route", activePlannerAnchorPopover, {
+                  search: {
+                    key: "plannerRouteSearch",
+                    label: "Route search",
+                  },
+                })}
+                ${renderPlannerAnchorHeaderCell("Payload", activePlannerAnchorPopover, {
+                  filter: {
+                    key: "plannerPayloadFilter",
+                    label: "Payload filter",
+                  },
+                })}
+                ${renderPlannerAnchorHeaderCell("Due", activePlannerAnchorPopover, {
+                  filter: {
+                    key: "plannerDueFilter",
+                    label: "Due filter",
+                  },
+                })}
+                ${renderContractsStaticHeaderCell("Action")}
+              </tr>
+            </thead>
+          </table>
+        </div>
+        ${renderPlannerAcceptedContractsActivePopover(state, activePlannerAnchorPopover)}
+        <div class="empty-state compact">No accepted contracts match the current planner filters.</div>
+      </div>
+    `;
   }
 
   return `
-    <div class="planner-anchor-table-wrap" data-planner-anchor-wrap>
-      <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
-        <colgroup>
-          <col />
-          <col style="width:88px" />
-          <col style="width:154px" />
-          <col style="width:168px" />
-        </colgroup>
-        <thead>
-          <tr>
-            ${renderContractsStaticHeaderCell("Route")}
-            ${renderContractsStaticHeaderCell("Payload")}
-            ${renderContractsStaticHeaderCell("Due")}
-            ${renderContractsStaticHeaderCell("Action")}
-          </tr>
-        </thead>
-        <tbody>
-          ${state.payload.acceptedContracts.map((contract) => renderPlannerAcceptedContractRow(state, contract, selectedAcceptedContract?.companyContractId === contract.companyContractId)).join("")}
-        </tbody>
-      </table>
+    <div class="planner-anchor-stage" data-planner-anchor-stage>
+      <div class="planner-anchor-table-wrap" data-planner-anchor-wrap>
+        <table class="contracts-board-table planner-anchor-table" data-planner-anchor-table>
+          <colgroup>
+            <col />
+            <col style="width:100px" />
+            <col style="width:154px" />
+            <col style="width:182px" />
+          </colgroup>
+          <thead>
+            <tr>
+              ${renderPlannerAnchorHeaderCell("Route", activePlannerAnchorPopover, {
+                search: {
+                  key: "plannerRouteSearch",
+                  label: "Route search",
+                },
+              })}
+              ${renderPlannerAnchorHeaderCell("Payload", activePlannerAnchorPopover, {
+                filter: {
+                  key: "plannerPayloadFilter",
+                  label: "Payload filter",
+                },
+              })}
+              ${renderPlannerAnchorHeaderCell("Due", activePlannerAnchorPopover, {
+                filter: {
+                  key: "plannerDueFilter",
+                  label: "Due filter",
+                },
+              })}
+              ${renderContractsStaticHeaderCell("Action")}
+            </tr>
+          </thead>
+          <tbody>
+            ${acceptedContracts.map((contract) => renderPlannerAcceptedContractRow(state, contract, selectedAcceptedContract?.companyContractId === contract.companyContractId)).join("")}
+          </tbody>
+        </table>
+      </div>
+      ${renderPlannerAcceptedContractsActivePopover(state, activePlannerAnchorPopover)}
     </div>
   `;
 }
@@ -1977,51 +2234,31 @@ function renderPlannerSetupCard(
     )))
     .join("");
 
-  if (!selectedAcceptedContract) {
-    return `
-      <section class="planner-setup-card">
-        <div class="empty-state compact">Select an accepted contract on the left to anchor the route and reveal only the next reachable candidates.</div>
-      </section>
-    `;
-  }
-
-  const plannerStatus = selectedAcceptedContract.routePlanItemId
-    ? "This accepted contract is already in the saved route chain."
-    : (state.payload.routePlan?.items.length ?? 0) > 0
-    ? "Starting from this contract will clear the current saved chain first."
-    : "Start the route from this contract to save the chain, or just preview the next-leg candidates below.";
-
   return `
     <section class="planner-setup-card">
       <div class="planner-setup-grid">
         <article class="planner-setup-metric">
           <span class="eyebrow">Selected contract</span>
-          <strong>${escapeHtml(`${selectedAcceptedContract.origin.code} -> ${selectedAcceptedContract.destination.code}`)}</strong>
-          <span class="muted">${escapeHtml(formatPayload(selectedAcceptedContract))} | due ${escapeHtml(formatDate(selectedAcceptedContract.deadlineUtc))}</span>
+          <strong>${escapeHtml(selectedAcceptedContract ? `${selectedAcceptedContract.origin.code} -> ${selectedAcceptedContract.destination.code}` : "No selection")}</strong>
+          <span class="muted">${escapeHtml(selectedAcceptedContract ? `${formatPayload(selectedAcceptedContract)} | due ${formatDate(selectedAcceptedContract.deadlineUtc)}` : "No visible accepted contract")}</span>
         </article>
         <article class="planner-setup-metric">
           <span class="eyebrow">Current next origin</span>
-          <strong>${escapeHtml(plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code)}</strong>
-          <span class="muted">${escapeHtml(plannerEndpointAirport?.name ?? selectedAcceptedContract.destination.name)}</span>
+          <strong>${escapeHtml(plannerEndpointAirport?.code ?? selectedAcceptedContract?.destination.code ?? "--")}</strong>
+          <span class="muted">${escapeHtml(plannerEndpointAirport?.name ?? selectedAcceptedContract?.destination.name ?? "No route anchor selected")}</span>
         </article>
         <label class="planner-setup-metric planner-aircraft-picker">
           <span class="eyebrow">Aircraft filter</span>
           <select name="plannerAircraftId">
             ${aircraftOptions}
           </select>
-          <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} selected` : "All company aircraft currently eligible for the next leg.")}</span>
+          <span class="muted">${escapeHtml(selectedAircraft ? `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName}` : "All company aircraft")}</span>
         </label>
         <article class="planner-setup-metric">
           <span class="eyebrow">Saved chain</span>
           <strong>${escapeHtml(String(summary.itemCount))} item${summary.itemCount === 1 ? "" : "s"}</strong>
-          <span class="muted">${escapeHtml(summary.itemCount > 0 ? `${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned` : "No saved route chain yet.")}</span>
+          <span class="muted">${escapeHtml(summary.itemCount > 0 ? `${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned` : "0 accepted / 0 planned")}</span>
         </article>
-      </div>
-      <div class="planner-inline-callout">
-        <strong>${escapeHtml(plannerStatus)}</strong>
-        <span class="muted">${escapeHtml(selectedAircraft
-          ? `${selectedAircraft.registration} | ${selectedAircraft.modelDisplayName} | ${selectedAircraft.currentAirport.code} | ${selectedAircraft.activeCabinSeats} seats | ${Math.round(selectedAircraft.activeCabinCargoCapacityLb).toLocaleString("en-US")} lb cargo | ${Math.round(selectedAircraft.rangeNm).toLocaleString("en-US")} nm range`
-          : "Without an aircraft filter, candidates show all next-leg offers leaving from the current route endpoint.")}</span>
       </div>
     </section>
   `;
@@ -2034,13 +2271,13 @@ function renderPlannerCandidateSubtitle(
   candidateCount: number,
 ): string {
   if (!selectedAcceptedContract) {
-    return "Select accepted work to anchor the next leg.";
+    return "No route anchor";
   }
 
   const plannerEndpointAirport = resolvePlannerEndpointAirport(state, selectedAcceptedContract);
   const endpointCode = plannerEndpointAirport?.code ?? selectedAcceptedContract.destination.code;
   const aircraftLabel = selectedAircraft ? ` | filtered for ${selectedAircraft.registration}` : "";
-  return `${candidateCount} next-leg candidate${candidateCount === 1 ? "" : "s"} leaving ${endpointCode}${aircraftLabel}`;
+  return `${candidateCount} from ${endpointCode}${aircraftLabel}`;
 }
 
 function renderPlannerCandidateList(
@@ -2050,7 +2287,7 @@ function renderPlannerCandidateList(
   selectedAircraft: ContractsPlannerAircraft | null,
 ): string {
   if (!selectedAcceptedContract) {
-    return `<div class="empty-state compact">Select accepted work to preview the available next legs from that destination.</div>`;
+    return `<div class="empty-state compact">No route anchor selected.</div>`;
   }
 
   if (plannerCandidates.length === 0) {
@@ -2510,8 +2747,40 @@ function renderContractsBoardHeaderCell(
   return `<th class="table-header-column${options.sortField ? " sortable" : ""}${isSorted ? " is-sorted" : ""}"${ariaSort ? ` aria-sort="${ariaSort}"` : ""}><div class="table-header-control">${labelHtml}<span class="table-header-actions">${searchButton}${filterButton}</span></div></th>`;
 }
 
+function renderPlannerAnchorHeaderCell(
+  label: string,
+  activePopover: PlannerAnchorPopoverKey | null,
+  options: {
+    search?: {
+      key: PlannerAnchorPopoverKey;
+      label: string;
+    };
+    filter?: {
+      key: PlannerAnchorPopoverKey;
+      label: string;
+    };
+  },
+): string {
+  const searchButton = options.search
+    ? renderPlannerAnchorIconButton(options.search.key, "search", options.search.label, activePopover === options.search.key)
+    : "";
+  const filterButton = options.filter
+    ? renderPlannerAnchorIconButton(options.filter.key, "filter", options.filter.label, activePopover === options.filter.key)
+    : "";
+  return `<th class="table-header-column"><div class="table-header-control"><span class="table-header-label">${escapeHtml(label)}</span><span class="table-header-actions">${searchButton}${filterButton}</span></div></th>`;
+}
+
 function renderContractsStaticHeaderCell(label: string): string {
   return renderStaticTableHeaderCell(label);
+}
+
+function renderPlannerAnchorIconButton(
+  popoverKey: PlannerAnchorPopoverKey,
+  kind: "search" | "filter",
+  label: string,
+  isExpanded: boolean,
+): string {
+  return `<button type="button" class="table-header-icon-button" data-planner-anchor-popover-toggle="${escapeHtml(popoverKey)}" aria-label="${escapeHtml(label)}" aria-expanded="${isExpanded ? "true" : "false"}">${renderContractsHeaderIcon(kind)}</button>`;
 }
 
 function renderContractsBoardActivePopover(
@@ -2654,6 +2923,80 @@ function renderContractsBoardActivePopover(
   }
 }
 
+function renderPlannerAcceptedContractsActivePopover(
+  state: ContractsUiState,
+  activePopover: PlannerAnchorPopoverKey | null,
+): string {
+  if (activePopover === null) {
+    return "";
+  }
+
+  switch (activePopover) {
+    case "plannerRouteSearch":
+      return renderPlannerAnchorSearchGroupControl(
+        "plannerRouteSearch",
+        [
+          {
+            fieldName: "departureSearchText",
+            label: "Departure",
+            placeholder: "Search departure",
+            ariaLabel: "Search accepted contract departure airport",
+            value: state.plannerAnchorFilters.departureSearchText,
+          },
+          {
+            fieldName: "destinationSearchText",
+            label: "Destination",
+            placeholder: "Search destination",
+            ariaLabel: "Search accepted contract destination airport",
+            value: state.plannerAnchorFilters.destinationSearchText,
+          },
+        ],
+      );
+    case "plannerPayloadFilter":
+      return renderPlannerAnchorFilterControl(
+        "plannerPayloadFilter",
+        `${renderContractsCompactField(
+          "Passengers",
+          renderPlannerAnchorRangeFields("passengerPayloadMin", "passengerPayloadMax", {
+            minimum: 0,
+            step: 1,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.plannerAnchorFilters.passengerPayloadMin,
+            maxValue: state.plannerAnchorFilters.passengerPayloadMax,
+          }),
+        )}${renderContractsCompactField(
+          "Cargo (lb)",
+          renderPlannerAnchorRangeFields("cargoPayloadMin", "cargoPayloadMax", {
+            minimum: 0,
+            step: 100,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.plannerAnchorFilters.cargoPayloadMin,
+            maxValue: state.plannerAnchorFilters.cargoPayloadMax,
+          }),
+        )}`,
+      );
+    case "plannerDueFilter":
+      return renderPlannerAnchorFilterControl(
+        "plannerDueFilter",
+        renderContractsCompactField(
+          "Due in (hours)",
+          renderPlannerAnchorRangeFields("dueHoursMin", "dueHoursMax", {
+            minimum: 0,
+            step: 1,
+            minPlaceholder: "Min",
+            maxPlaceholder: "Max",
+            minValue: state.plannerAnchorFilters.dueHoursMin,
+            maxValue: state.plannerAnchorFilters.dueHoursMax,
+          }),
+        ),
+      );
+    default:
+      return "";
+  }
+}
+
 function renderContractsBoardSearchGroupControl(
   popoverKey: ContractsBoardPopoverKey,
   fields: Array<{
@@ -2670,6 +3013,24 @@ function renderContractsBoardSearchGroupControl(
 
 function renderContractsBoardFilterControl(popoverKey: ContractsBoardPopoverKey, bodyMarkup: string): string {
   return `<div class="contracts-board-header-popover contracts-board-header-popover--filter" data-contracts-board-popover="${escapeHtml(popoverKey)}" data-contracts-board-control-type="filter"><div class="contracts-board-popover-body">${bodyMarkup}</div></div>`;
+}
+
+function renderPlannerAnchorSearchGroupControl(
+  popoverKey: PlannerAnchorPopoverKey,
+  fields: Array<{
+    fieldName: keyof PlannerAnchorFilterState;
+    label: string;
+    placeholder: string;
+    ariaLabel: string;
+    value: string;
+  }>,
+): string {
+  const isMultiField = fields.length > 1;
+  return `<div class="contracts-board-header-popover contracts-board-header-popover--search${isMultiField ? " contracts-board-header-popover--search-group" : ""}" data-planner-anchor-popover="${escapeHtml(popoverKey)}" data-planner-anchor-control-type="search" data-planner-anchor-search-group="${isMultiField ? "true" : "false"}"><div class="contracts-board-popover-body contracts-board-popover-body--search">${fields.map((field) => `<label class="contracts-board-search-field"><span class="eyebrow">${escapeHtml(field.label)}</span><input type="search" class="contracts-board-inline-search" name="${escapeHtml(String(field.fieldName))}" value="${escapeHtml(field.value)}" data-planner-anchor-field="${escapeHtml(String(field.fieldName))}" placeholder="${escapeHtml(field.placeholder)}" aria-label="${escapeHtml(field.ariaLabel)}" /></label>`).join("")}</div></div>`;
+}
+
+function renderPlannerAnchorFilterControl(popoverKey: PlannerAnchorPopoverKey, bodyMarkup: string): string {
+  return `<div class="contracts-board-header-popover contracts-board-header-popover--filter" data-planner-anchor-popover="${escapeHtml(popoverKey)}" data-planner-anchor-control-type="filter"><div class="contracts-board-popover-body">${bodyMarkup}</div></div>`;
 }
 
 function renderContractsCompactField(label: string, controlMarkup: string): string {
@@ -2693,6 +3054,25 @@ function renderContractsRangeFields(
   const minPlaceholder = options.minPlaceholder ?? "Min";
   const maxPlaceholder = options.maxPlaceholder ?? "Max";
   return `<div class="contracts-board-range-fields"><label class="contracts-board-range-field"><span class="eyebrow">Min</span><input name="${escapeHtml(String(minName))}" type="number" min="${escapeHtml(String(minimum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-contracts-board-field="${escapeHtml(String(minName))}" placeholder="${escapeHtml(minPlaceholder)}" value="${escapeHtml(options.minValue ?? "")}" /></label><label class="contracts-board-range-field"><span class="eyebrow">Max</span><input name="${escapeHtml(String(maxName))}" type="number" min="${escapeHtml(String(minimum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-contracts-board-field="${escapeHtml(String(maxName))}" placeholder="${escapeHtml(maxPlaceholder)}" value="${escapeHtml(options.maxValue ?? "")}" /></label></div>`;
+}
+
+function renderPlannerAnchorRangeFields(
+  minName: keyof PlannerAnchorFilterState,
+  maxName: keyof PlannerAnchorFilterState,
+  options: {
+    minimum?: number;
+    step?: number;
+    minPlaceholder?: string;
+    maxPlaceholder?: string;
+    minValue?: string;
+    maxValue?: string;
+  } = {},
+): string {
+  const minimum = options.minimum ?? 0;
+  const step = options.step ?? 1;
+  const minPlaceholder = options.minPlaceholder ?? "Min";
+  const maxPlaceholder = options.maxPlaceholder ?? "Max";
+  return `<div class="contracts-board-range-fields"><label class="contracts-board-range-field"><span class="eyebrow">Min</span><input name="${escapeHtml(String(minName))}" type="number" min="${escapeHtml(String(minimum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-planner-anchor-field="${escapeHtml(String(minName))}" placeholder="${escapeHtml(minPlaceholder)}" value="${escapeHtml(options.minValue ?? "")}" /></label><label class="contracts-board-range-field"><span class="eyebrow">Max</span><input name="${escapeHtml(String(maxName))}" type="number" min="${escapeHtml(String(minimum))}" step="${escapeHtml(String(step))}" inputmode="numeric" data-planner-anchor-field="${escapeHtml(String(maxName))}" placeholder="${escapeHtml(maxPlaceholder)}" value="${escapeHtml(options.maxValue ?? "")}" /></label></div>`;
 }
 
 function renderContractsAircraftAvailabilityFieldset(state: ContractsUiState): string {
@@ -2720,6 +3100,17 @@ function normalizeContractsBoardPopoverKey(value: string | undefined): Contracts
     case "hoursFilter":
     case "dueFilter":
     case "payoutFilter":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function normalizePlannerAnchorPopoverKey(value: string | undefined): PlannerAnchorPopoverKey | null {
+  switch (value) {
+    case "plannerRouteSearch":
+    case "plannerPayloadFilter":
+    case "plannerDueFilter":
       return value;
     default:
       return null;
@@ -2962,10 +3353,16 @@ function getClosedContracts(payload: ContractsViewPayload): ContractsViewCompany
 }
 
 function ensurePlannerSelections(state: ContractsUiState): void {
-  if (!state.payload.acceptedContracts.some((contract) => contract.companyContractId === state.plannerSelection.acceptedContractId)) {
+  const visibleAcceptedContracts = getFilteredPlannerAcceptedContracts(state);
+  if (visibleAcceptedContracts.length === 0) {
     state.plannerSelection = {
       ...state.plannerSelection,
-      acceptedContractId: selectDefaultPlannerAcceptedContractId(state.payload),
+      acceptedContractId: null,
+    };
+  } else if (!visibleAcceptedContracts.some((contract) => contract.companyContractId === state.plannerSelection.acceptedContractId)) {
+    state.plannerSelection = {
+      ...state.plannerSelection,
+      acceptedContractId: visibleAcceptedContracts[0]?.companyContractId ?? null,
     };
   }
 
@@ -3175,6 +3572,35 @@ function getFilteredPlannerCandidates(state: ContractsUiState): PlannerCandidate
         ? `${selectedAircraft.registration} fits payload, range, and airport requirements for this leg.`
         : `${offer.plannerEligibleAircraftIds.length} aircraft in the fleet can plausibly cover this leg shape.`,
     } satisfies PlannerCandidateView));
+}
+
+function getFilteredPlannerAcceptedContracts(state: ContractsUiState): ContractsViewAcceptedContract[] {
+  const passengerPayloadMin = Number.parseInt(state.plannerAnchorFilters.passengerPayloadMin, 10);
+  const passengerPayloadMax = Number.parseInt(state.plannerAnchorFilters.passengerPayloadMax, 10);
+  const cargoPayloadMin = Number.parseInt(state.plannerAnchorFilters.cargoPayloadMin, 10);
+  const cargoPayloadMax = Number.parseInt(state.plannerAnchorFilters.cargoPayloadMax, 10);
+  const dueHoursMin = Number.parseInt(state.plannerAnchorFilters.dueHoursMin, 10);
+  const dueHoursMax = Number.parseInt(state.plannerAnchorFilters.dueHoursMax, 10);
+  const departureSearchText = state.plannerAnchorAppliedTextFilters.departureSearchText.trim().toLowerCase();
+  const destinationSearchText = state.plannerAnchorAppliedTextFilters.destinationSearchText.trim().toLowerCase();
+
+  return state.payload.acceptedContracts.filter((contract) => {
+    const hoursRemaining = routeHoursRemaining(contract, state.payload.currentTimeUtc);
+
+    if (!matchesRouteSearchFilters(contract, departureSearchText, destinationSearchText)) {
+      return false;
+    }
+
+    if (!matchesPayloadFilters(contract, passengerPayloadMin, passengerPayloadMax, cargoPayloadMin, cargoPayloadMax)) {
+      return false;
+    }
+
+    if (!matchesNumericRange(hoursRemaining, dueHoursMin, dueHoursMax)) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 function matchesNumericRange(value: number, min: number, max: number): boolean {
@@ -3452,7 +3878,6 @@ function renderPlannerMap(root: HTMLElement, state: ContractsUiState): void {
 
 function renderVisibleMap(root: HTMLElement, state: ContractsUiState, selectedRoute: SelectedRoute | null): void {
   if (state.workspaceTab === "planning") {
-    renderPlannerMap(root, state);
     return;
   }
 

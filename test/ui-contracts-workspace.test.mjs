@@ -400,9 +400,15 @@ try {
   await page.waitForFunction(() => document.querySelector(".planner-anchor-table tbody tr.selected"));
   markStep("planner opened");
 
-  assert.ok((await page.locator(".planner-anchor-panel").textContent())?.includes("Accepted contracts"));
-  assert.ok((await page.locator(".planner-candidate-panel").textContent())?.includes("Next-leg candidates"));
+  assert.equal(await page.locator(".planner-anchor-panel h4").count(), 0);
+  assert.equal(await page.locator(".planner-anchor-table.contracts-board-table").count(), 1);
   assert.equal(await page.locator(".planner-candidate-table.contracts-board-table").count(), 1);
+  assert.equal(await page.locator(".planner-anchor-table button[aria-label='Route search']").count(), 1);
+  assert.equal(await page.locator(".planner-anchor-table button[aria-label='Payload filter']").count(), 1);
+  assert.equal(await page.locator(".planner-anchor-table button[aria-label='Due filter']").count(), 1);
+  assert.equal(await page.locator(".planner-inline-callout").count(), 0);
+  assert.equal(await page.locator("[data-contracts-plan-map]").count(), 0);
+  assert.equal(await page.locator(".planner-chain-map-card").count(), 0);
   const plannerCandidateHeaderOrder = await page.locator(".planner-candidate-table thead th").evaluateAll((cells) =>
     cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
   );
@@ -420,16 +426,43 @@ try {
   const plannerBodyLayout = await page.evaluate(() => {
     const plannerBody = document.querySelector(".contracts-planner-body");
     const anchorWrap = document.querySelector(".planner-anchor-table-wrap");
-    return plannerBody instanceof HTMLElement && anchorWrap instanceof HTMLElement
+    const plannerShell = document.querySelector(".planner-shell");
+    const anchorPanel = document.querySelector(".planner-anchor-panel");
+    return plannerBody instanceof HTMLElement
+      && anchorWrap instanceof HTMLElement
+      && plannerShell instanceof HTMLElement
+      && anchorPanel instanceof HTMLElement
       ? {
           plannerOverflowY: window.getComputedStyle(plannerBody).overflowY,
           anchorOverflowY: window.getComputedStyle(anchorWrap).overflowY,
+          anchorWidth: anchorPanel.getBoundingClientRect().width,
+          shellWidth: plannerShell.getBoundingClientRect().width,
         }
       : null;
   });
   assert.ok(plannerBodyLayout);
   assert.equal(plannerBodyLayout.plannerOverflowY, "hidden");
   assert.ok(["auto", "scroll"].includes(plannerBodyLayout.anchorOverflowY));
+  assert.ok((plannerBodyLayout.anchorWidth / plannerBodyLayout.shellWidth) > 0.43);
+  assert.ok((plannerBodyLayout.anchorWidth / plannerBodyLayout.shellWidth) < 0.57);
+  const plannerAnchorFirstRouteText = (await page.locator(".planner-anchor-table tbody tr").first().locator("td").nth(0).textContent()) ?? "";
+  const plannerAnchorCodes = plannerAnchorFirstRouteText.match(/\b[A-Z]{3,4}\b/g) ?? [];
+  const plannerAnchorDepartureCode = plannerAnchorCodes[0] ?? "";
+  assert.ok(plannerAnchorDepartureCode.length > 0);
+  await clickUi(page.locator(".planner-anchor-table button[aria-label='Route search']").first());
+  await page.waitForFunction(() => {
+    const popover = document.querySelector("[data-planner-anchor-popover='plannerRouteSearch']");
+    return popover instanceof HTMLElement
+      && popover.querySelector("input[name='departureSearchText']") instanceof HTMLInputElement
+      && popover.querySelector("input[name='destinationSearchText']") instanceof HTMLInputElement;
+  });
+  await page.locator("[data-planner-anchor-popover='plannerRouteSearch'] input[name='departureSearchText']").fill(plannerAnchorDepartureCode);
+  await page.waitForFunction((expectedCode) => {
+    const rows = [...document.querySelectorAll(".planner-anchor-table tbody tr")];
+    return rows.length > 0 && rows.every((row) => (row.textContent ?? "").includes(expectedCode));
+  }, plannerAnchorDepartureCode);
+  await page.locator("[data-planner-anchor-popover='plannerRouteSearch'] input[name='departureSearchText']").fill("");
+  await page.keyboard.press("Escape");
   const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
   let initialPlannerAddCount = await plannerAddButtons.count();
   if (initialPlannerAddCount === 0) {
