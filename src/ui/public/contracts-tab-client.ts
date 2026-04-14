@@ -114,7 +114,6 @@ interface PlannerChainSummary {
   acceptedWorkCount: number;
   plannedCandidateCount: number;
   payoutTotal: number;
-  orderLabel: string;
   continuityIssues: string[];
 }
 
@@ -2036,7 +2035,7 @@ function renderPlannerPanel(
   const selectedAircraft = resolveSelectedPlannerAircraft(state);
   const activePlannerTable = state.plannerTableView;
   const routePlanHtml = routePlan && routePlan.items.length > 0
-    ? renderPlannerRoutePlan(routePlan, plannerReview)
+    ? renderPlannerRoutePlan(routePlan, plannerReview, state.payload.currentTimeUtc)
     : `<div class="empty-state compact">No saved route chain.</div>`;
 
   return `
@@ -2095,7 +2094,11 @@ function renderPlannerTableToggle(
   `;
 }
 
-function renderPlannerRoutePlan(routePlan: ContractsViewPayload["routePlan"], plannerReview: PlannerReviewState): string {
+function renderPlannerRoutePlan(
+  routePlan: ContractsViewPayload["routePlan"],
+  plannerReview: PlannerReviewState,
+  currentTimeUtc: string,
+): string {
   if (!routePlan) {
     return `<div class="empty-state compact">No saved route chain.</div>`;
   }
@@ -2119,19 +2122,16 @@ function renderPlannerRoutePlan(routePlan: ContractsViewPayload["routePlan"], pl
   const displayItems = [...routePlan.items].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
   return `
     <div class="planner-list">
-      ${displayItems.map((item) => renderPlannerRoutePlanItem(item)).join("")}
+      ${displayItems.map((item) => renderPlannerRoutePlanItem(item, currentTimeUtc)).join("")}
     </div>
   `;
 }
 
-function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
+function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem, currentTimeUtc: string): string {
   const sourceLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
   const sourceTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
   const statusLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
     ? "Ready to accept"
-    : item.plannerItemStatus.replaceAll("_", " ");
-  const actionLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
-    ? "Planned candidate"
     : item.plannerItemStatus.replaceAll("_", " ");
 
   return `
@@ -2140,24 +2140,28 @@ function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
         <span class="planner-sequence">${item.sequenceNumber}</span>
         <div class="planner-item-main">
           <div class="planner-item-line">
-            <div class="planner-item-route-line">
-              <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
-              <strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
+            <div class="planner-item-route-block">
+              <strong class="planner-item-route">${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
+              <div class="planner-item-meta-strip">
+                <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
+                ${renderBadge(statusLabel)}
+              </div>
             </div>
-            <div class="pill-row">
-              ${renderBadge(statusLabel)}
+            <div class="planner-item-value-block">
+              <span class="eyebrow">Payout</span>
+              <strong>${escapeHtml(formatMoney(item.payoutAmount))}</strong>
             </div>
           </div>
           <div class="planner-item-subline muted">
-            <span>${escapeHtml(formatPayload(item))}</span>
-            <span>Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
-            <span>${escapeHtml(actionLabel)}</span>
+            <span class="planner-item-meta-pill">${escapeHtml(formatPayload(item))}</span>
+            <span class="planner-item-meta-pill">Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+            <span class="planner-item-meta-pill">${escapeHtml(formatDeadlineCountdown(item.deadlineUtc, currentTimeUtc))}</span>
           </div>
         </div>
         <div class="planner-item-actions">
-          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up">Up</button>
-          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down">Down</button>
-          <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Remove</button>
+          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up" aria-label="Move route item up">Up</button>
+          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down" aria-label="Move route item down">Down</button>
+          <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Drop</button>
         </div>
       </div>
     </article>
@@ -4037,9 +4041,6 @@ function buildPlannerChainSummary(routePlan: ContractsViewPayload["routePlan"]):
   const acceptedWorkCount = items.filter((item) => item.sourceType === "accepted_contract").length;
   const plannedCandidateCount = items.filter((item) => item.sourceType === "candidate_offer").length;
   const payoutTotal = items.reduce((sum, item) => sum + item.payoutAmount, 0);
-  const orderLabel = items.length > 0
-    ? items.map((item) => String(item.sequenceNumber)).join(" -> ")
-    : "No chain items yet";
 
   return {
     items,
@@ -4048,40 +4049,34 @@ function buildPlannerChainSummary(routePlan: ContractsViewPayload["routePlan"]):
     acceptedWorkCount,
     plannedCandidateCount,
     payoutTotal,
-    orderLabel,
     continuityIssues: buildPlannerContinuityIssues(routePlan, items, endpointAirport),
   };
 }
 
 function renderPlannerSummary(summary: PlannerChainSummary): string {
-  const continuityStatus = summary.continuityIssues.length === 0
-    ? "Chain continuity is intact."
-    : `${summary.continuityIssues.length} continuity issue${summary.continuityIssues.length === 1 ? "" : "s"} detected.`;
+  const continuityStatus = summary.continuityIssues.length === 0 ? "Ready" : `${summary.continuityIssues.length} issue${summary.continuityIssues.length === 1 ? "" : "s"}`;
   const continuityTone = summary.continuityIssues.length > 0 ? "warning" : "accent";
-  const continuityDetail = summary.continuityIssues.length === 0
-    ? "No breaks or endpoint mismatches are visible."
-    : "Review the issues below before dispatch.";
   return `
-    <div class="planner-summary-bar">
-      <article class="planner-summary-inline">
-        <span class="eyebrow">Current endpoint</span>
+    <div class="planner-summary-strip">
+      <article class="planner-summary-stat">
+        <span class="eyebrow">Chain</span>
+        <strong>${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"}`)}</strong>
+        <span class="muted">${escapeHtml(`${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned`)}</span>
+      </article>
+      <article class="planner-summary-stat">
+        <span class="eyebrow">Endpoint</span>
         <strong>${escapeHtml(summary.endpointAirport ? summary.endpointAirport.code : "Not set")}</strong>
-        <span class="muted">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "The chain still needs an endpoint.")}</span>
+        <span class="muted">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "Start a chain to set the endpoint.")}</span>
       </article>
-      <article class="planner-summary-inline">
-        <span class="eyebrow">Payout total</span>
+      <article class="planner-summary-stat">
+        <span class="eyebrow">Payout</span>
         <strong>${escapeHtml(formatMoney(summary.payoutTotal))}</strong>
-        <span class="muted">${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"} in chain`)}</span>
+        <span class="muted">Accepted plus planned value</span>
       </article>
-      <article class="planner-summary-inline">
-        <span class="eyebrow">Order</span>
-        <strong>${escapeHtml(summary.orderLabel)}</strong>
-        <span class="muted">${escapeHtml(`${summary.acceptedWorkCount} accepted work / ${summary.plannedCandidateCount} planned candidate${summary.plannedCandidateCount === 1 ? "" : "s"}`)}</span>
-      </article>
-      <article class="planner-summary-inline ${continuityTone}">
+      <article class="planner-summary-stat ${continuityTone}">
         <span class="eyebrow">Continuity</span>
         <strong>${escapeHtml(continuityStatus)}</strong>
-        <span class="muted">${escapeHtml(continuityDetail)}</span>
+        <span class="muted">${escapeHtml(summary.continuityIssues.length === 0 ? "No breaks visible." : "Review the flagged legs below.")}</span>
       </article>
     </div>
     ${summary.continuityIssues.length > 0

@@ -2569,43 +2569,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       gap: 8px;
       margin-top: 10px;
     }
-    .planner-summary-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 8px;
-    }
-    .planner-summary-card,
-    .planner-continuity-issue {
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 8px 10px;
-      background: var(--panel-strong);
-      display: grid;
-      gap: 4px;
-    }
-    .planner-summary-card.accent {
-      border-color: rgba(13,106,119,.22);
-      background: color-mix(in srgb, var(--accent-soft) 54%, var(--panel-strong));
-    }
-    .planner-summary-card.warning {
-      border-color: rgba(239,177,95,.3);
-      background: color-mix(in srgb, var(--warn-soft) 48%, var(--panel-strong));
-    }
-    .planner-summary-card strong,
-    .planner-continuity-issue strong {
-      font-size: 16px;
-    }
-    .planner-continuity-list {
-      display: grid;
-      gap: 8px;
-    }
-    .planner-continuity-issue {
-      font-size: 13px;
-    }
-    .planner-continuity-issue.ok {
-      border-color: rgba(13,106,119,.22);
-      background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-strong));
-    }
     .planner-review {
       display: grid;
       gap: 14px;
@@ -2662,8 +2625,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: auto;
       display: grid;
-      gap: 8px;
-      padding: 10px 12px 12px;
+      gap: 6px;
+      padding: 8px 10px 10px;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -2673,73 +2636,104 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .planner-list {
       display: grid;
-      gap: 6px;
+      gap: 4px;
     }
     .planner-item {
       border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 8px 10px;
+      border-radius: 10px;
+      padding: 6px 8px;
       background: var(--panel-strong);
       display: grid;
-      gap: 6px;
+      gap: 4px;
     }
     .planner-item-row {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
-      align-items: start;
-      gap: 8px;
+      align-items: center;
+      gap: 6px;
     }
     .planner-item-main {
       min-width: 0;
       display: grid;
-      gap: 4px;
+      gap: 2px;
     }
     .planner-item-line {
       display: flex;
-      align-items: start;
+      align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: 6px;
     }
-    .planner-item-route-line {
+    .planner-item-route-block {
       min-width: 0;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
     }
-    .planner-item-route-line strong {
+    .planner-item-route {
+      font-size: 14px;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+    .planner-item-meta-strip {
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+    }
+    .planner-item-value-block {
+      display: grid;
+      justify-items: end;
+      gap: 1px;
+      white-space: nowrap;
+    }
+    .planner-item-value-block strong {
+      font-size: 14px;
+      line-height: 1.15;
+    }
+    .planner-item-route,
+    .planner-review-item .meta-stack strong {
       overflow-wrap: anywhere;
     }
     .planner-item-subline {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px 12px;
+      gap: 4px 8px;
       font-size: 12px;
-      line-height: 1.25;
+      line-height: 1.2;
+    }
+    .planner-item-meta-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.06);
+      background: rgba(255,255,255,.02);
     }
     .planner-sequence {
       display: inline-flex;
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       align-items: center;
       justify-content: center;
       border-radius: 999px;
       background: var(--accent-soft);
       color: var(--text);
       font-weight: 700;
-      font-size: 12px;
+      font-size: 11px;
     }
     .planner-item-actions {
       display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-self: center;
+      flex-wrap: nowrap;
+      gap: 4px;
       justify-content: end;
+      white-space: nowrap;
     }
     .planner-item-actions .button-secondary {
-      padding: 5px 9px;
+      padding: 4px 7px;
       min-height: 0;
-      font-size: 12px;
+      font-size: 11px;
       line-height: 1.1;
     }
     .planner-table-action-cell {
@@ -2758,10 +2752,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-candidate-row--blocked {
       opacity: .9;
     }
-    .planner-item .meta-stack strong,
-    .planner-review-item .meta-stack strong {
-      overflow-wrap: anywhere;
-    }
     .planner-review-item .meta-stack {
       min-width: 0;
     }
@@ -2777,9 +2767,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: inline-flex;
       width: fit-content;
       align-items: center;
-      padding: 4px 9px;
+      padding: 3px 7px;
       border-radius: 999px;
-      font-size: 10px;
+      font-size: 9px;
       text-transform: uppercase;
       letter-spacing: .08em;
       line-height: 1;
@@ -2792,37 +2782,40 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: color-mix(in srgb, var(--warn-soft) 56%, var(--panel-strong));
       color: var(--warn);
     }
-    .planner-summary-bar {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 6px;
+    .planner-summary-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: stretch;
     }
-    .planner-summary-inline,
+    .planner-summary-stat,
     .planner-continuity-inline-issue {
       border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 6px 8px;
+      border-radius: 10px;
+      padding: 5px 7px;
       background: var(--panel-strong);
       display: grid;
-      gap: 2px;
+      gap: 1px;
       min-width: 0;
+      flex: 1 1 160px;
     }
-    .planner-summary-inline strong,
+    .planner-summary-stat strong,
     .planner-continuity-inline-issue strong {
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.2;
     }
-    .planner-summary-inline.accent {
+    .planner-summary-stat.accent {
       border-color: rgba(13,106,119,.22);
       background: color-mix(in srgb, var(--accent-soft) 54%, var(--panel-strong));
     }
-    .planner-summary-inline.warning {
+    .planner-summary-stat.warning {
       border-color: rgba(239,177,95,.3);
       background: color-mix(in srgb, var(--warn-soft) 48%, var(--panel-strong));
     }
     .planner-continuity-inline-list {
-      display: grid;
-      gap: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
     }
     .planner-item.stale,
     .planner-review-item.candidate_stale {
@@ -2879,8 +2872,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .planner-setup-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      .planner-summary-bar {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      .planner-summary-strip {
+        gap: 5px;
       }
     }
     @media (max-width: 1240px) {
@@ -2895,6 +2888,13 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
       .planner-item-row {
         grid-template-columns: auto minmax(0, 1fr);
+      }
+      .planner-item-line {
+        align-items: start;
+        flex-direction: column;
+      }
+      .planner-item-value-block {
+        justify-items: start;
       }
       .planner-item-actions {
         grid-column: 2;
@@ -4376,9 +4376,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .contracts-side-column,
       .planner-workbench,
       .planner-setup-grid,
-      .planner-summary-bar,
+      .planner-summary-strip,
       .contracts-selected-pair-row {
-        grid-template-columns: 1fr;
         height: auto;
       }
       .planner-control-row {
