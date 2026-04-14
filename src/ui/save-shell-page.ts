@@ -2465,15 +2465,41 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       min-width: 0;
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr) minmax(220px, .64fr);
+      grid-template-rows: auto minmax(0, 1fr);
       gap: 12px;
       overflow: hidden;
     }
-    .planner-anchor-panel .panel-body,
-    .planner-candidate-panel .panel-body {
+    .planner-table-panel .panel-body {
       min-height: 0;
       overflow: hidden;
       padding: 0;
+    }
+    .planner-table-switch {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .planner-table-toggle,
+    body[data-theme="dark"] .planner-table-toggle {
+      appearance: none;
+      border: 1px solid rgba(111,201,212,.18) !important;
+      background: rgba(18, 40, 55, .88) !important;
+      color: #9bb8c9 !important;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .16s ease, border-color .16s ease, color .16s ease;
+    }
+    .planner-table-toggle.current,
+    .planner-table-toggle[aria-selected="true"],
+    body[data-theme="dark"] .planner-table-toggle.current,
+    body[data-theme="dark"] .planner-table-toggle[aria-selected="true"] {
+      background: var(--accent) !important;
+      border-color: transparent !important;
+      color: #091018 !important;
     }
     .planner-anchor-stage {
       position: relative;
@@ -2579,9 +2605,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-continuity-issue.ok {
       border-color: rgba(13,106,119,.22);
       background: color-mix(in srgb, var(--accent-soft) 40%, var(--panel-strong));
-    }
-    .planner-candidate-panel {
-      min-height: 0;
     }
     .planner-review {
       display: grid;
@@ -2799,7 +2822,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         grid-template-columns: minmax(0, 1fr);
       }
       .planner-workbench {
-        grid-template-rows: auto minmax(320px, 1fr) minmax(260px, auto);
+        grid-template-rows: auto minmax(320px, 1fr);
       }
       .contracts-planner-body {
         overflow: auto;

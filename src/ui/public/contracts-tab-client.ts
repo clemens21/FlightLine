@@ -136,6 +136,7 @@ interface ContractsUiState {
   plannerAnchorAppliedTextFilters: PlannerAnchorAppliedTextFilters;
   plannerSelection: PlannerSelectionState;
   plannerReview: PlannerReviewState;
+  plannerTableView: PlannerTableView;
   plannerAnchorSortField: PlannerAnchorSortField | null;
   plannerAnchorSortDirection: SortDirection;
   workspaceTab: ContractsWorkspaceTab;
@@ -155,6 +156,7 @@ interface ContractsUiState {
 type ContractsBoardTab = "available" | "active" | "closed";
 type ContractsBoardScope = "all" | "my_contracts";
 type ContractsWorkspaceTab = "board" | "planning";
+type PlannerTableView = "accepted" | "candidates";
 type SortField = "route" | "payload" | "nearestAircraft" | "distanceNm" | "hoursRemaining" | "dueUtc" | "payout";
 type PlannerAnchorSortField = "route" | "hoursRemaining" | "dueUtc";
 type SortDirection = "asc" | "desc";
@@ -324,6 +326,7 @@ export function mountContractsTab(
       isOpen: false,
       selectedRoutePlanItemIds: [],
     },
+    plannerTableView: "accepted",
     plannerAnchorSortField: null,
     plannerAnchorSortDirection: "asc",
     workspaceTab: "board",
@@ -645,11 +648,25 @@ export function mountContractsTab(
         };
       }
       state.workspaceTab = "planning";
+      state.plannerTableView = "accepted";
       state.acceptanceNextStepTab = null;
       state.acceptanceNextStepOfferId = null;
       state.acceptanceNextStepCompanyContractId = null;
       focusPlannerChain(state);
       render();
+      return;
+    }
+
+    const plannerTableViewButton = target.closest<HTMLButtonElement>("[data-planner-table-view]");
+    if (plannerTableViewButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nextView = plannerTableViewButton.dataset.plannerTableView === "candidates" ? "candidates" : "accepted";
+      if (state.plannerTableView !== nextView) {
+        state.plannerTableView = nextView;
+        activePlannerAnchorPopover = null;
+        render();
+      }
       return;
     }
 
@@ -2017,30 +2034,33 @@ function renderPlannerPanel(
   const filteredAcceptedContracts = getFilteredPlannerAcceptedContracts(state);
   const selectedAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
   const selectedAircraft = resolveSelectedPlannerAircraft(state);
+  const activePlannerTable = state.plannerTableView;
   const routePlanHtml = routePlan && routePlan.items.length > 0
     ? renderPlannerRoutePlan(routePlan, plannerReview)
     : `<div class="empty-state compact">No saved route chain.</div>`;
 
   return `
     <div class="planner-shell">
-      <section class="panel planner-anchor-panel">
+      <section class="panel planner-table-panel">
+        <div class="panel-head">
+          <div class="planner-table-switch" role="tablist" aria-label="Route planning tables">
+            ${renderPlannerTableToggle("accepted", `Accepted (${filteredAcceptedContracts.length})`, activePlannerTable === "accepted")}
+            ${renderPlannerTableToggle("candidates", `Next leg (${plannerCandidates.length})`, activePlannerTable === "candidates")}
+          </div>
+          <div class="pill-row">
+            <span class="pill">${escapeHtml(activePlannerTable === "accepted"
+              ? `${filteredAcceptedContracts.length} visible accepted`
+              : renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
+          </div>
+        </div>
         <div class="panel-body">
-          ${renderPlannerAcceptedContractList(state, filteredAcceptedContracts, selectedAcceptedContract, activePlannerAnchorPopover)}
+          ${activePlannerTable === "accepted"
+            ? renderPlannerAcceptedContractList(state, filteredAcceptedContracts, selectedAcceptedContract, activePlannerAnchorPopover)
+            : renderPlannerCandidateList(state, plannerCandidates, selectedAcceptedContract, selectedAircraft)}
         </div>
       </section>
       <div class="planner-workbench">
         ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft, summary)}
-        <section class="panel planner-candidate-panel">
-          <div class="panel-head">
-            <strong>Next-leg candidates</strong>
-            <div class="pill-row">
-              <span class="pill">${escapeHtml(renderPlannerCandidateSubtitle(state, selectedAcceptedContract, selectedAircraft, plannerCandidates.length))}</span>
-            </div>
-          </div>
-          <div class="panel-body">
-            ${renderPlannerCandidateList(state, plannerCandidates, selectedAcceptedContract, selectedAircraft)}
-          </div>
-        </section>
         <section class="panel planner-chain-panel">
           <div class="panel-head">
             <strong>Saved route chain</strong>
@@ -2056,6 +2076,22 @@ function renderPlannerPanel(
         </section>
       </div>
     </div>
+  `;
+}
+
+function renderPlannerTableToggle(
+  view: PlannerTableView,
+  label: string,
+  isCurrent: boolean,
+): string {
+  return `
+    <button
+      type="button"
+      class="planner-table-toggle ${isCurrent ? "current" : ""}"
+      data-planner-table-view="${escapeHtml(view)}"
+      role="tab"
+      aria-selected="${isCurrent ? "true" : "false"}"
+    >${escapeHtml(label)}</button>
   `;
 }
 

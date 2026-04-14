@@ -398,11 +398,14 @@ try {
   await page.waitForFunction(() => document.querySelector(".contracts-workspace-tab[data-workspace-tab='planning'][aria-selected='true']"));
   await page.waitForFunction(() => document.querySelector(".contracts-planner-panel")?.textContent?.includes("Route Planning"));
   await page.waitForFunction(() => document.querySelector(".planner-anchor-table tbody tr.selected"));
+  await page.waitForFunction(() => document.querySelectorAll(".planner-table-panel [data-planner-table-view]").length === 2);
   markStep("planner opened");
 
-  assert.equal(await page.locator(".planner-anchor-panel h4").count(), 0);
+  assert.equal(await page.locator(".planner-table-panel [data-planner-table-view='accepted']").count(), 1);
+  assert.equal(await page.locator(".planner-table-panel [data-planner-table-view='candidates']").count(), 1);
+  assert.equal(await page.locator(".planner-table-panel [data-planner-table-view='accepted'][aria-selected='true']").count(), 1);
   assert.equal(await page.locator(".planner-anchor-table.contracts-board-table").count(), 1);
-  assert.equal(await page.locator(".planner-candidate-table.contracts-board-table").count(), 1);
+  assert.equal(await page.locator(".planner-candidate-table.contracts-board-table").count(), 0);
   assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerRouteSearch']").count(), 1);
   assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerHoursFilter']").count(), 1);
   assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerDueFilter']").count(), 1);
@@ -417,33 +420,20 @@ try {
     "Hours Left",
     "Due",
   ]);
-  const plannerCandidateHeaderOrder = await page.locator(".planner-candidate-table thead th").evaluateAll((cells) =>
-    cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
-  );
-  assert.deepEqual(plannerCandidateHeaderOrder, [
-    "Route",
-    "Payload",
-    "Payout",
-    "Distance",
-    "Hours Left",
-    "Due",
-    "Plan",
-  ]);
   assert.equal(await page.locator("select[name='plannerAircraftId']").count(), 1);
-  assert.equal(await page.locator(".planner-candidate-panel [data-accept-offer]").count(), 0);
   const plannerBodyLayout = await page.evaluate(() => {
     const plannerBody = document.querySelector(".contracts-planner-body");
     const anchorWrap = document.querySelector(".planner-anchor-table-wrap");
     const plannerShell = document.querySelector(".planner-shell");
-    const anchorPanel = document.querySelector(".planner-anchor-panel");
+    const tablePanel = document.querySelector(".planner-table-panel");
     return plannerBody instanceof HTMLElement
       && anchorWrap instanceof HTMLElement
       && plannerShell instanceof HTMLElement
-      && anchorPanel instanceof HTMLElement
+      && tablePanel instanceof HTMLElement
       ? {
           plannerOverflowY: window.getComputedStyle(plannerBody).overflowY,
           anchorOverflowY: window.getComputedStyle(anchorWrap).overflowY,
-          anchorWidth: anchorPanel.getBoundingClientRect().width,
+          anchorWidth: tablePanel.getBoundingClientRect().width,
           shellWidth: plannerShell.getBoundingClientRect().width,
         }
       : null;
@@ -481,13 +471,33 @@ try {
   });
   assert.equal(plannerAnchorDueSort.ariaSort, "ascending");
   assert.equal(plannerAnchorDueSort.current, true);
-  const plannerAddButtons = page.locator(".planner-candidate-panel [data-planner-add-candidate]");
+  await clickUi(page.locator(".planner-table-panel [data-planner-table-view='candidates']").first());
+  await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='candidates'][aria-selected='true']"));
+  await page.waitForFunction(() => document.querySelector(".planner-candidate-table"));
+  const plannerCandidateHeaderOrder = await page.locator(".planner-candidate-table thead th").evaluateAll((cells) =>
+    cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  assert.deepEqual(plannerCandidateHeaderOrder, [
+    "Route",
+    "Payload",
+    "Payout",
+    "Distance",
+    "Hours Left",
+    "Due",
+    "Plan",
+  ]);
+  const plannerAddButtons = page.locator(".planner-table-panel [data-planner-add-candidate]");
   let initialPlannerAddCount = await plannerAddButtons.count();
   if (initialPlannerAddCount === 0) {
+    await clickUi(page.locator(".planner-table-panel [data-planner-table-view='accepted']").first());
+    await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='accepted'][aria-selected='true']"));
+    await page.waitForFunction(() => document.querySelector(".planner-anchor-table"));
     const inChainAnchorRow = page.locator(".planner-anchor-table tbody tr[data-planner-anchor-in-chain='true']").first();
     assert.equal(await inChainAnchorRow.count(), 1);
     await clickUi(inChainAnchorRow);
-    await page.waitForFunction(() => document.querySelectorAll(".planner-candidate-panel [data-planner-add-candidate]").length > 0);
+    await clickUi(page.locator(".planner-table-panel [data-planner-table-view='candidates']").first());
+    await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='candidates'][aria-selected='true']"));
+    await page.waitForFunction(() => document.querySelectorAll(".planner-table-panel [data-planner-add-candidate]").length > 0);
     initialPlannerAddCount = await plannerAddButtons.count();
   }
   assert.ok(initialPlannerAddCount > 0);
@@ -518,7 +528,7 @@ try {
   const filteredPlannerAddCount = await plannerAddButtons.count();
   assert.ok(filteredPlannerAddCount <= initialPlannerAddCount);
   await plannerAircraftSelect.selectOption("");
-  await page.waitForFunction(() => document.querySelectorAll(".planner-candidate-panel [data-planner-add-candidate]").length > 0);
+  await page.waitForFunction(() => document.querySelectorAll(".planner-table-panel [data-planner-add-candidate]").length > 0);
   const plannerCandidateOfferId = await plannerAddButtons.first().getAttribute("data-planner-add-candidate");
   assert.ok(plannerCandidateOfferId);
   const initialRoutePlanItemCount = await page.locator(".planner-chain-panel .planner-item").count();
@@ -526,7 +536,7 @@ try {
 
   await clickUi(plannerAddButtons.first());
   await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
-  await page.waitForFunction((offerId) => !document.querySelector(`.planner-candidate-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
+  await page.waitForFunction((offerId) => !document.querySelector(`.planner-table-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
   await page.waitForFunction(() => document.querySelector(".planner-chain-panel")?.textContent?.includes("Planned candidate"));
   markStep("planner add candidate");
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.accepted").count()) >= 1);
