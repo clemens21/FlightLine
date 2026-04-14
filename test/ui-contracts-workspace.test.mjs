@@ -410,7 +410,7 @@ try {
   assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerHoursFilter']").count(), 1);
   assert.equal(await page.locator(".planner-anchor-table [data-planner-anchor-popover-toggle='plannerDueFilter']").count(), 1);
   assert.equal(await page.locator(".planner-inline-callout").count(), 0);
-  assert.equal(await page.locator("[data-contracts-plan-map]").count(), 0);
+  assert.equal(await page.locator("[data-contracts-plan-map]").count(), 1);
   assert.equal(await page.locator(".planner-chain-map-card").count(), 0);
   const plannerAnchorHeaderOrder = await page.locator(".planner-anchor-table thead th").evaluateAll((cells) =>
     cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),

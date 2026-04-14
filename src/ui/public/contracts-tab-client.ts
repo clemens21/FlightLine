@@ -831,7 +831,11 @@ export function mountContractsTab(
 
     const resetButton = target.closest<HTMLElement>("[data-map-reset]");
     if (resetButton) {
-      focusSelectedRoute(state);
+      if (state.workspaceTab === "planning") {
+        focusPlannerChain(state);
+      } else {
+        focusSelectedRoute(state);
+      }
       render();
     }
   };
@@ -1478,11 +1482,6 @@ export function mountContractsTab(
             <h3>Route Planning</h3>
             <span class="muted">${escapeHtml(renderPlannerHeadline(state, plannerCandidates.length))}</span>
           </div>
-          <div class="planner-panel-actions">
-            ${state.payload.routePlan?.items.length
-              ? `${state.plannerReview.isOpen ? "" : `<button type="button" class="button-secondary" data-plan-review-open>Review & accept planned offers</button>`}<button type="button" class="button-secondary" data-plan-clear>Clear plan</button>`
-              : ""}
-          </div>
         </div>
         <div class="panel-body contracts-planner-body">
           ${renderPlannerPanel(state.payload.routePlan, state.plannerReview, plannerCandidates, state, activePlannerAnchorPopover)}
@@ -2068,6 +2067,16 @@ function renderPlannerPanel(
             ${routePlanHtml}
           </div>
         </section>
+        <section class="panel planner-map-panel">
+          <div class="panel-body">
+            <div class="contracts-map-surface planner-map-surface">
+              <button type="button" class="contracts-map-reset-button" data-map-reset aria-label="Refocus route plan map" title="Refocus route plan map">
+                ${renderContractsMapResetIcon()}
+              </button>
+              ${renderPlannerChainMap(summary)}
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   `;
@@ -2292,6 +2301,14 @@ function renderPlannerSetupCard(
   const dispatchAction = selectedAcceptedContract?.assignedAircraftReady
     ? `<button type="button" data-open-dispatch="${escapeHtml(selectedAcceptedContract.companyContractId)}">Dispatch</button>`
     : "";
+  const reviewAction = routePlanHasItems
+    ? state.plannerReview.isOpen
+      ? `<button type="button" class="button-secondary" data-plan-review-close>Back to chain</button>`
+      : `<button type="button" class="button-secondary" data-plan-review-open>Review planned</button>`
+    : "";
+  const clearAction = routePlanHasItems
+    ? `<button type="button" class="button-secondary" data-plan-clear>Clear plan</button>`
+    : "";
 
   return `
     <section class="planner-setup-strip">
@@ -2316,6 +2333,8 @@ function renderPlannerSetupCard(
         <div class="planner-selection-actions">
           <button type="button" class="button-secondary" data-plan-start-contract="${escapeHtml(selectedAcceptedContract?.companyContractId ?? "")}" ${routeActionDisabled ? "disabled" : ""}>${escapeHtml(routeActionLabel)}</button>
           ${dispatchAction}
+          ${reviewAction}
+          ${clearAction}
         </div>
       </div>
     </section>
@@ -3964,6 +3983,7 @@ function renderPlannerMap(root: HTMLElement, state: ContractsUiState): void {
 
 function renderVisibleMap(root: HTMLElement, state: ContractsUiState, selectedRoute: SelectedRoute | null): void {
   if (state.workspaceTab === "planning") {
+    renderPlannerMap(root, state);
     return;
   }
 
@@ -4069,7 +4089,7 @@ function renderPlannerSummary(summary: PlannerChainSummary): string {
 
 function renderPlannerChainMap(summary: PlannerChainSummary): string {
   return `
-    <svg class="contracts-map contracts-plan-map" data-contracts-plan-map viewBox="0 0 1000 560" role="img" aria-label="${escapeHtml(summary.itemCount > 0 ? `Route planning chain map with ${summary.itemCount} items` : "Empty route planning chain map")}"></svg>
+    <svg class="contracts-map contracts-plan-map" data-contracts-plan-map viewBox="0 0 1000 560" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(summary.itemCount > 0 ? `Route planning chain map with ${summary.itemCount} items` : "Empty route planning chain map")}"></svg>
   `;
 }
 

@@ -2465,7 +2465,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       min-width: 0;
       display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) minmax(196px, .58fr);
       gap: 12px;
       overflow: hidden;
     }
@@ -2637,6 +2637,28 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: grid;
       gap: 6px;
       padding: 6px 10px 10px;
+    }
+    .planner-map-panel {
+      min-height: 0;
+      overflow: hidden;
+    }
+    .planner-map-panel .panel-body {
+      min-height: 0;
+      height: 100%;
+      padding: 0;
+      overflow: hidden;
+    }
+    .planner-map-surface {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      aspect-ratio: auto;
+      display: block;
+    }
+    .planner-map-panel .contracts-plan-map {
+      height: 100%;
+      min-height: 0;
+      aspect-ratio: auto;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -2879,7 +2901,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         grid-template-columns: minmax(0, 1fr);
       }
       .planner-workbench {
-        grid-template-rows: auto minmax(320px, 1fr);
+        grid-template-rows: auto minmax(320px, 1fr) minmax(220px, auto);
       }
       .contracts-planner-body {
         overflow: auto;
