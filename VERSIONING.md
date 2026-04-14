@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.24.4`
+- `0.24.5`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -104,6 +104,7 @@ The Contracts direct-dispatch readiness truth fix plus autoplay chaining, rest-w
 The Route Planning density follow-up that adds accepted-contract table filters, removes the planner map, and rebalances the workspace into a denser half-width anchor table advances the release to `0.24.2`.
 The Route Planning accepted-table follow-up that restores sortable headers, removes the action and payload columns, strips route-cell tags, and tightens the anchor table width advances the release to `0.24.3`.
 The Route Planning shared-table follow-up that puts accepted contracts and next-leg candidates on the same card behind an explicit view switch advances the release to `0.24.4`.
+The Route Planning chain-density follow-up that compresses the saved route summary and route-chain items into a tighter inline layout advances the release to `0.24.5`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

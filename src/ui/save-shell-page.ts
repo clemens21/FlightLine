@@ -2662,8 +2662,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: auto;
       display: grid;
-      gap: 10px;
-      padding: 12px 14px 14px;
+      gap: 8px;
+      padding: 10px 12px 12px;
     }
     .planner-endpoint-toggle {
       display: flex;
@@ -2673,37 +2673,74 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .planner-list {
       display: grid;
-      gap: 10px;
+      gap: 6px;
     }
     .planner-item {
       border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 12px;
+      border-radius: 12px;
+      padding: 8px 10px;
       background: var(--panel-strong);
       display: grid;
-      gap: 10px;
+      gap: 6px;
     }
-    .planner-item-head {
+    .planner-item-row {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 8px;
+    }
+    .planner-item-main {
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }
+    .planner-item-line {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .planner-item-route-line {
+      min-width: 0;
+      display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
+    }
+    .planner-item-route-line strong {
+      overflow-wrap: anywhere;
+    }
+    .planner-item-subline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      font-size: 12px;
+      line-height: 1.25;
     }
     .planner-sequence {
       display: inline-flex;
-      width: 28px;
-      height: 28px;
+      width: 24px;
+      height: 24px;
       align-items: center;
       justify-content: center;
       border-radius: 999px;
       background: var(--accent-soft);
       color: var(--text);
       font-weight: 700;
+      font-size: 12px;
     }
     .planner-item-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
+      align-self: center;
+      justify-content: end;
+    }
+    .planner-item-actions .button-secondary {
+      padding: 5px 9px;
+      min-height: 0;
+      font-size: 12px;
+      line-height: 1.1;
     }
     .planner-table-action-cell {
       display: grid;
@@ -2720,9 +2757,6 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     }
     .planner-candidate-row--blocked {
       opacity: .9;
-    }
-    .planner-item .meta-stack {
-      min-width: 0;
     }
     .planner-item .meta-stack strong,
     .planner-review-item .meta-stack strong {
@@ -2757,6 +2791,38 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-item-source.accepted {
       background: color-mix(in srgb, var(--warn-soft) 56%, var(--panel-strong));
       color: var(--warn);
+    }
+    .planner-summary-bar {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .planner-summary-inline,
+    .planner-continuity-inline-issue {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 6px 8px;
+      background: var(--panel-strong);
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .planner-summary-inline strong,
+    .planner-continuity-inline-issue strong {
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .planner-summary-inline.accent {
+      border-color: rgba(13,106,119,.22);
+      background: color-mix(in srgb, var(--accent-soft) 54%, var(--panel-strong));
+    }
+    .planner-summary-inline.warning {
+      border-color: rgba(239,177,95,.3);
+      background: color-mix(in srgb, var(--warn-soft) 48%, var(--panel-strong));
+    }
+    .planner-continuity-inline-list {
+      display: grid;
+      gap: 6px;
     }
     .planner-item.stale,
     .planner-review-item.candidate_stale {
@@ -2813,7 +2879,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .planner-setup-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
-      .planner-summary-grid {
+      .planner-summary-bar {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
@@ -2826,6 +2892,13 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       }
       .contracts-planner-body {
         overflow: auto;
+      }
+      .planner-item-row {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+      .planner-item-actions {
+        grid-column: 2;
+        justify-content: start;
       }
     }
     .aircraft-tab-grid {
@@ -4303,7 +4376,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .contracts-side-column,
       .planner-workbench,
       .planner-setup-grid,
-      .planner-summary-grid,
+      .planner-summary-bar,
       .contracts-selected-pair-row {
         grid-template-columns: 1fr;
         height: auto;

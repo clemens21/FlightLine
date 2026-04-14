@@ -2133,28 +2133,33 @@ function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem): string {
   const actionLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
     ? "Planned candidate"
     : item.plannerItemStatus.replaceAll("_", " ");
-  const actionsHtml = `<div class="muted">${escapeHtml(actionLabel)}</div>`;
 
   return `
     <article class="planner-item ${item.plannerItemStatus} ${item.sourceType}">
-      <div class="planner-item-head">
-        <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
-        <div class="pill-row">
-          <span class="planner-sequence">${item.sequenceNumber}</span>
-          ${renderBadge(statusLabel)}
+      <div class="planner-item-row">
+        <span class="planner-sequence">${item.sequenceNumber}</span>
+        <div class="planner-item-main">
+          <div class="planner-item-line">
+            <div class="planner-item-route-line">
+              <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
+              <strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
+            </div>
+            <div class="pill-row">
+              ${renderBadge(statusLabel)}
+            </div>
+          </div>
+          <div class="planner-item-subline muted">
+            <span>${escapeHtml(formatPayload(item))}</span>
+            <span>Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+            <span>${escapeHtml(actionLabel)}</span>
+          </div>
+        </div>
+        <div class="planner-item-actions">
+          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up">Up</button>
+          <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down">Down</button>
+          <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Remove</button>
         </div>
       </div>
-      <div class="meta-stack">
-        <strong>${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
-        <span class="muted">${escapeHtml(formatPayload(item))} | due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
-        <span class="muted">${escapeHtml(actionLabel)}</span>
-      </div>
-      <div class="planner-item-actions">
-        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up">Up</button>
-        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down">Down</button>
-        <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Remove</button>
-      </div>
-      ${actionsHtml}
     </article>
   `;
 }
@@ -4052,32 +4057,36 @@ function renderPlannerSummary(summary: PlannerChainSummary): string {
   const continuityStatus = summary.continuityIssues.length === 0
     ? "Chain continuity is intact."
     : `${summary.continuityIssues.length} continuity issue${summary.continuityIssues.length === 1 ? "" : "s"} detected.`;
+  const continuityTone = summary.continuityIssues.length > 0 ? "warning" : "accent";
+  const continuityDetail = summary.continuityIssues.length === 0
+    ? "No breaks or endpoint mismatches are visible."
+    : "Review the issues below before dispatch.";
   return `
-    <div class="planner-summary-grid">
-      <article class="planner-summary-card">
+    <div class="planner-summary-bar">
+      <article class="planner-summary-inline">
         <span class="eyebrow">Current endpoint</span>
         <strong>${escapeHtml(summary.endpointAirport ? summary.endpointAirport.code : "Not set")}</strong>
         <span class="muted">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "The chain still needs an endpoint.")}</span>
       </article>
-      <article class="planner-summary-card">
+      <article class="planner-summary-inline">
         <span class="eyebrow">Payout total</span>
         <strong>${escapeHtml(formatMoney(summary.payoutTotal))}</strong>
         <span class="muted">${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"} in chain`)}</span>
       </article>
-      <article class="planner-summary-card">
+      <article class="planner-summary-inline">
         <span class="eyebrow">Order</span>
         <strong>${escapeHtml(summary.orderLabel)}</strong>
         <span class="muted">${escapeHtml(`${summary.acceptedWorkCount} accepted work / ${summary.plannedCandidateCount} planned candidate${summary.plannedCandidateCount === 1 ? "" : "s"}`)}</span>
       </article>
-      <article class="planner-summary-card ${summary.continuityIssues.length > 0 ? "warning" : "accent"}">
+      <article class="planner-summary-inline ${continuityTone}">
         <span class="eyebrow">Continuity</span>
         <strong>${escapeHtml(continuityStatus)}</strong>
-        <span class="muted">${escapeHtml(summary.continuityIssues.length === 0 ? "No breaks or endpoint mismatches are visible." : "Review the issues below before dispatch.")}</span>
+        <span class="muted">${escapeHtml(continuityDetail)}</span>
       </article>
     </div>
     ${summary.continuityIssues.length > 0
-      ? `<div class="planner-continuity-list">${summary.continuityIssues.map((issue) => `<div class="planner-continuity-issue">${escapeHtml(issue)}</div>`).join("")}</div>`
-      : `<div class="planner-continuity-list"><div class="planner-continuity-issue ok">Chain continuity is intact.</div></div>`}
+      ? `<div class="planner-continuity-inline-list">${summary.continuityIssues.map((issue) => `<div class="planner-continuity-inline-issue">${escapeHtml(issue)}</div>`).join("")}</div>`
+      : ""}
   `;
 }
 
