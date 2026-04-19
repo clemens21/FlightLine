@@ -777,8 +777,10 @@ async function handlePlannerRemoveApi(response, saveId, form) {
 async function handlePlannerReorderApi(response, saveId, form) {
     const routePlanItemId = form.get("routePlanItemId") ?? "";
     const direction = form.get("direction") === "down" ? "down" : "up";
+    const parsedTargetSequenceNumber = Number.parseInt(String(form.get("targetSequenceNumber") ?? ""), 10);
+    const targetSequenceNumber = Number.isFinite(parsedTargetSequenceNumber) ? parsedTargetSequenceNumber : undefined;
     const result = await backend.withExistingSaveDatabase(saveId, async (context) => {
-        const mutationResult = reorderRoutePlanItem(context.saveDatabase, saveId, routePlanItemId, direction);
+        const mutationResult = reorderRoutePlanItem(context.saveDatabase, saveId, routePlanItemId, direction, targetSequenceNumber);
         await context.saveDatabase.persist();
         return mutationResult;
     });

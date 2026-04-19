@@ -493,6 +493,7 @@ export function reorderRoutePlanItem(
   saveId: string,
   routePlanItemId: string,
   direction: "up" | "down",
+  targetSequenceNumber?: number,
 ): RoutePlanMutationResult {
   const companyContext = loadActiveCompanyContext(saveDatabase, saveId);
   if (!companyContext) {
@@ -534,63 +535,47 @@ export function reorderRoutePlanItem(
     return { success: false, error: "Route plan item was not found." };
   }
 
-  const neighbor = saveDatabase.getOne<{ routePlanItemId: string; sequenceNumber: number }>(
-    `SELECT
-      route_plan_item_id AS routePlanItemId,
-      sequence_number AS sequenceNumber
-    FROM route_plan_item
-    WHERE route_plan_id = $route_plan_id
-      AND sequence_number ${direction === "up" ? "<" : ">"} $sequence_number
-    ORDER BY sequence_number ${direction === "up" ? "DESC" : "ASC"}
-    LIMIT 1`,
-    {
-      $route_plan_id: itemRow.routePlanId,
-      $sequence_number: itemRow.sequenceNumber,
-    },
-  );
-
-  if (!neighbor) {
-    return { success: true, message: "Route plan item is already at the edge of the chain." };
+  const orderedItems = loadRoutePlanItems(saveDatabase, itemRow.routePlanId);
+  const currentIndex = orderedItems.findIndex((item) => item.routePlanItemId === routePlanItemId);
+  if (currentIndex < 0) {
+    return { success: false, error: "Route plan item was not found." };
   }
 
+  const currentSequenceNumber = orderedItems[currentIndex]?.sequenceNumber ?? itemRow.sequenceNumber;
+  const requestedSequenceNumber = Number.isFinite(targetSequenceNumber)
+    ? Math.min(Math.max(Math.trunc(targetSequenceNumber ?? currentSequenceNumber), 1), orderedItems.length)
+    : direction === "up"
+      ? currentSequenceNumber - 1
+      : currentSequenceNumber + 1;
+
+  const nextIndex = Math.min(Math.max(requestedSequenceNumber - 1, 0), orderedItems.length - 1);
+  if (currentIndex === nextIndex) {
+    return {
+      success: true,
+      message: Number.isFinite(targetSequenceNumber)
+        ? "Route plan item is already in that position."
+        : "Route plan item is already at the edge of the chain.",
+    };
+  }
+
+  const reorderedItems = [...orderedItems];
+  const [movedItem] = reorderedItems.splice(currentIndex, 1);
+  if (!movedItem) {
+    return { success: false, error: "Route plan item was not found." };
+  }
+  reorderedItems.splice(nextIndex, 0, movedItem);
+
   saveDatabase.transaction(() => {
-    saveDatabase.run(
-      `UPDATE route_plan_item
-      SET sequence_number = 0,
-          updated_at_utc = $updated_at_utc
-      WHERE route_plan_item_id = $route_plan_item_id`,
-      {
-        $route_plan_item_id: itemRow.routePlanItemId,
-        $updated_at_utc: companyContext.currentTimeUtc,
-      },
-    );
-    saveDatabase.run(
-      `UPDATE route_plan_item
-      SET sequence_number = $sequence_number,
-          updated_at_utc = $updated_at_utc
-      WHERE route_plan_item_id = $route_plan_item_id`,
-      {
-        $route_plan_item_id: neighbor.routePlanItemId,
-        $sequence_number: itemRow.sequenceNumber,
-        $updated_at_utc: companyContext.currentTimeUtc,
-      },
-    );
-    saveDatabase.run(
-      `UPDATE route_plan_item
-      SET sequence_number = $sequence_number,
-          updated_at_utc = $updated_at_utc
-      WHERE route_plan_item_id = $route_plan_item_id`,
-      {
-        $route_plan_item_id: itemRow.routePlanItemId,
-        $sequence_number: neighbor.sequenceNumber,
-        $updated_at_utc: companyContext.currentTimeUtc,
-      },
-    );
-    normalizeSequenceNumbers(saveDatabase, itemRow.routePlanId, companyContext.currentTimeUtc);
+    persistRoutePlanItemOrder(saveDatabase, reorderedItems, companyContext.currentTimeUtc);
     touchRoutePlan(saveDatabase, itemRow.routePlanId, companyContext.currentTimeUtc);
   });
 
-  return { success: true, message: `Moved route plan item ${direction}.` };
+  return {
+    success: true,
+    message: Number.isFinite(targetSequenceNumber)
+      ? `Moved route plan item to position ${nextIndex + 1}.`
+      : `Moved route plan item ${direction}.`,
+  };
 }
 
 export function clearRoutePlan(saveDatabase: SqliteFileDatabase, saveId: string): RoutePlanMutationResult {
@@ -1014,6 +999,43 @@ function normalizeSequenceNumbers(saveDatabase: SqliteFileDatabase, routePlanId:
         },
       );
     }
+  });
+}
+
+function persistRoutePlanItemOrder(
+  saveDatabase: SqliteFileDatabase,
+  orderedItems: RoutePlanItemRow[],
+  currentTimeUtc: string,
+): void {
+  const sequenceOffset = orderedItems.length + 10;
+  orderedItems.forEach((item, index) => {
+    const temporarySequence = sequenceOffset + index + 1;
+    saveDatabase.run(
+      `UPDATE route_plan_item
+      SET sequence_number = $sequence_number,
+          updated_at_utc = $updated_at_utc
+      WHERE route_plan_item_id = $route_plan_item_id`,
+      {
+        $route_plan_item_id: item.routePlanItemId,
+        $sequence_number: temporarySequence,
+        $updated_at_utc: currentTimeUtc,
+      },
+    );
+  });
+
+  orderedItems.forEach((item, index) => {
+    const nextSequence = index + 1;
+    saveDatabase.run(
+      `UPDATE route_plan_item
+      SET sequence_number = $sequence_number,
+          updated_at_utc = $updated_at_utc
+      WHERE route_plan_item_id = $route_plan_item_id`,
+      {
+        $route_plan_item_id: item.routePlanItemId,
+        $sequence_number: nextSequence,
+        $updated_at_utc: currentTimeUtc,
+      },
+    );
   });
 }
 

@@ -36,8 +36,8 @@ try {
 
     const board = await backend.loadActiveContractBoard(saveId);
     assert.ok(board);
-    const offers = board.offers.filter((offer) => offer.offerStatus === "available").slice(0, 2);
-    assert.equal(offers.length, 2);
+    const offers = board.offers.filter((offer) => offer.offerStatus === "available").slice(0, 3);
+    assert.equal(offers.length, 3);
 
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       for (const offer of offers) {
@@ -49,10 +49,11 @@ try {
 
     let routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
     assert.ok(routePlan);
-    assert.equal(routePlan.items.length, 2);
+    assert.equal(routePlan.items.length, 3);
 
     const firstItemId = routePlan.items[0].routePlanItemId;
     const secondItemId = routePlan.items[1].routePlanItemId;
+    const thirdItemId = routePlan.items[2].routePlanItemId;
 
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       const reorder = reorderRoutePlanItem(context.saveDatabase, saveId, secondItemId, "up");
@@ -64,6 +65,19 @@ try {
     assert.ok(routePlan);
     assert.equal(routePlan.items[0].routePlanItemId, secondItemId);
     assert.equal(routePlan.items[1].routePlanItemId, firstItemId);
+    assert.equal(routePlan.items[2].routePlanItemId, thirdItemId);
+
+    await backend.withExistingSaveDatabase(saveId, async (context) => {
+      const reorder = reorderRoutePlanItem(context.saveDatabase, saveId, secondItemId, "down", 3);
+      assert.equal(reorder.success, true);
+      await context.saveDatabase.persist();
+    });
+
+    routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
+    assert.ok(routePlan);
+    assert.equal(routePlan.items[0].routePlanItemId, firstItemId);
+    assert.equal(routePlan.items[1].routePlanItemId, thirdItemId);
+    assert.equal(routePlan.items[2].routePlanItemId, secondItemId);
 
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       const remove = removeRoutePlanItem(context.saveDatabase, saveId, firstItemId);
@@ -73,9 +87,11 @@ try {
 
     routePlan = await backend.withExistingSaveDatabase(saveId, (context) => loadRoutePlanState(context.saveDatabase, saveId));
     assert.ok(routePlan);
-    assert.equal(routePlan.items.length, 1);
+    assert.equal(routePlan.items.length, 2);
     assert.equal(routePlan.items[0].sequenceNumber, 1);
-    assert.equal(routePlan.items[0].routePlanItemId, secondItemId);
+    assert.equal(routePlan.items[0].routePlanItemId, thirdItemId);
+    assert.equal(routePlan.items[1].sequenceNumber, 2);
+    assert.equal(routePlan.items[1].routePlanItemId, secondItemId);
 
     await backend.withExistingSaveDatabase(saveId, async (context) => {
       const cleared = clearRoutePlan(context.saveDatabase, saveId);

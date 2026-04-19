@@ -2635,8 +2635,8 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       min-height: 0;
       overflow: auto;
       display: grid;
-      gap: 6px;
-      padding: 6px 10px 10px;
+      gap: 4px;
+      padding: 4px 10px 8px;
     }
     .planner-map-panel {
       min-height: 0;
@@ -2675,33 +2675,73 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       border: 0;
       border-bottom: 1px solid var(--line);
       border-radius: 0;
-      padding: 6px 0;
+      padding: 0;
       background: transparent;
-      display: grid;
-      gap: 4px;
+      position: relative;
     }
-    .planner-item-header {
+    .planner-item-row {
       display: grid;
-      grid-template-columns: auto minmax(0, 1fr);
-      align-items: start;
-      gap: 6px;
+      grid-template-columns: auto auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 0;
     }
-    .planner-item-header-main {
+    .planner-drag-handle,
+    body[data-theme="dark"] .planner-drag-handle {
+      width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0 !important;
+      border-radius: 8px;
+      background: transparent !important;
+      color: var(--muted) !important;
+      padding: 0;
+      cursor: grab;
+      box-shadow: none !important;
+    }
+    .planner-drag-handle:active {
+      cursor: grabbing;
+    }
+    .planner-drag-handle:hover,
+    body[data-theme="dark"] .planner-drag-handle:hover {
+      color: var(--text) !important;
+      background: rgba(255,255,255,.04) !important;
+    }
+    .planner-drag-handle svg {
+      width: 14px;
+      height: 14px;
+      fill: currentColor;
+    }
+    .planner-item-main {
       min-width: 0;
       display: grid;
       gap: 2px;
     }
+    .planner-item-title-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 8px;
+      min-width: 0;
+    }
     .planner-item-route {
-      font-size: 14px;
-      line-height: 1.15;
+      font-size: 13px;
+      line-height: 1.1;
       overflow-wrap: anywhere;
     }
     .planner-item-meta-strip {
       display: inline-flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 5px;
+      gap: 4px 6px;
       min-width: 0;
+    }
+    .planner-item-status {
+      font-size: 10px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
     }
     .planner-item-route,
     .planner-review-item .meta-stack strong {
@@ -2710,43 +2750,71 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-item-facts {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px 8px;
-      font-size: 12px;
-      line-height: 1.2;
-      padding-left: 28px;
+      gap: 2px 12px;
+      font-size: 11px;
+      line-height: 1.15;
+      min-width: 0;
     }
-    .planner-item-meta-pill {
+    .planner-item-facts > span {
       display: inline-flex;
       align-items: center;
-      padding: 1px 5px;
-      border-radius: 999px;
-      border: 1px solid rgba(255,255,255,.06);
-      background: rgba(255,255,255,.02);
+      min-width: 0;
+    }
+    .planner-item-facts > span + span::before {
+      content: "•";
+      margin-right: 6px;
+      color: var(--muted);
     }
     .planner-sequence {
       display: inline-flex;
-      width: 22px;
-      height: 22px;
+      width: 18px;
+      height: 18px;
       align-items: center;
       justify-content: center;
       border-radius: 999px;
       background: var(--accent-soft);
       color: var(--text);
       font-weight: 700;
-      font-size: 11px;
+      font-size: 10px;
     }
-    .planner-item-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      justify-content: flex-start;
-      padding-left: 28px;
-    }
-    .planner-item-actions .button-secondary {
-      padding: 4px 7px;
+    .planner-item-remove,
+    body[data-theme="dark"] .planner-item-remove {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      padding: 0;
       min-height: 0;
-      font-size: 11px;
-      line-height: 1.1;
+      border: 1px solid rgba(255,255,255,.08) !important;
+      background: rgba(255,255,255,.02) !important;
+      color: var(--muted) !important;
+      box-shadow: none !important;
+    }
+    .planner-item-remove:hover,
+    body[data-theme="dark"] .planner-item-remove:hover {
+      color: var(--warn) !important;
+      border-color: color-mix(in srgb, var(--warn) 28%, var(--line)) !important;
+      background: rgba(239,177,95,.08) !important;
+    }
+    .planner-item-remove svg {
+      width: 13px;
+      height: 13px;
+      fill: currentColor;
+    }
+    .planner-item--pending {
+      opacity: .58;
+      pointer-events: none;
+    }
+    .planner-item--dragging {
+      opacity: .35;
+    }
+    .planner-item--drop-before {
+      box-shadow: inset 0 2px 0 var(--accent);
+    }
+    .planner-item--drop-after {
+      box-shadow: inset 0 -2px 0 var(--accent);
     }
     .planner-table-action-cell {
       display: grid;
@@ -2785,9 +2853,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       display: inline-flex;
       width: fit-content;
       align-items: center;
-      padding: 3px 7px;
+      padding: 2px 6px;
       border-radius: 999px;
-      font-size: 9px;
+      font-size: 8px;
       text-transform: uppercase;
       letter-spacing: .08em;
       line-height: 1;
@@ -2916,9 +2984,9 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       .planner-selection-actions {
         justify-content: start;
       }
-      .planner-item-facts,
-      .planner-item-actions {
-        padding-left: 0;
+      .planner-item-row {
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        align-items: start;
       }
     }
     .aircraft-tab-grid {

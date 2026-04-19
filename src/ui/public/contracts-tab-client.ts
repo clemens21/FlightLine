@@ -351,6 +351,10 @@ export function mountContractsTab(
   let activePlannerAnchorPopover: PlannerAnchorPopoverKey | null = null;
   let pendingAvailableOfferSelectionTimeout: number | null = null;
   let pendingAvailableOfferId: string | null = null;
+  let plannerDraggedRoutePlanItemId: string | null = null;
+  let plannerDropTargetRoutePlanItemId: string | null = null;
+  let plannerDropPosition: "before" | "after" | null = null;
+  let plannerPendingReorderRoutePlanItemId: string | null = null;
   const acceptingContractOfferIds = new Set<string>();
   let cachedBoardViewState: ContractsBoardViewState | null = null;
   let cachedBoardViewKey = "";
@@ -1013,6 +1017,92 @@ export function mountContractsTab(
     dragging = false;
   };
 
+  const handlePlannerDragStart = (event: DragEvent) => {
+    if (plannerPendingReorderRoutePlanItemId) {
+      event.preventDefault();
+      return;
+    }
+
+    const dragHandle = event.target instanceof Element
+      ? event.target.closest<HTMLElement>("[data-plan-drag-handle]")
+      : null;
+    const routePlanItemId = dragHandle?.dataset.planDragHandle ?? "";
+    if (!routePlanItemId) {
+      event.preventDefault();
+      return;
+    }
+
+    plannerDraggedRoutePlanItemId = routePlanItemId;
+    plannerDropTargetRoutePlanItemId = null;
+    plannerDropPosition = null;
+    event.dataTransfer?.setData("text/plain", routePlanItemId);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+    }
+    syncPlannerDragIndicators();
+  };
+
+  const handlePlannerDragOver = (event: DragEvent) => {
+    if (!plannerDraggedRoutePlanItemId) {
+      return;
+    }
+
+    const placement = resolvePlannerDropPlacement(event.target, event.clientY);
+    if (!placement || placement.routePlanItemId === plannerDraggedRoutePlanItemId) {
+      plannerDropTargetRoutePlanItemId = null;
+      plannerDropPosition = null;
+      syncPlannerDragIndicators();
+      return;
+    }
+
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    plannerDropTargetRoutePlanItemId = placement.routePlanItemId;
+    plannerDropPosition = placement.position;
+    syncPlannerDragIndicators();
+  };
+
+  const handlePlannerDrop = (event: DragEvent) => {
+    if (!plannerDraggedRoutePlanItemId) {
+      return;
+    }
+
+    const placement = resolvePlannerDropPlacement(event.target, event.clientY);
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!placement || placement.routePlanItemId === plannerDraggedRoutePlanItemId) {
+      clearPlannerDragState();
+      return;
+    }
+
+    const draggedItem = state.payload.routePlan?.items.find((item) => item.routePlanItemId === plannerDraggedRoutePlanItemId) ?? null;
+    if (!draggedItem) {
+      clearPlannerDragState();
+      return;
+    }
+
+    const nextSequenceNumber = resolvePlannerDropSequenceNumber(
+      draggedItem.sequenceNumber,
+      placement.sequenceNumber,
+      placement.position,
+      state.payload.routePlan?.items.length ?? 0,
+    );
+    const routePlanItemId = plannerDraggedRoutePlanItemId;
+    clearPlannerDragState();
+    if (nextSequenceNumber === draggedItem.sequenceNumber) {
+      return;
+    }
+
+    void reorderPlannerRoutePlanItem(routePlanItemId, nextSequenceNumber);
+  };
+
+  const handlePlannerDragEnd = () => {
+    clearPlannerDragState();
+  };
+
   root.addEventListener("click", handleClick);
   root.addEventListener("input", handleFilterChange);
   root.addEventListener("change", handleFilterChange);
@@ -1023,6 +1113,10 @@ export function mountContractsTab(
   root.addEventListener("pointermove", handlePointerMove);
   root.addEventListener("pointerup", handlePointerUp);
   root.addEventListener("pointercancel", handlePointerCancel);
+  root.addEventListener("dragstart", handlePlannerDragStart);
+  root.addEventListener("dragover", handlePlannerDragOver);
+  root.addEventListener("drop", handlePlannerDrop);
+  root.addEventListener("dragend", handlePlannerDragEnd);
 
   // Server refreshes are reserved for board expiry or planner mutations; ordinary filtering and sorting stay entirely local.
   async function refreshContractsView(): Promise<void> {
@@ -1083,6 +1177,10 @@ export function mountContractsTab(
       root.removeEventListener("pointermove", handlePointerMove);
       root.removeEventListener("pointerup", handlePointerUp);
       root.removeEventListener("pointercancel", handlePointerCancel);
+      root.removeEventListener("dragstart", handlePlannerDragStart);
+      root.removeEventListener("dragover", handlePlannerDragOver);
+      root.removeEventListener("drop", handlePlannerDrop);
+      root.removeEventListener("dragend", handlePlannerDragEnd);
       root.replaceChildren();
     },
   };
@@ -1343,6 +1441,35 @@ export function mountContractsTab(
     }
   }
 
+  async function reorderPlannerRoutePlanItem(routePlanItemId: string, targetSequenceNumber: number): Promise<void> {
+    if (!options.plannerReorderUrl || !routePlanItemId || !Number.isFinite(targetSequenceNumber)) {
+      return;
+    }
+
+    plannerPendingReorderRoutePlanItemId = routePlanItemId;
+    render();
+
+    try {
+      const result = await executePlannerAction(
+        options.plannerReorderUrl,
+        new URLSearchParams({
+          routePlanItemId,
+          targetSequenceNumber: String(targetSequenceNumber),
+        }),
+      );
+      plannerPendingReorderRoutePlanItemId = null;
+      applyPlannerActionResult(result);
+    } catch (error) {
+      plannerPendingReorderRoutePlanItemId = null;
+      state.message = {
+        tone: "error",
+        text: error instanceof Error ? error.message : "Could not reorder the route plan.",
+      };
+      options.onMessage?.(state.message);
+      render();
+    }
+  }
+
   async function startPlannerFromAcceptedContract(
     companyContractId: string,
     button: HTMLButtonElement,
@@ -1484,7 +1611,14 @@ export function mountContractsTab(
           </div>
         </div>
         <div class="panel-body contracts-planner-body">
-          ${renderPlannerPanel(state.payload.routePlan, state.plannerReview, plannerCandidates, state, activePlannerAnchorPopover)}
+          ${renderPlannerPanel(
+            state.payload.routePlan,
+            state.plannerReview,
+            plannerCandidates,
+            state,
+            activePlannerAnchorPopover,
+            plannerPendingReorderRoutePlanItemId,
+          )}
         </div>
       </section>
     `;
@@ -1511,11 +1645,72 @@ export function mountContractsTab(
     syncBoardHeaderState();
     syncPlannerAnchorHeaderState();
     renderVisibleMap(root, state, selectedRoute);
+    syncPlannerDragIndicators();
     restoreNamedControlFocus(root, focusState);
     positionActiveBoardPopover();
     positionActivePlannerAnchorPopover();
     focusActiveBoardPopoverField(focusState);
     focusActivePlannerAnchorPopoverField(focusState);
+  }
+
+  function clearPlannerDragState(): void {
+    plannerDraggedRoutePlanItemId = null;
+    plannerDropTargetRoutePlanItemId = null;
+    plannerDropPosition = null;
+    syncPlannerDragIndicators();
+  }
+
+  function syncPlannerDragIndicators(): void {
+    root.querySelectorAll<HTMLElement>("[data-planner-route-plan-item]").forEach((item) => {
+      const routePlanItemId = item.dataset.plannerRoutePlanItem ?? "";
+      item.classList.toggle("planner-item--dragging", routePlanItemId === plannerDraggedRoutePlanItemId);
+      item.classList.toggle(
+        "planner-item--drop-before",
+        routePlanItemId === plannerDropTargetRoutePlanItemId && plannerDropPosition === "before",
+      );
+      item.classList.toggle(
+        "planner-item--drop-after",
+        routePlanItemId === plannerDropTargetRoutePlanItemId && plannerDropPosition === "after",
+      );
+    });
+  }
+
+  function resolvePlannerDropPlacement(
+    target: EventTarget | null,
+    clientY: number,
+  ): { routePlanItemId: string; sequenceNumber: number; position: "before" | "after" } | null {
+    const itemElement = target instanceof Element
+      ? target.closest<HTMLElement>("[data-planner-route-plan-item]")
+      : null;
+    if (!itemElement) {
+      return null;
+    }
+
+    const routePlanItemId = itemElement.dataset.plannerRoutePlanItem ?? "";
+    const sequenceNumber = Number.parseInt(itemElement.dataset.plannerSequenceNumber ?? "", 10);
+    if (!routePlanItemId || !Number.isFinite(sequenceNumber)) {
+      return null;
+    }
+
+    const bounds = itemElement.getBoundingClientRect();
+    const position = clientY <= bounds.top + bounds.height / 2 ? "before" : "after";
+    return { routePlanItemId, sequenceNumber, position };
+  }
+
+  function resolvePlannerDropSequenceNumber(
+    draggedSequenceNumber: number,
+    targetSequenceNumber: number,
+    position: "before" | "after",
+    itemCount: number,
+  ): number {
+    const rawSequenceNumber = position === "before"
+      ? draggedSequenceNumber < targetSequenceNumber
+        ? targetSequenceNumber - 1
+        : targetSequenceNumber
+      : draggedSequenceNumber < targetSequenceNumber
+        ? targetSequenceNumber
+        : targetSequenceNumber + 1;
+    return Math.min(Math.max(rawSequenceNumber, 1), Math.max(itemCount, 1));
   }
 
   function syncBoardHeaderState(): void {
@@ -2027,6 +2222,7 @@ function renderPlannerPanel(
   plannerCandidates: PlannerCandidateView[],
   state: ContractsUiState,
   activePlannerAnchorPopover: PlannerAnchorPopoverKey | null,
+  pendingReorderRoutePlanItemId: string | null,
 ): string {
   const summary = buildPlannerChainSummary(routePlan);
   const filteredAcceptedContracts = getFilteredPlannerAcceptedContracts(state);
@@ -2034,7 +2230,7 @@ function renderPlannerPanel(
   const selectedAircraft = resolveSelectedPlannerAircraft(state);
   const activePlannerTable = state.plannerTableView;
   const routePlanHtml = routePlan && routePlan.items.length > 0
-    ? renderPlannerRoutePlan(routePlan, plannerReview, state.payload.currentTimeUtc)
+    ? renderPlannerRoutePlan(routePlan, plannerReview, state.payload.currentTimeUtc, pendingReorderRoutePlanItemId)
     : `<div class="empty-state compact">No saved route chain.</div>`;
 
   return `
@@ -2102,6 +2298,7 @@ function renderPlannerRoutePlan(
   routePlan: ContractsViewPayload["routePlan"],
   plannerReview: PlannerReviewState,
   currentTimeUtc: string,
+  pendingReorderRoutePlanItemId: string | null,
 ): string {
   if (!routePlan) {
     return `<div class="empty-state compact">No saved route chain.</div>`;
@@ -2126,41 +2323,69 @@ function renderPlannerRoutePlan(
   const displayItems = [...routePlan.items].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
   return `
     <div class="planner-list">
-      ${displayItems.map((item) => renderPlannerRoutePlanItem(item, currentTimeUtc)).join("")}
+      ${displayItems.map((item) => renderPlannerRoutePlanItem(item, currentTimeUtc, pendingReorderRoutePlanItemId)).join("")}
     </div>
   `;
 }
 
-function renderPlannerRoutePlanItem(item: ContractsRoutePlanItem, currentTimeUtc: string): string {
+function renderPlannerRoutePlanItem(
+  item: ContractsRoutePlanItem,
+  currentTimeUtc: string,
+  pendingReorderRoutePlanItemId: string | null,
+): string {
   const sourceLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
   const sourceTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
   const statusLabel = item.sourceType === "candidate_offer" && item.plannerItemStatus === "candidate_available"
     ? "Ready to accept"
     : item.plannerItemStatus.replaceAll("_", " ");
+  const itemStateClass = pendingReorderRoutePlanItemId === item.routePlanItemId
+    ? " planner-item--pending"
+    : "";
 
   return `
-    <article class="planner-item ${item.plannerItemStatus} ${item.sourceType}">
-      <div class="planner-item-header">
+    <article
+      class="planner-item ${item.plannerItemStatus} ${item.sourceType}${itemStateClass}"
+      data-planner-route-plan-item="${escapeHtml(item.routePlanItemId)}"
+      data-planner-sequence-number="${item.sequenceNumber}"
+    >
+      <div class="planner-item-row">
+        <button
+          type="button"
+          class="planner-drag-handle"
+          data-plan-drag-handle="${escapeHtml(item.routePlanItemId)}"
+          draggable="true"
+          aria-label="Drag route plan item ${item.sequenceNumber} to reorder"
+          title="Drag to reorder"
+        >
+          ${renderPlannerDragHandleIcon()}
+        </button>
         <span class="planner-sequence">${item.sequenceNumber}</span>
-        <div class="planner-item-header-main">
-          <strong class="planner-item-route">${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
-          <div class="planner-item-meta-strip">
-            <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
-            ${renderBadge(statusLabel)}
+        <div class="planner-item-main">
+          <div class="planner-item-title-row">
+            <strong class="planner-item-route">${escapeHtml(item.origin.code)} -> ${escapeHtml(item.destination.code)}</strong>
+            <div class="planner-item-meta-strip">
+              <div class="planner-item-source ${sourceTone}">${escapeHtml(sourceLabel)}</div>
+              <span class="planner-item-status muted">${escapeHtml(statusLabel)}</span>
+            </div>
+          </div>
+          <div class="planner-item-facts muted">
+            <span>${escapeHtml(formatPayload(item))}</span>
+            <span>${escapeHtml(formatMoney(item.payoutAmount))}</span>
+            <span>Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
+            <span>${escapeHtml(formatDeadlineCountdown(item.deadlineUtc, currentTimeUtc))}</span>
           </div>
         </div>
+        <button
+          type="button"
+          class="planner-item-remove"
+          data-plan-remove-item="${escapeHtml(item.routePlanItemId)}"
+          aria-label="Remove route plan item"
+          title="Remove from route plan"
+          ${pendingReorderRoutePlanItemId === item.routePlanItemId ? "disabled" : ""}
+        >
+          ${renderPlannerRemoveIcon()}
+        </button>
       </div>
-      <div class="planner-item-facts muted">
-        <span class="planner-item-meta-pill">Payout ${escapeHtml(formatMoney(item.payoutAmount))}</span>
-        <span class="planner-item-meta-pill">${escapeHtml(formatPayload(item))}</span>
-        <span class="planner-item-meta-pill">Due ${escapeHtml(formatDate(item.deadlineUtc))}</span>
-        <span class="planner-item-meta-pill">${escapeHtml(formatDeadlineCountdown(item.deadlineUtc, currentTimeUtc))}</span>
-      </div>
-      <div class="planner-item-actions">
-        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="up" aria-label="Move route item up">Up</button>
-        <button type="button" class="button-secondary" data-plan-move-item="${escapeHtml(item.routePlanItemId)}" data-plan-move-direction="down" aria-label="Move route item down">Down</button>
-        <button type="button" class="button-secondary" data-plan-remove-item="${escapeHtml(item.routePlanItemId)}">Drop</button>
-        </div>
     </article>
   `;
 }
@@ -2783,6 +3008,14 @@ function renderContractsHeaderIcon(kind: "search" | "filter"): string {
 
 function renderContractsMapResetIcon(): string {
   return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M11 3h2v3.05a6.95 6.95 0 0 1 4.95 4.95H21v2h-3.05A6.95 6.95 0 0 1 13 17.95V21h-2v-3.05A6.95 6.95 0 0 1 6.05 13H3v-2h3.05A6.95 6.95 0 0 1 11 6.05V3Zm1 5a5 5 0 1 0 0 10a5 5 0 0 0 0-10Zm0 2.2a2.8 2.8 0 1 1 0 5.6a2.8 2.8 0 0 1 0-5.6Z"/></svg>`;
+}
+
+function renderPlannerDragHandleIcon(): string {
+  return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3Zm8 0a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3ZM8 10.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3Zm8 0a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3ZM8 15.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3Zm8 0a1.5 1.5 0 1 1 0 3a1.5 1.5 0 0 1 0-3Z"/></svg>`;
+}
+
+function renderPlannerRemoveIcon(): string {
+  return `<svg focusable="false" aria-hidden="true" viewBox="0 0 24 24"><path d="M9.4 4h5.2l.6 1.6H19v2H5v-2h3.8L9.4 4Zm-1 5h2v8h-2V9Zm5.2 0h2v8h-2V9ZM7 9h10l-.6 9.2A1.8 1.8 0 0 1 14.6 20H9.4a1.8 1.8 0 0 1-1.8-1.8L7 9Z"/></svg>`;
 }
 
 function renderContractsBoardIconButton(

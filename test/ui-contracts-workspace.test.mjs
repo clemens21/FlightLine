@@ -541,6 +541,29 @@ try {
   markStep("planner add candidate");
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.accepted").count()) >= 1);
   assert.ok((await page.locator(".planner-chain-panel .planner-item-source.planned").count()) >= 1);
+  assert.ok((await page.locator(".planner-chain-panel [data-plan-drag-handle]").count()) >= 2);
+  const plannerRoutesBeforeDrag = await page.locator(".planner-chain-panel .planner-item-route").evaluateAll((routes) =>
+    routes.map((route) => (route.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  assert.ok(plannerRoutesBeforeDrag.length >= 2);
+  const plannerItems = page.locator(".planner-chain-panel [data-planner-route-plan-item]");
+  const firstPlannerItemBounds = await plannerItems.first().boundingBox();
+  assert.ok(firstPlannerItemBounds);
+  await plannerItems.last().locator("[data-plan-drag-handle]").dragTo(plannerItems.first(), {
+    targetPosition: {
+      x: Math.max(12, Math.round((firstPlannerItemBounds?.width ?? 24) * 0.15)),
+      y: 6,
+    },
+  });
+  await page.waitForFunction((expectedRoute) => {
+    const route = document.querySelector(".planner-chain-panel .planner-item-route");
+    return (route?.textContent ?? "").replace(/\s+/g, " ").trim() === expectedRoute;
+  }, plannerRoutesBeforeDrag.at(-1) ?? "");
+  const plannerRoutesAfterDrag = await page.locator(".planner-chain-panel .planner-item-route").evaluateAll((routes) =>
+    routes.map((route) => (route.textContent ?? "").replace(/\s+/g, " ").trim()),
+  );
+  assert.equal(plannerRoutesAfterDrag[0], plannerRoutesBeforeDrag.at(-1) ?? "");
+  assert.equal(plannerRoutesAfterDrag.length, plannerRoutesBeforeDrag.length);
   backend = await createWorkspaceBackend();
   await backend.withExistingSaveDatabase(saveId, async (context) => {
     context.saveDatabase.run(
