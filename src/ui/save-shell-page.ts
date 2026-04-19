@@ -2871,39 +2871,46 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .planner-summary-strip {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px 14px;
-      align-items: flex-start;
-      padding-bottom: 6px;
+      gap: 4px 14px;
+      align-items: baseline;
+      padding-bottom: 4px;
       border-bottom: 1px solid var(--line);
     }
-    .planner-summary-kv,
-    .planner-continuity-inline-issue {
-      display: grid;
-      gap: 1px;
+    .planner-summary-item {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
       min-width: 0;
-      flex: 1 1 150px;
+      flex: 1 1 220px;
     }
-    .planner-summary-kv strong,
-    .planner-continuity-inline-issue strong {
+    .planner-summary-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .planner-summary-value {
       font-size: 13px;
-      line-height: 1.2;
+      line-height: 1.1;
+      white-space: nowrap;
     }
-    .planner-summary-kv.warning strong,
-    .planner-summary-kv.warning .muted {
+    .planner-summary-meta {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 11px;
+    }
+    .planner-summary-item.warning .planner-summary-value,
+    .planner-summary-item.warning .planner-summary-meta {
       color: var(--warn);
     }
-    .planner-continuity-inline-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-    }
-    .planner-continuity-inline-issue {
-      padding: 3px 6px;
-      border: 1px solid rgba(239,177,95,.24);
-      border-radius: 999px;
-      background: rgba(239,177,95,.08);
+    .planner-summary-issues {
+      padding-top: 4px;
       font-size: 11px;
-      line-height: 1.2;
+      line-height: 1.35;
+      color: var(--warn);
     }
     .planner-item.stale,
     .planner-review-item.candidate_stale {
@@ -2958,7 +2965,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       }
       .planner-summary-strip {
-        gap: 5px;
+        gap: 4px 10px;
       }
       .planner-setup-line {
         grid-template-columns: repeat(2, minmax(0, 1fr));

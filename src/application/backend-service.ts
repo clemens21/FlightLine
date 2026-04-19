@@ -219,6 +219,7 @@ export class FlightLineBackend {
         const result = await this.withExistingSaveDatabase(command.saveId, (context) => handleRefreshContractBoard(command, {
           saveDatabase: context.saveDatabase,
           airportReference: this.airportReference,
+          aircraftReference: this.aircraftReference,
         }));
         return result ?? this.missingSaveResult(command.commandId, command.saveId);
       }

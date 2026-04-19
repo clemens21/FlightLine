@@ -40,6 +40,17 @@ export interface GeneratedContractBoard {
   offers: GeneratedContractOfferInput[];
 }
 
+export interface ContractBoardGenerationFleetAircraftInput {
+  currentAirportId: string;
+  activeCabinSeats: number | undefined;
+  activeCabinCargoCapacityLb: number | undefined;
+  minimumAirportSize: number;
+  minimumRunwayFt: number;
+  rangeNm: number;
+  maxPassengers: number;
+  maxCargoLb: number;
+}
+
 interface ArchetypeProfile {
   archetype: "premium_passenger_charter" | "regional_passenger_run" | "cargo_feeder_haul" | "remote_utility_cargo" | "urgent_special_job" | "mainline_passenger_lane" | "longhaul_passenger_service" | "medium_freighter_linehaul" | "heavy_freighter_longhaul";
   targetCount: number;
@@ -53,6 +64,22 @@ interface RouteCandidate {
   origin: AirportRecord;
   destination: AirportRecord;
   relevanceScore: number;
+}
+
+interface FleetMarketBias {
+  hasFleet: boolean;
+  aircraft: ContractBoardGenerationFleetAircraftInput[];
+  currentAirportIds: Set<string>;
+  regionPresence: Map<string, number>;
+  countryPresence: Map<string, number>;
+  continentPresence: Map<string, number>;
+  airportCompatibilityById: Map<string, number>;
+  roleStrengthByRole: Map<string, number>;
+  averageRoleStrength: number;
+  passengerStrength: number;
+  cargoStrength: number;
+  maxRangeNm: number;
+  averageRangeNm: number;
 }
 
 function readContractBoardTargetScale(): number {
@@ -253,7 +280,244 @@ function uniqueAirports(airports: AirportRecord[]): AirportRecord[] {
   return [...seen.values()];
 }
 
-function scoreOriginOpportunity(homeBase: AirportRecord, candidate: AirportRecord, seed: string): number {
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function resolveAircraftSeatCapacity(aircraft: ContractBoardGenerationFleetAircraftInput): number {
+  return Math.max(0, Math.min(aircraft.activeCabinSeats ?? aircraft.maxPassengers, aircraft.maxPassengers));
+}
+
+function resolveAircraftCargoCapacityLb(aircraft: ContractBoardGenerationFleetAircraftInput): number {
+  return Math.max(0, Math.min(aircraft.activeCabinCargoCapacityLb ?? aircraft.maxCargoLb, aircraft.maxCargoLb));
+}
+
+function incrementPresence(map: Map<string, number>, key: string | null | undefined): void {
+  if (!key) {
+    return;
+  }
+
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function resolvePresenceWeight(map: Map<string, number>, key: string | null | undefined): number {
+  if (!key) {
+    return 0;
+  }
+
+  const count = map.get(key) ?? 0;
+  if (count <= 0) {
+    return 0;
+  }
+
+  return Math.min(1.4, 0.35 + (count - 1) * 0.28);
+}
+
+function aircraftCanAccessAirport(
+  aircraft: ContractBoardGenerationFleetAircraftInput,
+  airport: AirportRecord,
+): boolean {
+  if (!airport.accessibleNow) {
+    return false;
+  }
+
+  if (airport.airportSize !== undefined && airport.airportSize !== null && airport.airportSize < aircraft.minimumAirportSize) {
+    return false;
+  }
+
+  if (airport.longestHardRunwayFt !== undefined && airport.longestHardRunwayFt < aircraft.minimumRunwayFt) {
+    return false;
+  }
+
+  return true;
+}
+
+function resolveAircraftRoleAffinity(
+  aircraft: ContractBoardGenerationFleetAircraftInput,
+  likelyRole: string,
+): number {
+  const seatCapacity = resolveAircraftSeatCapacity(aircraft);
+  const cargoCapacity = resolveAircraftCargoCapacityLb(aircraft);
+
+  switch (likelyRole) {
+    case "light_business_jet":
+      if (seatCapacity < 4) {
+        return 0;
+      }
+      return (seatCapacity <= 16 ? 1 : 0.55)
+        + (aircraft.rangeNm >= 1200 ? 0.35 : aircraft.rangeNm >= 800 ? 0.15 : 0)
+        + (aircraft.minimumRunwayFt <= 5500 ? 0.15 : 0);
+    case "commuter_passenger_turboprop":
+      if (seatCapacity < 6) {
+        return 0;
+      }
+      return (seatCapacity <= 50 ? 1.05 : 0.75)
+        + (aircraft.minimumRunwayFt <= 4500 ? 0.25 : 0.1)
+        + (aircraft.rangeNm >= 600 ? 0.2 : 0);
+    case "regional_cargo_turboprop":
+      if (cargoCapacity < 1_200) {
+        return 0;
+      }
+      return (cargoCapacity >= 8_000 ? 1.2 : cargoCapacity >= 3_000 ? 1.05 : 0.8)
+        + (aircraft.minimumRunwayFt <= 5000 ? 0.2 : 0.08)
+        + (aircraft.rangeNm >= 700 ? 0.18 : 0);
+    case "single_engine_utility_cargo":
+      if (cargoCapacity < 500) {
+        return 0;
+      }
+      return (cargoCapacity >= 3_000 ? 1.15 : 0.85)
+        + (aircraft.minimumRunwayFt <= 3200 ? 0.3 : aircraft.minimumRunwayFt <= 4500 ? 0.15 : 0)
+        + (aircraft.rangeNm >= 350 ? 0.12 : 0);
+    case "narrowbody_airliner":
+      if (seatCapacity < 60) {
+        return 0;
+      }
+      return (seatCapacity >= 140 ? 1.2 : 0.95)
+        + (aircraft.rangeNm >= 1800 ? 0.2 : 0.08)
+        + (aircraft.minimumRunwayFt <= 7500 ? 0.1 : 0);
+    case "widebody_airliner":
+      if (seatCapacity < 160) {
+        return 0;
+      }
+      return (seatCapacity >= 250 ? 1.25 : 1.0)
+        + (aircraft.rangeNm >= 3200 ? 0.3 : aircraft.rangeNm >= 2200 ? 0.12 : 0)
+        + (aircraft.minimumRunwayFt <= 9000 ? 0.12 : 0);
+    case "medium_freighter":
+      if (cargoCapacity < 8_000) {
+        return 0;
+      }
+      return (cargoCapacity >= 35_000 ? 1.25 : cargoCapacity >= 15_000 ? 1.0 : 0.85)
+        + (aircraft.rangeNm >= 1800 ? 0.2 : 0.08)
+        + (aircraft.minimumRunwayFt <= 8000 ? 0.1 : 0);
+    case "heavy_freighter":
+      if (cargoCapacity < 40_000) {
+        return 0;
+      }
+      return (cargoCapacity >= 120_000 ? 1.35 : 1.0)
+        + (aircraft.rangeNm >= 3200 ? 0.28 : aircraft.rangeNm >= 2400 ? 0.14 : 0)
+        + (aircraft.minimumRunwayFt <= 9500 ? 0.1 : 0);
+    default:
+      return 0;
+  }
+}
+
+function isPassengerFocusedArchetype(archetype: ArchetypeProfile["archetype"]): boolean {
+  return [
+    "premium_passenger_charter",
+    "regional_passenger_run",
+    "mainline_passenger_lane",
+    "longhaul_passenger_service",
+  ].includes(archetype);
+}
+
+function isCargoFocusedArchetype(archetype: ArchetypeProfile["archetype"]): boolean {
+  return [
+    "cargo_feeder_haul",
+    "remote_utility_cargo",
+    "medium_freighter_linehaul",
+    "heavy_freighter_longhaul",
+  ].includes(archetype);
+}
+
+function buildFleetCapabilityFingerprint(fleetAircraft: ContractBoardGenerationFleetAircraftInput[]): string {
+  return fleetAircraft
+    .map((aircraft) => [
+      aircraft.currentAirportId,
+      resolveAircraftSeatCapacity(aircraft),
+      resolveAircraftCargoCapacityLb(aircraft),
+      aircraft.rangeNm,
+      aircraft.minimumRunwayFt,
+      aircraft.minimumAirportSize,
+    ].join(":"))
+    .sort((left, right) => left.localeCompare(right))
+    .join("|");
+}
+
+function buildFleetMarketBias(
+  footprintOrigins: AirportRecord[],
+  candidateAirports: AirportRecord[],
+  fleetAircraft: ContractBoardGenerationFleetAircraftInput[],
+): FleetMarketBias {
+  const airportLookup = new Map<string, AirportRecord>(
+    uniqueAirports([...footprintOrigins, ...candidateAirports]).map((airport) => [airport.airportKey, airport]),
+  );
+  const fleetPresenceAirports = uniqueAirports(
+    fleetAircraft
+      .map((aircraft) => airportLookup.get(aircraft.currentAirportId))
+      .filter((airport): airport is AirportRecord => airport != null && airport.accessibleNow),
+  );
+  const fallbackPresenceAirports = uniqueAirports(footprintOrigins.filter((airport) => airport.accessibleNow));
+  const presenceAirports = fleetPresenceAirports.length > 0 ? fleetPresenceAirports : fallbackPresenceAirports;
+  const currentAirportIds = new Set(fleetPresenceAirports.map((airport) => airport.airportKey));
+  const regionPresence = new Map<string, number>();
+  const countryPresence = new Map<string, number>();
+  const continentPresence = new Map<string, number>();
+
+  for (const airport of presenceAirports) {
+    incrementPresence(regionPresence, airport.marketRegion);
+    incrementPresence(countryPresence, airport.isoCountry);
+    incrementPresence(continentPresence, airport.continent);
+  }
+
+  const airportCompatibilityById = new Map<string, number>();
+  for (const airport of airportLookup.values()) {
+    if (fleetAircraft.length === 0) {
+      airportCompatibilityById.set(airport.airportKey, 0);
+      continue;
+    }
+
+    const compatibleCount = fleetAircraft.filter((aircraft) => aircraftCanAccessAirport(aircraft, airport)).length;
+    airportCompatibilityById.set(airport.airportKey, compatibleCount / fleetAircraft.length);
+  }
+
+  const likelyRoles = [...new Set(ARCHETYPE_PROFILES.map((profile) => profile.likelyRole))];
+  const roleStrengthByRole = new Map<string, number>();
+  for (const likelyRole of likelyRoles) {
+    roleStrengthByRole.set(
+      likelyRole,
+      fleetAircraft.reduce((sum, aircraft) => sum + resolveAircraftRoleAffinity(aircraft, likelyRole), 0),
+    );
+  }
+
+  const averageRoleStrength = likelyRoles.length > 0
+    ? likelyRoles.reduce((sum, likelyRole) => sum + (roleStrengthByRole.get(likelyRole) ?? 0), 0) / likelyRoles.length
+    : 0;
+  const passengerStrength = fleetAircraft.reduce((sum, aircraft) => sum + Math.sqrt(resolveAircraftSeatCapacity(aircraft)), 0);
+  const cargoStrength = fleetAircraft.reduce((sum, aircraft) => sum + Math.sqrt(resolveAircraftCargoCapacityLb(aircraft) / 800), 0);
+  const maxRangeNm = fleetAircraft.length > 0 ? Math.max(...fleetAircraft.map((aircraft) => aircraft.rangeNm)) : 0;
+  const averageRangeNm = fleetAircraft.length > 0
+    ? fleetAircraft.reduce((sum, aircraft) => sum + aircraft.rangeNm, 0) / fleetAircraft.length
+    : 0;
+
+  return {
+    hasFleet: fleetAircraft.length > 0,
+    aircraft: fleetAircraft,
+    currentAirportIds,
+    regionPresence,
+    countryPresence,
+    continentPresence,
+    airportCompatibilityById,
+    roleStrengthByRole,
+    averageRoleStrength,
+    passengerStrength,
+    cargoStrength,
+    maxRangeNm,
+    averageRangeNm,
+  };
+}
+
+function scoreOriginOpportunity(
+  homeBase: AirportRecord,
+  candidate: AirportRecord,
+  seed: string,
+  fleetBias: FleetMarketBias,
+): number {
+  const fleetPresenceBonus =
+    resolvePresenceWeight(fleetBias.regionPresence, candidate.marketRegion) * 14 +
+    resolvePresenceWeight(fleetBias.countryPresence, candidate.isoCountry) * 10 +
+    resolvePresenceWeight(fleetBias.continentPresence, candidate.continent) * 12 +
+    (fleetBias.currentAirportIds.has(candidate.airportKey) ? 18 : 0) +
+    (fleetBias.airportCompatibilityById.get(candidate.airportKey) ?? 0) * 10;
   return (
     candidate.contractGenerationWeight * 20 +
     Math.max(candidate.passengerScore, candidate.cargoScore, candidate.businessScore, candidate.remoteScore) * 0.42 +
@@ -262,6 +526,7 @@ function scoreOriginOpportunity(homeBase: AirportRecord, candidate: AirportRecor
     (candidate.continent === homeBase.continent ? 3 : 0) +
     (candidate.scheduledService ? 6 : 0) +
     ((candidate.airportSize ?? 3) * 2) +
+    fleetPresenceBonus +
     randomUnit(`${seed}|origin_noise`) * 5
   );
 }
@@ -270,6 +535,7 @@ function selectOriginPool(
   footprintOrigins: AirportRecord[],
   candidateAirports: AirportRecord[],
   windowSeed: string,
+  fleetBias: FleetMarketBias,
 ): AirportRecord[] {
   const anchors = uniqueAirports(footprintOrigins.filter((airport) => airport.accessibleNow));
   const homeBase = anchors[0] ?? candidateAirports[0];
@@ -280,6 +546,9 @@ function selectOriginPool(
 
   const selected = new Map<string, AirportRecord>(anchors.map((airport) => [airport.airportKey, airport]));
   const remaining = candidateAirports.filter((airport) => !selected.has(airport.airportKey));
+  const anchorRegions = new Set(anchors.map((airport) => airport.marketRegion).filter((value): value is string => Boolean(value)));
+  const anchorCountries = new Set(anchors.map((airport) => airport.isoCountry).filter((value): value is string => Boolean(value)));
+  const anchorContinents = new Set(anchors.map((airport) => airport.continent).filter((value): value is string => Boolean(value)));
 
   const addBucket = (
     bucketLabel: string,
@@ -289,7 +558,7 @@ function selectOriginPool(
     const scored = items
       .map((candidate) => ({
         candidate,
-        score: scoreOriginOpportunity(homeBase, candidate, `${windowSeed}|${bucketLabel}|${candidate.airportKey}`),
+        score: scoreOriginOpportunity(homeBase, candidate, `${windowSeed}|${bucketLabel}|${candidate.airportKey}`, fleetBias),
       }))
       .sort(
         (left, right) =>
@@ -312,32 +581,43 @@ function selectOriginPool(
   };
 
   addBucket(
-    "regional",
-    remaining.filter((airport) => airport.marketRegion && airport.marketRegion === homeBase.marketRegion),
-    14,
+    "network_region",
+    remaining.filter((airport) => airport.marketRegion && anchorRegions.has(airport.marketRegion)),
+    18,
   );
   addBucket(
-    "country",
+    "network_country",
     remaining.filter(
-      (airport) => airport.isoCountry && airport.isoCountry === homeBase.isoCountry && airport.marketRegion !== homeBase.marketRegion,
+      (airport) =>
+        airport.isoCountry
+        && anchorCountries.has(airport.isoCountry)
+        && (!airport.marketRegion || !anchorRegions.has(airport.marketRegion)),
     ),
-    10,
+    12,
   );
   addBucket(
-    "continent",
+    "network_continent",
     remaining.filter(
-      (airport) => airport.continent && airport.continent === homeBase.continent && airport.isoCountry !== homeBase.isoCountry,
+      (airport) =>
+        airport.continent
+        && anchorContinents.has(airport.continent)
+        && (!airport.isoCountry || !anchorCountries.has(airport.isoCountry)),
     ),
+    12,
+  );
+  addBucket(
+    "fleet_access",
+    remaining.filter((airport) => (fleetBias.airportCompatibilityById.get(airport.airportKey) ?? 0) >= 0.25),
     8,
   );
   addBucket(
     "off_continent",
     remaining.filter(
-      (airport) => airport.continent && homeBase.continent && airport.continent !== homeBase.continent,
+      (airport) => airport.continent && !anchorContinents.has(airport.continent),
     ),
-    20,
+    14,
   );
-  addBucket("global", remaining, 24);
+  addBucket("global", remaining, 20);
 
   return [...selected.values()];
 }
@@ -600,7 +880,7 @@ function buildOfferExplanation(
     reposition_summary: footprintOriginIds.has(originAirport.airportKey)
       ? `${originAirport.airportKey} is already inside your current operating footprint.`
       : `${originAirport.airportKey} sits outside your current footprint, so positioning is likely required.`,
-    why_now_summary: `Generated from your current network footprint plus a wider persistent market around ${companyContext.homeBaseAirportId}.`,
+    why_now_summary: `Generated from your current network footprint, active fleet capability, and a wider persistent market around ${companyContext.homeBaseAirportId}.`,
     blocked_reason_code: fitBucket === "blocked_now" ? reasonCode : undefined,
     stretch_reason_code: fitBucket === "stretch_growth" ? reasonCode : undefined,
     local_departure_window_text: `${earliestStartUtc} ${originAirport.timezone ?? "UTC"}`,
@@ -729,7 +1009,11 @@ function buildOffer(
   };
 }
 
-function buildGenerationContextHash(companyContext: CompanyContext, footprintOrigins: AirportRecord[]): string {
+function buildGenerationContextHash(
+  companyContext: CompanyContext,
+  footprintOrigins: AirportRecord[],
+  fleetAircraft: ContractBoardGenerationFleetAircraftInput[],
+): string {
   return `${contractBoardGenerationProfileVersion}:${makeSeed(
     contractBoardGenerationProfileVersion,
     companyContext.companyId,
@@ -739,9 +1023,91 @@ function buildGenerationContextHash(companyContext: CompanyContext, footprintOri
     String(companyContext.activeStaffingPackageCount),
     companyContext.financialPressureBand,
     companyContext.companyPhase,
-    String(companyContext.activeContractCount),
     ...footprintOrigins.map((airport) => airport.airportKey),
+    buildFleetCapabilityFingerprint(fleetAircraft),
   )}`;
+}
+
+function resolveArchetypeDemandMultiplier(
+  profile: ArchetypeProfile,
+  fleetBias: FleetMarketBias,
+): number {
+  if (!fleetBias.hasFleet) {
+    return 1;
+  }
+
+  const roleStrength = fleetBias.roleStrengthByRole.get(profile.likelyRole) ?? 0;
+  const normalizedRoleStrength = fleetBias.averageRoleStrength > 0
+    ? roleStrength / fleetBias.averageRoleStrength
+    : 1;
+  const totalVolumeStrength = fleetBias.passengerStrength + fleetBias.cargoStrength;
+  const volumePreference = totalVolumeStrength > 0
+    ? isPassengerFocusedArchetype(profile.archetype)
+      ? fleetBias.passengerStrength / totalVolumeStrength
+      : isCargoFocusedArchetype(profile.archetype)
+      ? fleetBias.cargoStrength / totalVolumeStrength
+      : 0.5
+    : 0.5;
+  const volumeBias = (volumePreference - 0.5) * 0.35;
+  const maxUsefulRange = fleetBias.maxRangeNm * 0.92;
+  const averageUsefulRange = fleetBias.averageRangeNm * 0.88;
+  const rangeBias =
+    profile.maxDistanceNm <= maxUsefulRange
+      ? 0.08
+      : profile.minDistanceNm > maxUsefulRange * 1.1
+      ? -0.18
+      : profile.maxDistanceNm > averageUsefulRange * 1.35
+      ? -0.06
+      : 0;
+
+  return clampNumber(0.72 + Math.min(normalizedRoleStrength, 2) * 0.33 + volumeBias + rangeBias, 0.68, 1.45);
+}
+
+function resolveFleetRouteCapabilityScore(
+  fleetBias: FleetMarketBias,
+  likelyRole: string,
+  volumeType: "passenger" | "cargo",
+  distanceNm: number,
+  origin: AirportRecord,
+  destination: AirportRecord,
+): number {
+  if (!fleetBias.hasFleet || fleetBias.aircraft.length === 0) {
+    return 0;
+  }
+
+  let bestScore = 0;
+  let totalScore = 0;
+
+  for (const aircraft of fleetBias.aircraft) {
+    if (!aircraftCanAccessAirport(aircraft, origin) || !aircraftCanAccessAirport(aircraft, destination)) {
+      continue;
+    }
+
+    const rangeEnvelopeNm = Math.max(1, aircraft.rangeNm * 0.9);
+    if (distanceNm > rangeEnvelopeNm * 1.15) {
+      continue;
+    }
+
+    const rangeScore = distanceNm <= rangeEnvelopeNm
+      ? 1
+      : Math.max(0, 1 - ((distanceNm - rangeEnvelopeNm) / Math.max(1, rangeEnvelopeNm * 0.15)));
+    const roleScore = resolveAircraftRoleAffinity(aircraft, likelyRole);
+    if (roleScore <= 0) {
+      continue;
+    }
+
+    const seatCapacity = resolveAircraftSeatCapacity(aircraft);
+    const cargoCapacity = resolveAircraftCargoCapacityLb(aircraft);
+    const volumeScore = volumeType === "passenger"
+      ? seatCapacity > 0 ? Math.min(1.2, 0.4 + seatCapacity / 48) : 0
+      : cargoCapacity > 0 ? Math.min(1.2, 0.35 + cargoCapacity / 12_000) : 0;
+    const score = rangeScore * Math.min(1.5, roleScore) * volumeScore;
+
+    bestScore = Math.max(bestScore, score);
+    totalScore += score;
+  }
+
+  return Math.min(1.6, bestScore * 0.9 + totalScore * 0.18);
 }
 
 function deriveRouteCandidateVolumeType(
@@ -767,6 +1133,7 @@ function buildRouteCandidates(
   footprintOriginIds: Set<string>,
   originPoolIds: Set<string>,
   windowSeed: string,
+  fleetBias: FleetMarketBias,
 ): RouteCandidate[] {
   const candidates: RouteCandidate[] = [];
   const idealDistanceNm = (profile.minDistanceNm + profile.maxDistanceNm) / 2;
@@ -792,6 +1159,27 @@ function buildRouteCandidates(
         : 0;
       const seed = makeSeed(windowSeed, profile.archetype, origin.airportKey, destination.airportKey);
       const distanceFit = 1 - Math.min(Math.abs(distanceNm - idealDistanceNm) / maxDistanceSpan, 1);
+      const activeFleetOriginBonus = fleetBias.currentAirportIds.has(origin.airportKey) ? 28 : 0;
+      const activeFleetDestinationBonus = fleetBias.currentAirportIds.has(destination.airportKey) ? 10 : 0;
+      const originPresenceBonus =
+        resolvePresenceWeight(fleetBias.regionPresence, origin.marketRegion) * 16 +
+        resolvePresenceWeight(fleetBias.countryPresence, origin.isoCountry) * 12 +
+        resolvePresenceWeight(fleetBias.continentPresence, origin.continent) * 12;
+      const destinationPresenceBonus =
+        resolvePresenceWeight(fleetBias.regionPresence, destination.marketRegion) * 8 +
+        resolvePresenceWeight(fleetBias.countryPresence, destination.isoCountry) * 6 +
+        resolvePresenceWeight(fleetBias.continentPresence, destination.continent) * 8;
+      const airportAccessBonus =
+        ((fleetBias.airportCompatibilityById.get(origin.airportKey) ?? 0)
+        + (fleetBias.airportCompatibilityById.get(destination.airportKey) ?? 0)) * 6;
+      const fleetRouteCapabilityScore = resolveFleetRouteCapabilityScore(
+        fleetBias,
+        profile.likelyRole,
+        volumeType,
+        distanceNm,
+        origin,
+        destination,
+      );
       const routeScore =
         profile.scoreAirport(origin, destination) +
         origin.contractGenerationWeight * 4 +
@@ -804,6 +1192,12 @@ function buildRouteCandidates(
         homeBaseOriginBonus +
         (destination.marketRegion === origin.marketRegion ? 6 : 0) +
         (destination.isoCountry === origin.isoCountry ? 4 : 0) +
+        activeFleetOriginBonus +
+        activeFleetDestinationBonus +
+        originPresenceBonus +
+        destinationPresenceBonus +
+        airportAccessBonus +
+        fleetRouteCapabilityScore * 16 +
         randomUnit(`${seed}|route_noise`) * 6;
 
       candidates.push({ origin, destination, relevanceScore: routeScore });
@@ -823,6 +1217,7 @@ export function generateContractBoard(
   footprintOrigins: AirportRecord[],
   candidateAirports: AirportRecord[],
   refreshReason: string,
+  fleetAircraft: ContractBoardGenerationFleetAircraftInput[] = [],
 ): GeneratedContractBoard {
   const targetScale = readContractBoardTargetScale();
   const uniqueFootprintOrigins = uniqueAirports(footprintOrigins);
@@ -831,25 +1226,39 @@ export function generateContractBoard(
     ...candidateAirports,
   ]);
   const footprintHashInput = uniqueFootprintOrigins.map((airport) => airport.airportKey).join(",");
+  const fleetCapabilityFingerprint = buildFleetCapabilityFingerprint(fleetAircraft);
   const windowSeed = makeSeed(
     companyContext.worldSeed,
     companyContext.companyId,
     companyContext.currentTimeUtc.slice(0, 13),
     refreshReason,
     footprintHashInput || companyContext.homeBaseAirportId,
+    fleetCapabilityFingerprint,
   );
   const homeBase = uniqueFootprintOrigins[0] ?? uniqueCandidates[0];
-  const originPool = homeBase ? selectOriginPool(uniqueFootprintOrigins, uniqueCandidates, windowSeed) : [];
+  const fleetBias = buildFleetMarketBias(uniqueFootprintOrigins, uniqueCandidates, fleetAircraft);
+  const originPool = homeBase ? selectOriginPool(uniqueFootprintOrigins, uniqueCandidates, windowSeed, fleetBias) : [];
   const footprintOriginIds = new Set(uniqueFootprintOrigins.map((airport) => airport.airportKey));
   const originPoolIds = new Set(originPool.map((airport) => airport.airportKey));
-  const generationContextHash = buildGenerationContextHash(companyContext, uniqueFootprintOrigins);
+  const generationContextHash = buildGenerationContextHash(companyContext, uniqueFootprintOrigins, fleetAircraft);
   const offers: GeneratedContractOfferInput[] = [];
   const routeUsage = new Map<string, number>();
   const originUsage = new Map<string, number>();
   const originUsageByVolume = new Map<string, { passenger: number; cargo: number }>();
   const destinationUsage = new Map<string, number>();
+  const targetCountByArchetype = new Map<ArchetypeProfile["archetype"], number>(
+    ARCHETYPE_PROFILES.map((profile) => [
+      profile.archetype,
+      Math.max(
+        1,
+        Math.round(
+          scaledTargetCount(profile.targetCount, targetScale) * resolveArchetypeDemandMultiplier(profile, fleetBias),
+        ),
+      ),
+    ]),
+  );
   const targetOfferCount = ARCHETYPE_PROFILES.reduce(
-    (sum, profile) => sum + scaledTargetCount(profile.targetCount, targetScale),
+    (sum, profile) => sum + (targetCountByArchetype.get(profile.archetype) ?? scaledTargetCount(profile.targetCount, targetScale)),
     0,
   );
   const originCap = Math.max(10, Math.ceil(targetOfferCount / Math.max(originPool.length, 1)) - 6);
@@ -876,7 +1285,9 @@ export function generateContractBoard(
       footprintOriginIds,
       originPoolIds,
       windowSeed,
+      fleetBias,
     );
+    const targetCountForProfile = targetCountByArchetype.get(archetypeProfile.archetype) ?? scaledTargetCount(archetypeProfile.targetCount, targetScale);
 
     let addedForProfile = 0;
 
@@ -912,7 +1323,7 @@ export function generateContractBoard(
       destinationUsage.set(candidate.destination.airportKey, destinationCount + 1);
       addedForProfile += 1;
 
-      if (addedForProfile >= scaledTargetCount(archetypeProfile.targetCount, targetScale)) {
+      if (addedForProfile >= targetCountForProfile) {
         break;
       }
     }

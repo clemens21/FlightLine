@@ -8,22 +8,21 @@ import { createPrefixedId } from "./utils.js";
 import { generateContractBoard, type GeneratedContractBoard, type GeneratedContractOfferInput } from "../contracts/contract-board-generator.js";
 import { isCurrentContractBoardGenerationContextHash } from "../contracts/contract-board-generation-profile.js";
 import { loadActiveCompanyContext } from "../queries/company-state.js";
+import { loadFleetState } from "../queries/fleet-state.js";
 import type { SqliteFileDatabase } from "../../infrastructure/persistence/sqlite/sqlite-file-database.js";
+import type { AircraftReferenceRepository } from "../../infrastructure/reference/aircraft-reference.js";
 import type { AirportReferenceRepository } from "../../infrastructure/reference/airport-reference.js";
 
 interface RefreshContractBoardDependencies {
   saveDatabase: SqliteFileDatabase;
   airportReference: AirportReferenceRepository;
+  aircraftReference: AircraftReferenceRepository;
 }
 
 interface ActiveWindowRow extends Record<string, unknown> {
   offerWindowId: string;
   generatedAtUtc: string;
   generationContextHash: string;
-}
-
-interface AircraftLocationRow extends Record<string, unknown> {
-  currentAirportId: string;
 }
 
 interface ActiveOfferRow extends Record<string, unknown> {
@@ -376,24 +375,19 @@ export async function handleRefreshContractBoard(
   }
 
   const refreshReason = command.payload.refreshReason ?? "manual";
-  const aircraftLocationRows = dependencies.saveDatabase.all<AircraftLocationRow>(
-    `SELECT DISTINCT current_airport_id AS currentAirportId
-     FROM company_aircraft
-     WHERE company_id = $company_id
-       AND delivery_state IN ('delivered', 'available')`,
-    { $company_id: companyContext!.companyId },
-  );
+  const fleetState = loadFleetState(dependencies.saveDatabase, dependencies.aircraftReference, command.saveId);
+  const fleetAircraft = fleetState?.aircraft ?? [];
 
   const footprintOrigins = [
     companyContext!.homeBaseAirportId,
     ...companyContext!.baseAirportIds,
-    ...aircraftLocationRows.map((row) => row.currentAirportId),
+    ...fleetAircraft.map((aircraft) => aircraft.currentAirportId),
   ]
     .map((airportId) => dependencies.airportReference.findAirport(airportId))
     .filter((airport): airport is NonNullable<typeof airport> => airport != null && airport.accessibleNow);
 
   const candidateAirports = dependencies.airportReference.listContractMarketAirports();
-  const generatedBoard = generateContractBoard(companyContext!, footprintOrigins, candidateAirports, refreshReason);
+  const generatedBoard = generateContractBoard(companyContext!, footprintOrigins, candidateAirports, refreshReason, fleetAircraft);
 
   const existingActiveWindows = dependencies.saveDatabase.all<ActiveWindowRow>(
     `SELECT
@@ -423,7 +417,8 @@ export async function handleRefreshContractBoard(
 
   const primaryActiveWindow = existingActiveWindows[0] ?? null;
   const rollingRefreshEligible = primaryActiveWindow != null
-    && isCurrentContractBoardGenerationContextHash(primaryActiveWindow.generationContextHash);
+    && isCurrentContractBoardGenerationContextHash(primaryActiveWindow.generationContextHash)
+    && primaryActiveWindow.generationContextHash === generatedBoard.generationContextHash;
   const eventLogEntryId = createPrefixedId("event");
   let refreshExecution!: RefreshExecutionResult;
 

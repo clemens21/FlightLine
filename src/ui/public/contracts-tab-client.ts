@@ -4289,33 +4289,34 @@ function buildPlannerChainSummary(routePlan: ContractsViewPayload["routePlan"]):
 }
 
 function renderPlannerSummary(summary: PlannerChainSummary): string {
-  const continuityStatus = summary.continuityIssues.length === 0 ? "Ready" : `${summary.continuityIssues.length} issue${summary.continuityIssues.length === 1 ? "" : "s"}`;
-  const continuityTone = summary.continuityIssues.length > 0 ? "warning" : "accent";
+  const continuityStatus = summary.continuityIssues.length === 0
+    ? "Ready"
+    : `${summary.continuityIssues.length} continuity issue${summary.continuityIssues.length === 1 ? "" : "s"}`;
   return `
     <div class="planner-summary-strip">
-      <div class="planner-summary-kv">
-        <span class="eyebrow">Chain</span>
-        <strong>${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"}`)}</strong>
-        <span class="muted">${escapeHtml(`${summary.acceptedWorkCount} accepted / ${summary.plannedCandidateCount} planned`)}</span>
+      <div class="planner-summary-item">
+        <span class="planner-summary-label">Chain</span>
+        <strong class="planner-summary-value">${escapeHtml(`${summary.itemCount} item${summary.itemCount === 1 ? "" : "s"}`)}</strong>
+        <span class="muted planner-summary-meta">${escapeHtml(`${summary.acceptedWorkCount} accepted | ${summary.plannedCandidateCount} planned`)}</span>
       </div>
-      <div class="planner-summary-kv">
-        <span class="eyebrow">Endpoint</span>
-        <strong>${escapeHtml(summary.endpointAirport ? summary.endpointAirport.code : "Not set")}</strong>
-        <span class="muted">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "Start a chain to set the endpoint.")}</span>
+      <div class="planner-summary-item">
+        <span class="planner-summary-label">Endpoint</span>
+        <strong class="planner-summary-value">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.code : "Not set")}</strong>
+        <span class="muted planner-summary-meta">${escapeHtml(summary.endpointAirport ? summary.endpointAirport.name : "Start a chain to set the endpoint.")}</span>
       </div>
-      <div class="planner-summary-kv">
-        <span class="eyebrow">Payout</span>
-        <strong>${escapeHtml(formatMoney(summary.payoutTotal))}</strong>
-        <span class="muted">Accepted plus planned value</span>
+      <div class="planner-summary-item">
+        <span class="planner-summary-label">Payout</span>
+        <strong class="planner-summary-value">${escapeHtml(formatMoney(summary.payoutTotal))}</strong>
+        <span class="muted planner-summary-meta">Accepted plus planned</span>
       </div>
-      <div class="planner-summary-kv ${continuityTone}">
-        <span class="eyebrow">Continuity</span>
-        <strong>${escapeHtml(continuityStatus)}</strong>
-        <span class="muted">${escapeHtml(summary.continuityIssues.length === 0 ? "No breaks visible." : "Review the flagged legs below.")}</span>
+      <div class="planner-summary-item ${summary.continuityIssues.length > 0 ? "warning" : ""}">
+        <span class="planner-summary-label">Continuity</span>
+        <strong class="planner-summary-value">${escapeHtml(continuityStatus)}</strong>
+        <span class="muted planner-summary-meta">${escapeHtml(summary.continuityIssues.length === 0 ? "No visible breaks." : "Review before dispatch.")}</span>
       </div>
     </div>
     ${summary.continuityIssues.length > 0
-      ? `<div class="planner-continuity-inline-list">${summary.continuityIssues.map((issue) => `<div class="planner-continuity-inline-issue">${escapeHtml(issue)}</div>`).join("")}</div>`
+      ? `<div class="planner-summary-issues"><strong>Continuity watch:</strong> ${summary.continuityIssues.map((issue) => escapeHtml(issue)).join(" | ")}</div>`
       : ""}
   `;
 }

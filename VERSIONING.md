@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.24.11`
+- `0.24.12`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -111,6 +111,7 @@ The Route Planning de-carding follow-up that flattens the setup block into an op
 The Route Planning route-list orientation follow-up that stacks saved-chain leg details vertically and moves controls below the leg facts advances the release to `0.24.9`.
 The Route Planning right-rail rebuild that folds planner actions into the ops strip, restores the compact chain map, and tightens the saved-chain presentation advances the release to `0.24.10`.
 The Route Planning saved-chain follow-up that condenses each route row and adds drag-and-drop reordering advances the release to `0.24.11`.
+The Route Planning summary-strip compression and fleet-weighted Contracts market follow-up advance the release to `0.24.12`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

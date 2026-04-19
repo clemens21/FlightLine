@@ -67,7 +67,7 @@ try {
   const firstWindowId = firstBoard.contractBoard.offerWindowId;
   const uniqueOrigins = new Set(firstBoard.contractBoard.offers.map((offer) => offer.originAirportId));
   assert.ok(uniqueOrigins.size > 1);
-  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v6:/);
+  assert.match(firstBoard.contractBoard.generationContextHash, /^contracts:v7:/);
   assert.ok(
     firstBoard.contractBoard.offers.some((offer) => uniqueOrigins.has(offer.destinationAirportId)),
     "Expected at least one chained route opportunity in the board.",
