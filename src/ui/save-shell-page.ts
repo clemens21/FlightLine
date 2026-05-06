@@ -2679,6 +2679,13 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
       background: transparent;
       position: relative;
     }
+    .planner-item--focused {
+      background: rgba(111, 201, 212, .04);
+    }
+    .planner-item--focus-anchor {
+      background: rgba(111, 201, 212, .1);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
     .planner-item-row {
       display: grid;
       grid-template-columns: auto auto minmax(0, 1fr) auto;
@@ -2957,6 +2964,7 @@ export function renderIncrementalSavePage(saveId: string, activeTab: SavePageTab
     .map-sequence { fill: rgba(9, 16, 24, .9); stroke: var(--panel-strong); stroke-width: 2; }
     .map-sequence.accepted { fill: rgba(239,177,95,.9); }
     .map-sequence.planned { fill: rgba(111,201,212,.92); }
+    .map-segment.selected .map-sequence { fill: var(--accent); }
     .map-sequence-text { fill: #091018; font-size: 11px; font-weight: 700; }
     .map-segment-label { font-size: 12px; font-weight: 500; }
     .contracts-accepted-body { overflow: auto; }

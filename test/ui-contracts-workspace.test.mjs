@@ -68,6 +68,50 @@ async function assertContractsHeaderSort(page, field) {
   assert.equal(headerState.arrow.includes("↑"), true);
 }
 
+async function openPlannerCandidatesWithAddButton(page) {
+  const addButtons = page.locator(".planner-table-panel [data-planner-add-candidate]");
+
+  async function openCandidates() {
+    await clickUi(page.locator(".planner-table-panel [data-planner-table-view='candidates']").first());
+    await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='candidates'][aria-selected='true']"));
+    await page.waitForFunction(() => document.querySelector(".planner-candidate-table") || document.querySelector(".planner-table-panel .empty-state"));
+  }
+
+  await openCandidates();
+  let addButtonCount = await addButtons.count();
+  if (addButtonCount > 0) {
+    return addButtonCount;
+  }
+
+  await clickUi(page.locator(".planner-table-panel [data-planner-table-view='accepted']").first());
+  await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='accepted'][aria-selected='true']"));
+  await page.waitForFunction(() => document.querySelector(".planner-anchor-table"));
+
+  const anchorRows = page.locator(".planner-anchor-table tbody tr");
+  const anchorRowCount = Math.min(await anchorRows.count(), 8);
+  for (let index = 0; index < anchorRowCount; index += 1) {
+    const row = anchorRows.nth(index);
+    const acceptedContractId = await row.getAttribute("data-planner-select-contract");
+    if (!acceptedContractId) {
+      continue;
+    }
+
+    await clickUi(row);
+    await page.waitForFunction((contractId) => document.querySelector(`.planner-anchor-table tbody tr[data-planner-select-contract='${contractId}'].selected`), acceptedContractId);
+    await page.waitForFunction((contractId) => document.querySelector(`.planner-anchor-table tbody tr[data-planner-select-contract='${contractId}'][data-planner-anchor-in-chain='true']`), acceptedContractId);
+    await openCandidates();
+    addButtonCount = await addButtons.count();
+    if (addButtonCount > 0) {
+      return addButtonCount;
+    }
+
+    await clickUi(page.locator(".planner-table-panel [data-planner-table-view='accepted']").first());
+    await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='accepted'][aria-selected='true']"));
+  }
+
+  assert.fail("Expected at least one route-planning anchor with addable next-leg candidates.");
+}
+
 try {
   markStep("start");
   backend = await createWorkspaceBackend();
@@ -443,6 +487,47 @@ try {
   assert.ok(["auto", "scroll"].includes(plannerBodyLayout.anchorOverflowY));
   assert.ok((plannerBodyLayout.anchorWidth / plannerBodyLayout.shellWidth) > 0.43);
   assert.ok((plannerBodyLayout.anchorWidth / plannerBodyLayout.shellWidth) < 0.57);
+  const plannerAnchorRows = page.locator(".planner-anchor-table tbody tr");
+  const plannerAnchorSamples = await plannerAnchorRows.evaluateAll((rows) =>
+    rows.slice(0, 2).map((row) => ({
+      companyContractId: row.getAttribute("data-planner-select-contract") ?? "",
+      routeText: (row.textContent ?? "").replace(/\s+/g, " ").trim(),
+      codes: (row.textContent ?? "").match(/\b[A-Z]{3,4}\b/g) ?? [],
+      inChain: row.hasAttribute("data-planner-anchor-in-chain"),
+    })),
+  );
+  assert.equal(plannerAnchorSamples.length >= 2, true);
+  const [firstPlannerAnchor, secondPlannerAnchor] = plannerAnchorSamples;
+  assert.ok(firstPlannerAnchor?.companyContractId);
+  assert.ok(secondPlannerAnchor?.companyContractId);
+  assert.equal((firstPlannerAnchor?.codes.length ?? 0) >= 2, true);
+  assert.equal((secondPlannerAnchor?.codes.length ?? 0) >= 2, true);
+  assert.notEqual(firstPlannerAnchor?.companyContractId, secondPlannerAnchor?.companyContractId);
+  const initialPlannerAnchorInChainCount = await page.locator(".planner-anchor-table tbody tr[data-planner-anchor-in-chain='true']").count();
+
+  await clickUi(page.locator(`.planner-anchor-table tbody tr[data-planner-select-contract='${firstPlannerAnchor.companyContractId}']`));
+  await page.waitForFunction((expectedCount) =>
+    document.querySelectorAll(".planner-anchor-table tbody tr[data-planner-anchor-in-chain='true']").length === expectedCount,
+  initialPlannerAnchorInChainCount + (firstPlannerAnchor.inChain ? 0 : 1));
+  await page.waitForFunction((expectedRoute) => {
+    const route = document.querySelector(".planner-chain-panel [data-planner-route-focus-anchor='true'] .planner-item-route");
+    return (route?.textContent ?? "").replace(/\s+/g, " ").trim() === expectedRoute;
+  }, `${firstPlannerAnchor.codes[0]} -> ${firstPlannerAnchor.codes[1]}`);
+
+  await clickUi(page.locator(`.planner-anchor-table tbody tr[data-planner-select-contract='${secondPlannerAnchor.companyContractId}']`));
+  await page.waitForFunction((expectedCount) =>
+    document.querySelectorAll(".planner-anchor-table tbody tr[data-planner-anchor-in-chain='true']").length === expectedCount,
+  initialPlannerAnchorInChainCount + (firstPlannerAnchor.inChain ? 0 : 1) + (secondPlannerAnchor.inChain ? 0 : 1));
+  await page.waitForFunction((expectedRoute) => {
+    const route = document.querySelector(".planner-chain-panel [data-planner-route-focus-anchor='true'] .planner-item-route");
+    return (route?.textContent ?? "").replace(/\s+/g, " ").trim() === expectedRoute;
+  }, `${secondPlannerAnchor.codes[0]} -> ${secondPlannerAnchor.codes[1]}`);
+
+  await clickUi(page.locator(`.planner-anchor-table tbody tr[data-planner-select-contract='${firstPlannerAnchor.companyContractId}']`));
+  await page.waitForFunction((expectedRoute) => {
+    const route = document.querySelector(".planner-chain-panel [data-planner-route-focus-anchor='true'] .planner-item-route");
+    return (route?.textContent ?? "").replace(/\s+/g, " ").trim() === expectedRoute;
+  }, `${firstPlannerAnchor.codes[0]} -> ${firstPlannerAnchor.codes[1]}`);
   const plannerAnchorFirstRouteText = (await page.locator(".planner-anchor-table tbody tr").first().locator("td").nth(0).textContent()) ?? "";
   const plannerAnchorCodes = plannerAnchorFirstRouteText.match(/\b[A-Z]{3,4}\b/g) ?? [];
   const plannerAnchorDepartureCode = plannerAnchorCodes[0] ?? "";
@@ -471,8 +556,8 @@ try {
   });
   assert.equal(plannerAnchorDueSort.ariaSort, "ascending");
   assert.equal(plannerAnchorDueSort.current, true);
-  await clickUi(page.locator(".planner-table-panel [data-planner-table-view='candidates']").first());
-  await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='candidates'][aria-selected='true']"));
+  const plannerAddButtons = page.locator(".planner-table-panel [data-planner-add-candidate]");
+  let initialPlannerAddCount = await openPlannerCandidatesWithAddButton(page);
   await page.waitForFunction(() => document.querySelector(".planner-candidate-table"));
   const plannerCandidateHeaderOrder = await page.locator(".planner-candidate-table thead th").evaluateAll((cells) =>
     cells.map((cell) => (cell.textContent ?? "").replace(/\s+/g, " ").trim()),
@@ -486,20 +571,6 @@ try {
     "Due",
     "Plan",
   ]);
-  const plannerAddButtons = page.locator(".planner-table-panel [data-planner-add-candidate]");
-  let initialPlannerAddCount = await plannerAddButtons.count();
-  if (initialPlannerAddCount === 0) {
-    await clickUi(page.locator(".planner-table-panel [data-planner-table-view='accepted']").first());
-    await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='accepted'][aria-selected='true']"));
-    await page.waitForFunction(() => document.querySelector(".planner-anchor-table"));
-    const inChainAnchorRow = page.locator(".planner-anchor-table tbody tr[data-planner-anchor-in-chain='true']").first();
-    assert.equal(await inChainAnchorRow.count(), 1);
-    await clickUi(inChainAnchorRow);
-    await clickUi(page.locator(".planner-table-panel [data-planner-table-view='candidates']").first());
-    await page.waitForFunction(() => document.querySelector(".planner-table-panel [data-planner-table-view='candidates'][aria-selected='true']"));
-    await page.waitForFunction(() => document.querySelectorAll(".planner-table-panel [data-planner-add-candidate]").length > 0);
-    initialPlannerAddCount = await plannerAddButtons.count();
-  }
   assert.ok(initialPlannerAddCount > 0);
   const plannerNextOriginCode = ((await page.locator("[data-planner-next-origin] strong").textContent()) ?? "").trim();
   assert.ok(plannerNextOriginCode.length > 0);
@@ -531,11 +602,9 @@ try {
   await page.waitForFunction(() => document.querySelectorAll(".planner-table-panel [data-planner-add-candidate]").length > 0);
   const plannerCandidateOfferId = await plannerAddButtons.first().getAttribute("data-planner-add-candidate");
   assert.ok(plannerCandidateOfferId);
-  const initialRoutePlanItemCount = await page.locator(".planner-chain-panel .planner-item").count();
   assert.ok((await page.locator(".planner-chain-panel").textContent())?.includes("Accepted work"));
 
   await clickUi(plannerAddButtons.first());
-  await page.waitForFunction((expectedCount) => document.querySelectorAll(".planner-chain-panel .planner-item").length === expectedCount, initialRoutePlanItemCount + 1);
   await page.waitForFunction((offerId) => !document.querySelector(`.planner-table-panel [data-planner-add-candidate="${offerId}"]`), plannerCandidateOfferId);
   await page.waitForFunction(() => document.querySelector(".planner-chain-panel")?.textContent?.includes("Planned candidate"));
   markStep("planner add candidate");

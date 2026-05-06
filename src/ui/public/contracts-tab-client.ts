@@ -115,6 +115,7 @@ interface PlannerChainSummary {
   plannedCandidateCount: number;
   payoutTotal: number;
   continuityIssues: string[];
+  selectedRoutePlanItemId: string | null;
 }
 
 type ContractsBoardPopoverKey =
@@ -679,11 +680,7 @@ export function mountContractsTab(
       event.stopPropagation();
       const acceptedContractId = plannerSelectContractButton.dataset.plannerSelectContract ?? "";
       if (acceptedContractId) {
-        state.plannerSelection = {
-          ...state.plannerSelection,
-          acceptedContractId,
-        };
-        render();
+        void selectPlannerAcceptedContract(acceptedContractId);
       }
       return;
     }
@@ -1472,18 +1469,19 @@ export function mountContractsTab(
 
   async function startPlannerFromAcceptedContract(
     companyContractId: string,
-    button: HTMLButtonElement,
+    button: HTMLButtonElement | null,
   ): Promise<void> {
     if (!options.plannerAddUrl) {
       return;
     }
 
-    const originalLabel = button.textContent ?? "Start route";
-    button.disabled = true;
-    button.textContent = "Starting...";
+    const originalLabel = button?.textContent ?? "Start route";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Starting...";
+    }
 
     try {
-      const currentRoutePlanItemCount = state.payload.routePlan?.items.length ?? 0;
       const selectedAcceptedContract = state.payload.acceptedContracts.find((contract) => contract.companyContractId === companyContractId) ?? null;
 
       if (!selectedAcceptedContract) {
@@ -1496,11 +1494,14 @@ export function mountContractsTab(
         return;
       }
 
-      if (currentRoutePlanItemCount > 0 && !selectedAcceptedContract.routePlanItemId) {
-        const clearResult = await executePlannerAction(options.plannerClearUrl, new URLSearchParams());
-        if (!applyPlannerActionResult(clearResult)) {
-          return;
-        }
+      if (selectedAcceptedContract.routePlanItemId || isAcceptedContractInCurrentRoutePlan(state, companyContractId)) {
+        state.plannerSelection = {
+          ...state.plannerSelection,
+          acceptedContractId: companyContractId,
+        };
+        focusPlannerChain(state);
+        render();
+        return;
       }
 
       const addResult = await executePlannerAction(
@@ -1523,9 +1524,31 @@ export function mountContractsTab(
       options.onMessage?.(state.message);
       render();
     } finally {
-      button.disabled = false;
-      button.textContent = originalLabel;
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
     }
+  }
+
+  async function selectPlannerAcceptedContract(companyContractId: string): Promise<void> {
+    const selectedAcceptedContract = state.payload.acceptedContracts.find((contract) => contract.companyContractId === companyContractId) ?? null;
+    if (!selectedAcceptedContract) {
+      return;
+    }
+
+    state.plannerSelection = {
+      ...state.plannerSelection,
+      acceptedContractId: companyContractId,
+    };
+
+    if (selectedAcceptedContract.routePlanItemId || isAcceptedContractInCurrentRoutePlan(state, companyContractId)) {
+      focusPlannerChain(state);
+      render();
+      return;
+    }
+
+    void startPlannerFromAcceptedContract(companyContractId, null);
   }
 
   function render(focusState: NamedControlFocusState | null = null): void {
@@ -2224,13 +2247,13 @@ function renderPlannerPanel(
   activePlannerAnchorPopover: PlannerAnchorPopoverKey | null,
   pendingReorderRoutePlanItemId: string | null,
 ): string {
-  const summary = buildPlannerChainSummary(routePlan);
-  const filteredAcceptedContracts = getFilteredPlannerAcceptedContracts(state);
   const selectedAcceptedContract = resolveSelectedPlannerAcceptedContract(state);
+  const summary = buildVisiblePlannerChainSummary(state, selectedAcceptedContract);
+  const filteredAcceptedContracts = getFilteredPlannerAcceptedContracts(state);
   const selectedAircraft = resolveSelectedPlannerAircraft(state);
   const activePlannerTable = state.plannerTableView;
   const routePlanHtml = routePlan && routePlan.items.length > 0
-    ? renderPlannerRoutePlan(routePlan, plannerReview, state.payload.currentTimeUtc, pendingReorderRoutePlanItemId)
+    ? renderPlannerRoutePlan(routePlan, summary, plannerReview, state.payload.currentTimeUtc, pendingReorderRoutePlanItemId)
     : `<div class="empty-state compact">No saved route chain.</div>`;
 
   return `
@@ -2255,7 +2278,7 @@ function renderPlannerPanel(
         ${renderPlannerSetupCard(state, selectedAcceptedContract, selectedAircraft)}
         <section class="panel planner-chain-panel">
           <div class="panel-head">
-            <strong>Saved route chain</strong>
+            <strong>${escapeHtml(summary.selectedRoutePlanItemId ? "Selected route" : "Saved route chain")}</strong>
             <span class="muted planner-panel-note">${escapeHtml(`${summary.itemCount} items | ${formatMoney(summary.payoutTotal)} total payout`)}</span>
           </div>
           <div class="panel-body">
@@ -2296,6 +2319,7 @@ function renderPlannerTableToggle(
 
 function renderPlannerRoutePlan(
   routePlan: ContractsViewPayload["routePlan"],
+  summary: PlannerChainSummary,
   plannerReview: PlannerReviewState,
   currentTimeUtc: string,
   pendingReorderRoutePlanItemId: string | null,
@@ -2320,10 +2344,19 @@ function renderPlannerRoutePlan(
     `;
   }
 
-  const displayItems = [...routePlan.items].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
+  const displayItems = summary.items;
+  if (displayItems.length === 0) {
+    return `<div class="empty-state compact">Select an accepted contract to inspect or build its route.</div>`;
+  }
+
   return `
     <div class="planner-list">
-      ${displayItems.map((item) => renderPlannerRoutePlanItem(item, currentTimeUtc, pendingReorderRoutePlanItemId)).join("")}
+      ${displayItems.map((item) => renderPlannerRoutePlanItem(
+        item,
+        currentTimeUtc,
+        pendingReorderRoutePlanItemId,
+        summary.selectedRoutePlanItemId === item.routePlanItemId,
+      )).join("")}
     </div>
   `;
 }
@@ -2332,6 +2365,7 @@ function renderPlannerRoutePlanItem(
   item: ContractsRoutePlanItem,
   currentTimeUtc: string,
   pendingReorderRoutePlanItemId: string | null,
+  isFocusAnchor: boolean,
 ): string {
   const sourceLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
   const sourceTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
@@ -2341,12 +2375,16 @@ function renderPlannerRoutePlanItem(
   const itemStateClass = pendingReorderRoutePlanItemId === item.routePlanItemId
     ? " planner-item--pending"
     : "";
+  const focusStateClass = isFocusAnchor
+    ? " planner-item--focused planner-item--focus-anchor"
+    : "";
 
   return `
     <article
-      class="planner-item ${item.plannerItemStatus} ${item.sourceType}${itemStateClass}"
+      class="planner-item ${item.plannerItemStatus} ${item.sourceType}${itemStateClass}${focusStateClass}"
       data-planner-route-plan-item="${escapeHtml(item.routePlanItemId)}"
       data-planner-sequence-number="${item.sequenceNumber}"
+      ${isFocusAnchor ? 'data-planner-route-focus-anchor="true"' : ""}
     >
       <div class="planner-item-row">
         <button
@@ -2519,7 +2557,7 @@ function renderPlannerSetupCard(
     ? selectedAcceptedContract.routePlanItemId
       ? "Route started"
       : routePlanHasItems
-      ? "Clear & start route"
+        ? "Add route"
       : "Start route"
     : "Start route";
   const routeActionDisabled = !selectedAcceptedContract || Boolean(selectedAcceptedContract.routePlanItemId);
@@ -3701,6 +3739,74 @@ function isAcceptedContractInCurrentRoutePlan(state: ContractsUiState, companyCo
   return Boolean(state.payload.routePlan?.items.some((item) => item.sourceType === "accepted_contract" && item.sourceId === companyContractId));
 }
 
+function resolvePlannerAcceptedRoutePlanItemId(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null,
+): string | null {
+  if (!selectedAcceptedContract) {
+    return null;
+  }
+
+  return selectedAcceptedContract.routePlanItemId
+    ?? state.payload.routePlan?.items.find((item) => item.sourceType === "accepted_contract" && item.sourceId === selectedAcceptedContract.companyContractId)?.routePlanItemId
+    ?? null;
+}
+
+function sortRoutePlanItems(routePlan: ContractsViewPayload["routePlan"]): ContractsRoutePlanItem[] {
+  return [...(routePlan?.items ?? [])].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
+}
+
+function plannerItemsShareLeg(left: ContractsRoutePlanItem, right: ContractsRoutePlanItem): boolean {
+  return left.origin.airportId === right.origin.airportId
+    && left.destination.airportId === right.destination.airportId;
+}
+
+function plannerItemsConnect(left: ContractsRoutePlanItem, right: ContractsRoutePlanItem): boolean {
+  return left.destination.airportId === right.origin.airportId;
+}
+
+function buildPlannerRouteSegments(routePlan: ContractsViewPayload["routePlan"]): ContractsRoutePlanItem[][] {
+  const items = sortRoutePlanItems(routePlan);
+  const segments: ContractsRoutePlanItem[][] = [];
+
+  for (const item of items) {
+    const currentSegment = segments.at(-1);
+    const previousItem = currentSegment?.at(-1);
+    if (!currentSegment || !previousItem || (!plannerItemsShareLeg(previousItem, item) && !plannerItemsConnect(previousItem, item))) {
+      segments.push([item]);
+      continue;
+    }
+
+    currentSegment.push(item);
+  }
+
+  return segments;
+}
+
+function resolvePlannerFocusedRouteItems(
+  routePlan: ContractsViewPayload["routePlan"],
+  selectedAcceptedContract: ContractsViewAcceptedContract | null,
+): ContractsRoutePlanItem[] {
+  if (!routePlan?.items.length) {
+    return [];
+  }
+
+  if (!selectedAcceptedContract?.routePlanItemId) {
+    return sortRoutePlanItems(routePlan);
+  }
+
+  const segments = buildPlannerRouteSegments(routePlan);
+  for (const segment of segments) {
+    if (segment.some((item) =>
+      item.routePlanItemId === selectedAcceptedContract.routePlanItemId
+      || (item.sourceType === "accepted_contract" && item.sourceId === selectedAcceptedContract.companyContractId))) {
+      return segment;
+    }
+  }
+
+  return sortRoutePlanItems(routePlan);
+}
+
 function isPlannerAnchorActive(
   state: ContractsUiState,
   selectedAcceptedContract: ContractsViewAcceptedContract | null = resolveSelectedPlannerAcceptedContract(state),
@@ -3722,7 +3828,7 @@ function resolvePlannerEndpointAirport(
   }
 
   if (state.payload.routePlan?.items.length && isAcceptedContractInCurrentRoutePlan(state, selectedAcceptedContract.companyContractId)) {
-    const summary = buildPlannerChainSummary(state.payload.routePlan);
+    const summary = buildFocusedPlannerChainSummary(state, selectedAcceptedContract);
     return summary.endpointAirport ?? selectedAcceptedContract.destination;
   }
 
@@ -4165,7 +4271,7 @@ function focusSelectedRoute(state: ContractsUiState, boardViewState: ContractsBo
 }
 
 function focusPlannerChain(state: ContractsUiState): void {
-  const summary = buildPlannerChainSummary(state.payload.routePlan);
+  const summary = buildVisiblePlannerChainSummary(state);
   if (summary.items.length === 0) {
     state.map = { ...defaultMapState };
     return;
@@ -4207,7 +4313,7 @@ function renderPlannerMap(root: HTMLElement, state: ContractsUiState): void {
     return;
   }
 
-  const summary = buildPlannerChainSummary(state.payload.routePlan);
+  const summary = buildVisiblePlannerChainSummary(state);
   renderRouteMapSvg(svg, state.map, { width: plannerMapViewWidthPx, height: plannerMapViewHeightPx }, (viewportLeftPx, viewportTopPx, worldSizePx) =>
     summary.items.length > 0
       ? renderPlannerChainOverlay(summary, viewportLeftPx, viewportTopPx, worldSizePx)
@@ -4270,12 +4376,21 @@ function renderRouteMapSvg(
   `;
 }
 
-function buildPlannerChainSummary(routePlan: ContractsViewPayload["routePlan"]): PlannerChainSummary {
-  const items = [...(routePlan?.items ?? [])].sort((left, right) => left.sequenceNumber - right.sequenceNumber);
-  const endpointAirport = resolveRoutePlanEndpointAirport(routePlan, items);
+function buildPlannerChainSummary(
+  routePlan: ContractsViewPayload["routePlan"],
+  itemsOverride: ContractsRoutePlanItem[] | null = null,
+  selectedRoutePlanItemId: string | null = null,
+): PlannerChainSummary {
+  const items = itemsOverride
+    ? [...itemsOverride].sort((left, right) => left.sequenceNumber - right.sequenceNumber)
+    : sortRoutePlanItems(routePlan);
+  const endpointAirport = itemsOverride
+    ? items.at(-1)?.destination ?? null
+    : resolveRoutePlanEndpointAirport(routePlan, items);
   const acceptedWorkCount = items.filter((item) => item.sourceType === "accepted_contract").length;
   const plannedCandidateCount = items.filter((item) => item.sourceType === "candidate_offer").length;
   const payoutTotal = items.reduce((sum, item) => sum + item.payoutAmount, 0);
+  const includeRoutePlanEndpointCheck = itemsOverride === null || items.length === (routePlan?.items.length ?? 0);
 
   return {
     items,
@@ -4284,7 +4399,8 @@ function buildPlannerChainSummary(routePlan: ContractsViewPayload["routePlan"]):
     acceptedWorkCount,
     plannedCandidateCount,
     payoutTotal,
-    continuityIssues: buildPlannerContinuityIssues(routePlan, items, endpointAirport),
+    continuityIssues: buildPlannerContinuityIssues(routePlan, items, endpointAirport, includeRoutePlanEndpointCheck),
+    selectedRoutePlanItemId,
   };
 }
 
@@ -4339,15 +4455,16 @@ function renderPlannerChainOverlay(
     const routeTone = item.sourceType === "accepted_contract" ? "accepted" : "planned";
     const routeLabel = item.sourceType === "accepted_contract" ? "Accepted work" : "Planned candidate";
     const routeStatus = item.plannerItemStatus.replaceAll("_", " ");
+    const selectedClass = summary.selectedRoutePlanItemId === item.routePlanItemId ? " selected" : "";
     return `
-      <g class="map-segment ${routeTone}">
-        <circle cx="${origin.x}" cy="${origin.y}" r="14" class="map-sequence ${routeTone}" />
+      <g class="map-segment ${routeTone}${selectedClass}">
+        <circle cx="${origin.x}" cy="${origin.y}" r="14" class="map-sequence ${routeTone}${selectedClass}" />
         <text x="${origin.x}" y="${origin.y + 5}" text-anchor="middle" class="map-sequence-text">${item.sequenceNumber}</text>
         <circle cx="${origin.x}" cy="${origin.y}" r="28" class="map-range-ring origin ${routeTone}" />
         <circle cx="${destination.x}" cy="${destination.y}" r="28" class="map-range-ring destination ${routeTone}" />
-        <line x1="${origin.x}" y1="${origin.y}" x2="${destination.x}" y2="${destination.y}" class="map-route ${routeTone}" />
-        <circle cx="${origin.x}" cy="${origin.y}" r="8" class="map-point ${routeTone}" />
-        <circle cx="${destination.x}" cy="${destination.y}" r="8" class="map-point ${routeTone}" />
+        <line x1="${origin.x}" y1="${origin.y}" x2="${destination.x}" y2="${destination.y}" class="map-route ${routeTone}${selectedClass}" />
+        <circle cx="${origin.x}" cy="${origin.y}" r="8" class="map-point ${routeTone}${selectedClass}" />
+        <circle cx="${destination.x}" cy="${destination.y}" r="8" class="map-point ${routeTone}${selectedClass}" />
         <text x="${origin.x + 14}" y="${origin.y - 16}" class="map-label">${escapeHtml(item.origin.code)}</text>
         <text x="${destination.x + 14}" y="${destination.y - 16}" class="map-label">${escapeHtml(item.destination.code)}</text>
         <text x="${destination.x + 14}" y="${destination.y + 18}" class="map-label map-segment-label">${escapeHtml(routeLabel)} | ${escapeHtml(routeStatus)}</text>
@@ -4395,6 +4512,7 @@ function buildPlannerContinuityIssues(
   routePlan: ContractsViewPayload["routePlan"],
   items: ContractsRoutePlanItem[],
   endpointAirport: ContractsViewAirport | null,
+  includeRoutePlanEndpointCheck: boolean,
 ): string[] {
   const issues: string[] = [];
 
@@ -4415,7 +4533,7 @@ function buildPlannerContinuityIssues(
   }
 
   const tail = items.at(-1);
-  if (routePlan?.endpointAirportId && tail && tail.destination.airportId !== routePlan.endpointAirportId) {
+  if (includeRoutePlanEndpointCheck && routePlan?.endpointAirportId && tail && tail.destination.airportId !== routePlan.endpointAirportId) {
     issues.push(`Current endpoint ${routePlan.endpointAirportId} does not match the chain tail ${tail.destination.code}.`);
   }
 
@@ -4425,6 +4543,34 @@ function buildPlannerContinuityIssues(
   }
 
   return issues;
+}
+
+function buildFocusedPlannerChainSummary(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null = resolveSelectedPlannerAcceptedContract(state),
+): PlannerChainSummary {
+  const routePlan = state.payload.routePlan;
+  if (!routePlan?.items.length) {
+    return buildPlannerChainSummary(routePlan, [], selectedAcceptedContract?.routePlanItemId ?? null);
+  }
+
+  if (!selectedAcceptedContract?.routePlanItemId || !isAcceptedContractInCurrentRoutePlan(state, selectedAcceptedContract.companyContractId)) {
+    return buildPlannerChainSummary(routePlan);
+  }
+
+  const focusedItems = resolvePlannerFocusedRouteItems(routePlan, selectedAcceptedContract);
+  return buildPlannerChainSummary(routePlan, focusedItems, selectedAcceptedContract.routePlanItemId);
+}
+
+function buildVisiblePlannerChainSummary(
+  state: ContractsUiState,
+  selectedAcceptedContract: ContractsViewAcceptedContract | null = resolveSelectedPlannerAcceptedContract(state),
+): PlannerChainSummary {
+  return buildPlannerChainSummary(
+    state.payload.routePlan,
+    null,
+    resolvePlannerAcceptedRoutePlanItemId(state, selectedAcceptedContract),
+  );
 }
 
 function renderSelectedOverlay(
