@@ -590,9 +590,20 @@ try {
   });
 
   assert.equal(postRestAdvanceResult.success, true);
+  const restReleaseIds = postRestAdvanceResult.metadata?.summary?.releasedRestingPilotIds;
+  assert.equal(Array.isArray(restReleaseIds), true);
+  assert.equal(restReleaseIds.length > 0, true);
   const staffingStateAfterRest = await backend.loadStaffingState(saveId);
   assert.ok(staffingStateAfterRest);
   assert.equal(staffingStateAfterRest.namedPilots.every((pilot) => pilot.availabilityState === "ready"), true);
+  await backend.withExistingSaveDatabase(saveId, async (context) => {
+    const restingPilotRow = context.saveDatabase.getOne(
+      `SELECT COUNT(*) AS countValue
+       FROM named_pilot
+       WHERE resting_until_utc IS NOT NULL`,
+    );
+    assert.equal(restingPilotRow?.countValue, 0);
+  });
   const trainingPilotId = staffingStateAfterRest.namedPilots[0]?.namedPilotId;
   assert.ok(trainingPilotId);
   const startTrainingResult = await backend.dispatch({

@@ -25,6 +25,25 @@ export function createShellApiHandlers(deps) {
         return loadClockPanelPayload(backend, saveId, selectedLocalDate);
     }
 
+    function metadataArrayLength(value) {
+        return Array.isArray(value) ? value.length : 0;
+    }
+
+    function shouldIncludeClockActionTab(tab, result) {
+        const metadata = result.metadata ?? {};
+        const summary = metadata.summary ?? {};
+        const hasTimeDrivenTabChange = Boolean(metadata.aircraftMarketChanged)
+            || metadataArrayLength(summary.processedEventTypes) > 0
+            || metadataArrayLength(summary.completedLegIds) > 0
+            || metadataArrayLength(summary.resolvedContractIds) > 0
+            || metadataArrayLength(summary.availableAircraftIds) > 0
+            || metadataArrayLength(summary.completedTrainingPilotIds) > 0
+            || metadataArrayLength(summary.completedTravelPilotIds) > 0
+            || metadataArrayLength(summary.releasedRestingPilotIds) > 0;
+
+        return hasTimeDrivenTabChange && ["dashboard", "contracts", "aircraft", "staffing", "dispatch"].includes(tab);
+    }
+
     async function sendShellActionResponse(response, saveId, tab, result) {
         const tabPayload = await buildTabApiPayload(saveId, tab);
         if (!tabPayload) {
@@ -136,7 +155,7 @@ export function createShellApiHandlers(deps) {
             },
         });
         const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
-        const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
+        const includeTab = shouldIncludeClockActionTab(tab, result);
         await sendClockActionResponse(response, saveId, tab, selectedLocalDate, result.success
             ? {
                 success: true,
@@ -180,7 +199,7 @@ export function createShellApiHandlers(deps) {
             },
         });
         const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
-        const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
+        const includeTab = shouldIncludeClockActionTab(tab, result);
         await sendClockActionResponse(response, saveId, tab, localDate, result.success
             ? {
                 success: true,
@@ -226,7 +245,7 @@ export function createShellApiHandlers(deps) {
             },
         });
         const stoppedBecause = String(result.metadata?.stoppedBecause ?? "target_time");
-        const includeTab = tab === "aircraft" && Boolean(result.metadata?.aircraftMarketChanged);
+        const includeTab = shouldIncludeClockActionTab(tab, result);
         await sendClockActionResponse(response, saveId, tab, nextEvent.localDate ?? clockPayload.selectedLocalDate, result.success
             ? {
                 success: true,

@@ -150,6 +150,12 @@ interface CompletedTrainingRow extends Record<string, unknown> {
   trainingUntilUtc: string;
 }
 
+interface CompletedRestRow extends Record<string, unknown> {
+  namedPilotId: string;
+  displayName: string;
+  restingUntilUtc: string;
+}
+
 interface CompletedTravelRow extends Record<string, unknown> {
   namedPilotId: string;
   displayName: string;
@@ -428,6 +434,9 @@ export async function handleAdvanceTime(
     const completedLegIds = new Set<string>();
     const resolvedContractIds = new Set<string>();
     const availableAircraftIds = new Set<string>();
+    const completedTrainingPilotIds = new Set<string>();
+    const completedTravelPilotIds = new Set<string>();
+    const releasedRestingPilotIds = new Set<string>();
 
     const syncFinancialState = (effectiveTimeUtc: string): void => {
       dependencies.saveDatabase.run(
@@ -1899,6 +1908,55 @@ export async function handleAdvanceTime(
         );
 
         changedAggregateIds.add(completedTraining.namedPilotId);
+        completedTrainingPilotIds.add(completedTraining.namedPilotId);
+      }
+    };
+
+    const completeDuePilotRest = (fromUtc: string, toUtc: string): void => {
+      const completedRestRows = dependencies.saveDatabase.all<CompletedRestRow>(
+        `SELECT
+          named_pilot_id AS namedPilotId,
+          display_name AS displayName,
+          resting_until_utc AS restingUntilUtc
+        FROM named_pilot
+        WHERE company_id = $company_id
+          AND resting_until_utc IS NOT NULL
+          AND resting_until_utc > $from_utc
+          AND resting_until_utc <= $to_utc
+        ORDER BY resting_until_utc ASC, named_pilot_id ASC`,
+        {
+          $company_id: companyContext!.companyId,
+          $from_utc: fromUtc,
+          $to_utc: toUtc,
+        },
+      );
+
+      for (const completedRest of completedRestRows) {
+        dependencies.saveDatabase.run(
+          `UPDATE named_pilot
+          SET resting_until_utc = NULL,
+              updated_at_utc = $updated_at_utc
+          WHERE named_pilot_id = $named_pilot_id`,
+          {
+            $updated_at_utc: completedRest.restingUntilUtc,
+            $named_pilot_id: completedRest.namedPilotId,
+          },
+        );
+
+        insertEventLog(
+          completedRest.restingUntilUtc,
+          "pilot_rest_completed",
+          "named_pilot",
+          completedRest.namedPilotId,
+          "info",
+          `${completedRest.displayName} completed required rest.`,
+          {
+            restingUntilUtc: completedRest.restingUntilUtc,
+          },
+        );
+
+        changedAggregateIds.add(completedRest.namedPilotId);
+        releasedRestingPilotIds.add(completedRest.namedPilotId);
       }
     };
 
@@ -1958,6 +2016,7 @@ export async function handleAdvanceTime(
         );
 
         changedAggregateIds.add(completedTravel.namedPilotId);
+        completedTravelPilotIds.add(completedTravel.namedPilotId);
       }
     };
 
@@ -2331,6 +2390,7 @@ export async function handleAdvanceTime(
       }
 
       completeDuePilotTraining(pilotTransitionCursorUtc, toUtc);
+      completeDuePilotRest(pilotTransitionCursorUtc, toUtc);
       completeDuePilotTravel(pilotTransitionCursorUtc, toUtc);
       pilotTransitionCursorUtc = toUtc;
     };
@@ -2544,6 +2604,9 @@ export async function handleAdvanceTime(
       completedLegIds: [...completedLegIds],
       resolvedContractIds: [...resolvedContractIds],
       availableAircraftIds: [...availableAircraftIds],
+      completedTrainingPilotIds: [...completedTrainingPilotIds],
+      completedTravelPilotIds: [...completedTravelPilotIds],
+      releasedRestingPilotIds: [...releasedRestingPilotIds],
       requestedTargetTimeUtc: normalizedTargetTimeUtc!,
       stopConditions,
     };

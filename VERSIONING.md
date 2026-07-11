@@ -17,7 +17,7 @@ Format:
 
 The current released version is:
 
-- `0.25.0`
+- `0.25.1`
 
 This replaces the old placeholder `1.0.0`, which overstated release stability.
 
@@ -113,6 +113,7 @@ The Route Planning right-rail rebuild that folds planner actions into the ops st
 The Route Planning saved-chain follow-up that condenses each route row and adds drag-and-drop reordering advances the release to `0.24.11`.
 The Route Planning summary-strip compression and fleet-weighted Contracts market follow-up advance the release to `0.24.12`.
 The Route Planning multi-route selection workflow that starts accepted contracts from the anchor table, preserves multiple route anchors, highlights the selected route in the planner, and keeps candidate filtering tied to the selected anchor advances the release to `0.25.0`.
+The clock-driven pilot rest-release and active-tab refresh fix advances the release to `0.25.1`.
 The next active prerelease line should be chosen from the integrated delta of the next landing set, not assumed in advance.
 
 ## Bump Rules

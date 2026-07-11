@@ -693,15 +693,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
         return;
       }
 
-      renderShellChrome(result.shell);
-      applyClockPayload(result.clock);
-      if (result.tab) {
-        replaceTabCacheWith(result.tab);
-        activeTab = result.tab.tabId;
-        renderTab(result.tab);
-      } else if (clockPayload && contractsController) {
-        await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
-      }
+      await applyClockActionResponse(result);
       if (result.message) {
         setClockMode("paused");
         showFlash({ tone: "notice", text: result.message, notificationLevel: result.notificationLevel });
@@ -723,6 +715,39 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
       body,
     });
     return await response.json() as ActionResponse;
+  }
+
+  async function applyClockActionResponse(result: ActionResponse): Promise<void> {
+    const previousCurrentTimeUtc = clockPayload?.currentTimeUtc ?? null;
+
+    renderShellChrome(result.shell);
+    applyClockPayload(result.clock);
+
+    if (result.tab) {
+      replaceTabCacheWith(result.tab);
+      activeTab = result.tab.tabId;
+      renderTab(result.tab);
+      return;
+    }
+
+    const nextCurrentTimeUtc = clockPayload?.currentTimeUtc ?? null;
+    if (!nextCurrentTimeUtc || nextCurrentTimeUtc === previousCurrentTimeUtc) {
+      if (clockPayload && contractsController) {
+        await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
+      }
+      return;
+    }
+
+    invalidateTabCache();
+    if (activeTab === "contracts" && contractsController) {
+      await contractsController.syncCurrentTime(nextCurrentTimeUtc);
+      return;
+    }
+
+    const refreshedTab = await requestTabPayload(activeTab, true);
+    replaceTabCacheWith(refreshedTab);
+    activeTab = refreshedTab.tabId;
+    renderTab(refreshedTab);
   }
 
   // Tabs arrive as server-rendered HTML, then opt into richer controllers when a tab needs client-only interaction.
@@ -1026,15 +1051,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
             clockDateActionOpen = false;
           }
 
-          renderShellChrome(result.shell);
-          applyClockPayload(result.clock);
-          if (result.tab) {
-            replaceTabCacheWith(result.tab);
-            activeTab = result.tab.tabId;
-            renderTab(result.tab);
-          } else if (clockPayload && contractsController) {
-            await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
-          }
+          await applyClockActionResponse(result);
 
           showFlash(result.success
             ? result.message
@@ -1066,15 +1083,7 @@ async function mountSaveShell(root: HTMLElement, config: ShellConfig): Promise<v
             selectedLocalDate: clockPayload?.selectedLocalDate ?? "",
           }));
 
-          renderShellChrome(result.shell);
-          applyClockPayload(result.clock);
-          if (result.tab) {
-            replaceTabCacheWith(result.tab);
-            activeTab = result.tab.tabId;
-            renderTab(result.tab);
-          } else if (clockPayload && contractsController) {
-            await contractsController.syncCurrentTime(clockPayload.currentTimeUtc);
-          }
+          await applyClockActionResponse(result);
 
           showFlash(result.success
             ? result.message
